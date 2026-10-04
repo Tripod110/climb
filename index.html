@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<!-- The only network surface is deadlock-api.com (data + rank badges) and its asset bucket
+     (hero icons). Anything else is refused by the browser, not just by convention. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: https://api.deadlock-api.com https://assets-bucket.deadlock-api.com;
+  connect-src https://api.deadlock-api.com;
+  worker-src 'self';
+  manifest-src 'self';
+  base-uri 'none';
+  form-action 'none';
+  object-src 'none'">
+
+<title>Climb: am I improving?</title>
+<meta name="description" content="A personal Deadlock progress tracker. One verdict (improving, holding or slipping) backed by rank points, form against your own hero history, and consistency.">
+<meta name="theme-color" content="#121214">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Climb">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+<main>
+  <header class="top">
+    <div class="brand">Climb</div>
+    <div class="top-r">
+      <span id="status" class="muted small" aria-live="polite"></span>
+      <button id="refresh" class="ghost" type="button" aria-label="Refresh">↻</button>
+    </div>
+  </header>
+
+  <section id="identity" class="identity"></section>
+
+  <nav id="tabs" class="tabs" aria-label="Time window">
+    <button type="button" data-w="session">Last session</button>
+    <button type="button" data-w="last20">Last 20</button>
+    <button type="button" data-w="season">Season</button>
+  </nav>
+
+  <section id="verdict" class="card verdict" aria-live="polite"></section>
+
+  <section class="card">
+    <h2>Rank points this season</h2>
+    <p class="muted small">Running total of points gained and lost. The shaded area is the window you're looking at, and dots mark where your rank changed.</p>
+    <div id="rank-chart" class="chart"></div>
+  </section>
+
+  <section class="card">
+    <h2>How your games went</h2>
+    <p class="muted small">Win or loss, crossed with how you played compared with your usual on that hero.</p>
+    <ul id="mix-legend" class="legend"></ul>
+    <div id="mix-chart" class="chart"></div>
+    <p id="mix-note" class="muted small"></p>
+  </section>
+
+  <section class="card">
+    <h2 id="games-title">Games</h2>
+    <ul id="games" class="games"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Heroes this season</h2>
+    <p class="muted small">"Form" compares your last 5 games on a hero with the ones before them.</p>
+    <div class="table-wrap"><table id="heroes" class="heroes"></table></div>
+  </section>
+
+  <section class="card">
+    <details class="how">
+      <summary><h2>How this works</h2></summary>
+      <ul>
+        <li><b>Form</b> scores each game against your <i>other games on the same hero</i>, using your share of the lobby's souls, damage, kills + assists and deaths. 0 is your usual; +1 is a clearly better game than usual. A hero needs 5 games before its games get scored.</li>
+        <li><b>Earned win</b>: won and played above your usual. <b>Passenger win</b>: won, but below your usual. <b>Unlucky loss</b>: played above your usual and lost anyway. <b>Rough game</b>: lost and played below your usual.</li>
+        <li><b>Tags</b> (Farmer, Damage, Playmaker, Survivor, Support) mean you placed top 3 (top 2 for Survivor and Support) in that one lobby. They're for bragging and don't change the verdict.</li>
+        <li><b>The verdict</b> combines rank points, form and consistency (how many rough games you had), each compared with the window before. Climbing puts you in harder lobbies, so if your lobbies got 3+ subranks tougher, placing lower there isn't counted against you.</li>
+        <li>It never guesses <i>why</i> a game went the way it did. For that, use POSTMORTEM.</li>
+      </ul>
+    </details>
+    <label class="toggle"><input type="checkbox" id="blend"> Blend unranked games (last 120 days) into hero baselines</label>
+    <p id="data-status" class="muted small"></p>
+    <p class="muted small">Data from <a href="https://deadlock-api.com" rel="noopener" target="_blank">deadlock-api.com</a>. New games can take a while to show up there.</p>
+  </section>
+</main>
+<script src="js/engine.js?v=1"></script>
+<script src="js/store.js?v=1"></script>
+<script src="js/api.js?v=1"></script>
+<script src="js/charts.js?v=1"></script>
+<script src="js/app.js?v=1"></script>
+</body>
+</html>
