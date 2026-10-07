@@ -1,10 +1,11 @@
-/* api.js — the only file that talks to the network, and only to deadlock-api.com (the CSP in
-   index.html enforces that). Every call is either one-off (match history, assets) or batched
+/* api.js — the only file that talks to the network: deadlock-api.com, plus the Climb helper on
+   127.0.0.1 if this PC runs one (the CSP in index.html enforces that). Every call is either one-off (match history, assets) or batched
    (lobby metadata, 30 matches per request) because the API's limits are shared and tight:
    the bulk metadata endpoint allows 30 requests/min per IP. */
 (function (root) {
   'use strict';
   const BASE = 'https://api.deadlock-api.com';
+  const HELPER = 'http://127.0.0.1:47615';
 
   class RateLimited extends Error {
     constructor(waitMs) { super('rate limited'); this.waitMs = waitMs; }
@@ -43,6 +44,14 @@
        the whole time series. Still ~80KB per match, which is why we compact it immediately. */
     metadata: ids => polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true' +
       '&include_player_kda=true&include_player_final_stats=true&match_ids=' + ids.join(','))),
+    /* The local helper (helper/helper.py) on this PC. Resolves to null when it isn't running or
+       this device doesn't have one (phone), so callers just hide what needs it. */
+    helper: async () => {
+      try {
+        const r = await fetch(HELPER + '/sessions', { cache: 'no-store', signal: AbortSignal.timeout(2000) });
+        return r.ok ? await r.json() : null;
+      } catch (e) { return null; }
+    },
     rankImage: badge => BASE + '/v1/assets/ranks/' + Math.floor(badge / 10) + '/' + (badge % 10) + '/image?format=webp',
     sleep,
   };

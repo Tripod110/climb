@@ -4,14 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-<!-- The only network surface is deadlock-api.com (data + rank badges) and its asset bucket
-     (hero icons). Anything else is refused by the browser, not just by convention. -->
+<!-- The only network surface is deadlock-api.com (data + rank badges), its asset bucket
+     (hero icons), and the Climb helper on this PC (127.0.0.1:47615, play time). Anything else is
+     refused by the browser, not just by convention. -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: https://api.deadlock-api.com https://assets-bucket.deadlock-api.com;
-  connect-src https://api.deadlock-api.com;
+  connect-src https://api.deadlock-api.com http://127.0.0.1:47615;
   worker-src 'self';
   manifest-src 'self';
   base-uri 'none';
@@ -28,7 +29,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Climb">
-<link rel="stylesheet" href="style.css?v=1">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <main>
@@ -41,6 +42,27 @@
   </header>
 
   <section id="identity" class="identity"></section>
+
+  <section id="play" class="card play">
+    <div class="play-head">
+      <h2>Play time today</h2>
+      <span id="play-live" class="live" hidden><span class="dot" aria-hidden="true"></span>Playing now</span>
+    </div>
+    <div id="play-today" class="play-today" aria-live="polite"></div>
+    <h3>Last 12 weeks</h3>
+    <div id="play-heat" class="chart"></div>
+    <div class="heat-legend small muted" aria-hidden="true">
+      <span>None</span><span class="cell lvl-0"></span><span class="cell lvl-1"></span><span class="cell lvl-2"></span><span class="cell lvl-3"></span><span class="cell lvl-4"></span><span class="cell lvl-5"></span><span>4½h+</span>
+    </div>
+    <h3>When you play <span class="muted">(last 4 weeks)</span></h3>
+    <div id="play-hours" class="chart"></div>
+    <p id="play-src" class="muted small"></p>
+  </section>
+
+  <nav id="scope" class="tabs two" aria-label="Which games count">
+    <button type="button" data-g="ranked">Ranked</button>
+    <button type="button" data-g="all">All games</button>
+  </nav>
 
   <nav id="tabs" class="tabs" aria-label="Time window">
     <button type="button" data-w="session">Last session</button>
@@ -83,6 +105,7 @@
         <li><b>Earned win</b>: won and played above your usual. <b>Passenger win</b>: won, but below your usual. <b>Unlucky loss</b>: played above your usual and lost anyway. <b>Rough game</b>: lost and played below your usual.</li>
         <li><b>Tags</b> (Farmer, Damage, Playmaker, Survivor, Support) mean you placed top 3 (top 2 for Survivor and Support) in that one lobby. They're for bragging and don't change the verdict.</li>
         <li><b>The verdict</b> combines rank points, form and consistency (how many rough games you had), each compared with the window before. Climbing puts you in harder lobbies, so if your lobbies got 3+ subranks tougher, placing lower there isn't counted against you.</li>
+        <li><b>Ranked / All games</b>: "All games" adds your unranked matches (since the ranked season began) to form, consistency, the game list and heroes. Rank points only ever come from ranked games, and the rank chart stays ranked-only.</li>
         <li>It never guesses <i>why</i> a game went the way it did. For that, use POSTMORTEM.</li>
       </ul>
     </details>
@@ -91,10 +114,11 @@
     <p class="muted small">Data from <a href="https://deadlock-api.com" rel="noopener" target="_blank">deadlock-api.com</a>. New games can take a while to show up there.</p>
   </section>
 </main>
-<script src="js/engine.js?v=1"></script>
-<script src="js/store.js?v=1"></script>
-<script src="js/api.js?v=1"></script>
-<script src="js/charts.js?v=1"></script>
-<script src="js/app.js?v=1"></script>
+<script src="js/engine.js?v=3"></script>
+<script src="js/store.js?v=3"></script>
+<script src="js/api.js?v=3"></script>
+<script src="js/play.js?v=3"></script>
+<script src="js/charts.js?v=3"></script>
+<script src="js/app.js?v=3"></script>
 </body>
 </html>

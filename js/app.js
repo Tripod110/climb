@@ -2,7 +2,7 @@
    No numbers are computed here; everything comes from Engine so the tests cover it. */
 (function () {
   'use strict';
-  const E = window.Engine, A = window.Api, S = window.Store, C = window.Charts;
+  const E = window.Engine, A = window.Api, S = window.Store, C = window.Charts, P = window.Play;
   const ACCT = E.ACCOUNT_ID;
   const HISTORY_TTL = 3 * 60 * 1000;
   const ASSET_TTL = 7 * 86400 * 1000;
@@ -15,7 +15,9 @@
     history: S.get('history', null),      // { at, matches: [...normalized] }
     lobbies: S.get('lobbies', {}),        // { matchId: compactLobby }
     assets: S.get('assets', null),        // { at, heroes: {id: {name, icon}}, tiers: [names] }
-    settings: Object.assign({ window: 'last20', blend: false }, S.get('settings', {})),
+    settings: Object.assign({ window: 'last20', blend: false, games: 'all' }, S.get('settings', {})),
+    helper: S.get('helper', null),        // last /sessions payload from the local helper, + `at`
+    helperLive: false,                    // did the helper answer this time?
     status: '', busy: false,
   };
 
@@ -42,23 +44,29 @@
     const ranked = all.filter(m => m.mode === 'ranked');
     const season = E.seasonOf(ranked);
     const since = season.length ? season[0].t : 0;
+    // 'all' = every ranked + unranked game since the ranked season began. Rank points still come
+    // only from ranked games (summarize skips null deltas), so the rank signal stays honest.
+    const allMode = state.settings.games === 'all';
+    const scope = allMode ? all.filter(m => m.t >= since) : season;
     const blendFrom = Math.max(since, Date.now() / 1000 - BLEND_DAYS * 86400);
-    const pool = state.settings.blend
-      ? all.filter(m => m.mode === 'ranked' ? m.t >= since : m.t >= blendFrom)
+    const pool = allMode ? scope
+      : state.settings.blend ? all.filter(m => m.mode === 'ranked' ? m.t >= since : m.t >= blendFrom)
       : season;
-    const perf = E.perfScores(pool, state.lobbies, season);
-    const w = E.windowsFor(state.settings.window, ranked);
+    const perf = E.perfScores(pool, state.lobbies, scope);
+    const w = E.windowsFor(state.settings.window, allMode ? scope : ranked);
     const cur = E.summarize(w.cur, perf, state.lobbies);
     const prev = w.prev.length ? E.summarize(w.prev, perf, state.lobbies) : null;
+    const curRanked = E.summarize(w.cur.filter(m => m.mode === 'ranked'), perf, state.lobbies);
     const v = E.verdict(cur, prev, E.rankUnit(season));
     const seasonSum = E.summarize(season, perf, state.lobbies);
-    return { all, ranked, season, pool, perf, w, cur, prev, v, seasonSum };
+    return { all, ranked, season, scope, allMode, pool, perf, w, cur, prev, curRanked, v, seasonSum };
   }
 
   // ---------------------------------------------------------------- render
   function render() {
     const M = model();
     renderHeader(M);
+    renderPlay(M);
     renderTabs();
     renderVerdict(M);
     renderRank(M);
@@ -81,18 +89,73 @@
     $('#refresh').disabled = state.busy;
   }
 
+  // ---------------------------------------------------------------- play time
+  const clock = t => new Date(t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const dayLabel = key => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); };
+  const hourLabel = h => { const f = x => (x % 12 || 12) + (x % 24 < 12 ? ' AM' : ' PM'); return f(h) + '–' + f(h + 1); };
+
+  function renderPlay(M) {
+    const now = Date.now() / 1000;
+    let H = state.helper;
+    // Helper unreachable: an open session can't be trusted past the last time it reported.
+    if (H && !state.helperLive) {
+      H = Object.assign({}, H, { playing: false, sessions: H.sessions.map(x => x.end == null ? { start: x.start, end: H.at / 1000 } : x) });
+    }
+    const p = P.summary(H, M.all, now);
+    const live = state.helperLive && p.playing;
+    $('#play-live').hidden = !live;
+
+    const vs = p.avgSecs == null ? ''
+      : `<div class="muted">Your usual: <b class="ink">${P.dur(p.avgSecs)}</b> a day over the last ${p.avgDays} days` +
+        (p.todaySecs > p.avgSecs + 600 ? ` · today is <b class="ink">${P.dur(p.todaySecs - p.avgSecs)} over</b>` : '') + '</div>';
+    const sessions = H ? `${p.todaySessions} session${p.todaySessions === 1 ? '' : 's'}${live && p.playingSince ? ' · this one since ' + clock(p.playingSince) : ''}`
+      : 'from matches on deadlock-api (can lag)';
+    const apiToday = M.all.filter(m => P.dayKey(m.t) === p.today).length;
+    $('#play-today').innerHTML = `
+      <div class="big">${P.dur(p.todaySecs)}</div>
+      <div class="muted">${sessions}${H ? ` · ${apiToday} match${apiToday === 1 ? '' : 'es'} on deadlock-api so far` : ''}</div>
+      ${vs}`;
+
+    p.cells.forEach(c => { c.today = c.key === p.today; });
+    C.heatmap($('#play-heat'), p.cells, {
+      label: 'Hours played per day over the last 12 weeks',
+      tipHtml: c => `<b>${dayLabel(c.key)}</b><br>${c.secs ? P.dur(c.secs) : 'Didn’t play'}<br><span class="muted">${c.src === 'helper' ? 'helper: time in game' : 'deadlock-api: matches only'}</span>`,
+    });
+    C.hourBars($('#play-hours'), p.hours, {
+      label: 'Time played by hour of day over the last 4 weeks',
+      tipHtml: (h, v) => `<b>${hourLabel(h)}</b><br>${v ? P.dur(v) + ' over 4 weeks' : 'Never'}`,
+    });
+
+    const since = H && H.since ? new Date(H.since * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : null;
+    $('#play-src').innerHTML = !H
+      ? 'Counting match time from deadlock-api, which can lag or miss games. Run the Climb helper on your PC (<code>helper/install-task.ps1</code>) for real play time.'
+      : `From ${since}: the helper on your PC, counting all time with Deadlock open (queue and menus too). Before that: match time from deadlock-api.` +
+        (state.helperLive ? '' : ` <b class="ink">Helper not reachable</b>, showing what it reported ${ago(state.helper.at / 1000)}.`);
+  }
+
+  async function loadHelper() {
+    const h = await A.helper();
+    state.helperLive = !!h;
+    if (h) { state.helper = Object.assign(h, { at: Date.now() }); S.set('helper', state.helper); }
+  }
+
   function renderTabs() {
     document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.w === state.settings.window));
+    document.querySelectorAll('#scope button').forEach(b => b.setAttribute('aria-pressed', b.dataset.g === state.settings.games));
   }
 
   function signalLine(s, M) {
     const d = s.detail, prevLabel = M.w.prevLabel;
     let text;
     if (s.text === 'rank') {
-      text = d.net == null ? `${d.wins}–${d.losses}, but these games carry no rank-point data`
-        : s.dir === 1 ? `<b>Up ${C.fmtInt(d.net)} rank points</b> (${d.wins}–${d.losses})`
-        : s.dir === -1 ? `<b>Down ${C.fmtInt(-d.net)} rank points</b> (${d.wins}–${d.losses})`
-        : `<b>About even on rank</b>: ${signed(d.net)} pts (${d.wins}–${d.losses})`;
+      const R = M.curRanked;
+      if (M.allMode && d.net != null) Object.assign(d, { wins: R.wins, losses: R.losses });
+      const of = M.allMode ? ` over ${R.n} ranked game${R.n === 1 ? '' : 's'}` : '';
+      text = M.allMode && !R.n ? `<b>No ranked games here</b>, so no rank points. Overall ${M.cur.wins}–${M.cur.losses}.`
+        : d.net == null ? `${d.wins}–${d.losses}, but these games carry no rank-point data`
+        : s.dir === 1 ? `<b>Up ${C.fmtInt(d.net)} rank points</b>${of} (${d.wins}–${d.losses})`
+        : s.dir === -1 ? `<b>Down ${C.fmtInt(-d.net)} rank points</b>${of} (${d.wins}–${d.losses})`
+        : `<b>About even on rank</b>: ${signed(d.net)} pts${of} (${d.wins}–${d.losses})`;
     } else if (s.text === 'form') {
       if (s.dir == null) text = `<b>Form</b>: only ${d.classified} scored game${d.classified === 1 ? '' : 's'} here, and it needs 3 to call it. (A hero's games are scored once you have ${E.MIN_HERO_GAMES}+ games on it.)`;
       else if (d.tougher) text = `<b>Placing a little lower</b> than ${esc(prevLabel)}, but your lobbies got about ${Math.round(M.v.lobbyShift)} subranks tougher. Keeping pace there counts.`;
@@ -120,7 +183,7 @@
     const ICONV = { improving: '▲', holding: '■', slipping: '▼', unknown: '·' };
     const sub = M.cur.n
       ? `${esc(M.w.label)}: ${M.cur.n} game${M.cur.n === 1 ? '' : 's'}${M.prev ? ' vs ' + esc(M.w.prevLabel) : ''}`
-      : 'No ranked games in this window yet.';
+      : `No ${M.allMode ? '' : 'ranked '}games in this window yet.`;
     $('#verdict').className = 'card verdict v-' + v.call;
     $('#verdict').innerHTML = `
       <div class="v-head">
@@ -135,8 +198,9 @@
 
   function renderRank(M) {
     const pts = E.rankSeries(M.season);
-    const firstCur = M.w.cur.length ? M.w.cur[0].id : null;
-    const hiFrom = state.settings.window === 'season' ? null : pts.findIndex(p => p.id === firstCur);
+    // First ranked point inside the window (in 'all' mode the window may start on an unranked game).
+    const t0 = M.w.cur.length ? M.w.cur[0].t : Infinity;
+    const hiFrom = state.settings.window === 'season' ? null : pts.findIndex(p => p.t >= t0);
     C.rankLine($('#rank-chart'), pts, {
       hiFrom: hiFrom < 0 ? null : hiFrom,
       label: 'Cumulative rank points across the season',
@@ -161,7 +225,8 @@
     const heroGames = M.pool.filter(x => x.hero === m.hero && state.lobbies[x.id]).length;
     const chip = cls ? `<span class="chip"><span class="key q-${cls}"></span>${E.QUAD_LABEL[cls]}</span>`
       : `<span class="chip muted">${L ? `Unscored · ${heroGames}/${E.MIN_HERO_GAMES} games` : 'Lobby loading…'}</span>`;
-    const tags = st ? st.tags.map(t => `<span class="tag">${E.TAG_LABEL[t]}</span>`).join('') : '';
+    const modeTag = M.allMode && m.mode !== 'ranked' ? '<span class="tag mode">Unranked</span>' : '';
+    const tags = modeTag + (st ? st.tags.map(t => `<span class="tag">${E.TAG_LABEL[t]}</span>`).join('') : '');
     const delta = m.delta == null ? '' : `<span class="delta ${m.delta > 0 ? 'pos' : m.delta < 0 ? 'neg' : ''}">${signed(m.delta)}</span>`;
     const icon = heroIcon(m.hero);
     let detail = '';
@@ -200,11 +265,11 @@
   function renderGames(M) {
     const games = M.w.cur.slice().reverse();
     $('#games-title').textContent = state.settings.window === 'season' ? 'Games: second half of season' : 'Games: ' + M.w.label.toLowerCase();
-    $('#games').innerHTML = games.length ? games.map(m => gameRow(m, M)).join('') : '<li class="muted">No ranked games here yet.</li>';
+    $('#games').innerHTML = games.length ? games.map(m => gameRow(m, M)).join('') : `<li class="muted">No ${M.allMode ? '' : 'ranked '}games here yet.</li>`;
   }
 
   function renderHeroes(M) {
-    const rows = E.heroBreakdown(M.season, M.perf);
+    const rows = E.heroBreakdown(M.scope, M.perf);
     $('#heroes').innerHTML = `
       <thead><tr><th>Hero</th><th class="n">Games</th><th class="n">W–L</th><th class="n">Rank pts</th><th>Form</th><th>Mix</th></tr></thead>
       <tbody>${rows.map(r => `
@@ -220,6 +285,7 @@
 
   function renderFooter(M) {
     $('#blend').checked = state.settings.blend;
+    $('#blend').closest('label').hidden = M.allMode;   // 'all' already uses every game
     const need = lobbyTargets(M);
     const have = need.filter(id => state.lobbies[id]).length;
     $('#data-status').textContent = `${M.all.length} matches on record · lobby data for ${have}/${need.length} games in use` +
@@ -273,6 +339,7 @@
   async function refresh(force) {
     if (state.busy) return;
     state.busy = true; setStatus('Updating…'); render();
+    loadHelper().then(render);
     try {
       await loadAssets();
       await loadHistory(force);
@@ -292,6 +359,11 @@
     if (!b) return;
     state.settings.window = b.dataset.w; S.set('settings', state.settings); render();
   });
+  $('#scope').addEventListener('click', e => {
+    const b = e.target.closest('button[data-g]');
+    if (!b) return;
+    state.settings.games = b.dataset.g; S.set('settings', state.settings); render(); refresh(false);
+  });
   $('#refresh').addEventListener('click', () => refresh(true));
   $('#blend').addEventListener('change', e => {
     state.settings.blend = e.target.checked; S.set('settings', state.settings); render(); refresh(false);
@@ -299,6 +371,8 @@
   let rt;
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => renderRank(model()), 120); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
+  // The helper is local and cheap, so poll it once a minute while the page is visible.
+  setInterval(() => { if (!document.hidden) loadHelper().then(render); }, 60 * 1000);
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 

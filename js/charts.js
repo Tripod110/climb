@@ -143,5 +143,66 @@
     return '<span class="mini-mix">' + quads.filter(k => q[k]).map(k => `<span class="seg q-${k}" style="flex-grow:${q[k]}"></span>`).join('') + '</span>';
   }
 
-  root.Charts = { rankLine, mixBars, miniMix, signed, fmtInt };
+  /* Calendar heatmap: one column per week, Mon..Sun rows, one sequential hue in fixed hour
+     steps (lvl-0..5 in CSS). HTML grid, so each cell is a hover target with its own label. */
+  function heatmap(host, cells, opts) {
+    host.innerHTML = '';
+    const tip = tooltip(host);
+    const wrap = document.createElement('div');
+    wrap.className = 'heat-wrap';
+    const days = document.createElement('div');
+    days.className = 'heat-days';
+    days.innerHTML = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun'].map(d => `<span>${d}</span>`).join('');
+    const grid = document.createElement('div');
+    grid.className = 'heat';
+    grid.setAttribute('role', 'img');
+    grid.setAttribute('aria-label', opts.label);
+    for (const c of cells) {
+      const cell = document.createElement('span');
+      cell.className = 'cell ' + (c.future ? 'future' : 'lvl-' + c.level) + (c.today ? ' today' : '');
+      if (!c.future) {
+        const html = opts.tipHtml(c);
+        cell.addEventListener('pointerenter', () => {
+          const hr = host.getBoundingClientRect(), cr = cell.getBoundingClientRect();
+          tip.show(html, cr.left - hr.left + cr.width / 2, cr.top - hr.top);
+        });
+        cell.addEventListener('pointerleave', () => tip.hide());
+      }
+      grid.appendChild(cell);
+    }
+    wrap.append(days, grid);
+    host.appendChild(wrap);
+  }
+
+  /* 24 bars, one per clock hour. Single series, so no legend: the title names it. */
+  function hourBars(host, bins, opts) {
+    host.innerHTML = '';
+    const tip = tooltip(host);
+    const max = Math.max(...bins, 1);
+    const bars = document.createElement('div');
+    bars.className = 'hours';
+    bars.setAttribute('role', 'img');
+    bars.setAttribute('aria-label', opts.label);
+    bins.forEach((v, h) => {
+      const col = document.createElement('span');
+      col.className = 'hcol';
+      const bar = document.createElement('span');
+      bar.className = 'hbar';
+      bar.style.height = v ? Math.max(4, v / max * 100) + '%' : '0';
+      col.appendChild(bar);
+      const html = opts.tipHtml(h, v);
+      col.addEventListener('pointerenter', () => {
+        const hr = host.getBoundingClientRect(), cr = col.getBoundingClientRect();
+        tip.show(html, cr.left - hr.left + cr.width / 2, cr.bottom - hr.top - (v / max) * cr.height);
+      });
+      col.addEventListener('pointerleave', () => tip.hide());
+      bars.appendChild(col);
+    });
+    const ticks = document.createElement('div');
+    ticks.className = 'hticks';
+    ticks.innerHTML = '<span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span>';
+    host.append(bars, ticks);
+  }
+
+  root.Charts = { rankLine, mixBars, miniMix, heatmap, hourBars, signed, fmtInt };
 })(window);

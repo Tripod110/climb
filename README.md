@@ -15,6 +15,9 @@ That app's coaching and debrief side now lives in POSTMORTEM. Climb only covers 
      an MMR estimate.
   2. **Form**: how you played compared with your own other games **on the same hero**.
   3. **Consistency**: the share of rough games.
+- **Ranked / All games** (default All): "All" adds your unranked games since the ranked season
+  began to the windows, form, consistency, game list and heroes. Rank points (and the rank chart)
+  only ever come from ranked games.
 - **Match classes**: Earned win, Passenger win, Unlucky loss and Rough game, from result × form.
 - **Lobby tags** (Farmer, Damage, Playmaker, Survivor, Support): you placed top in that one lobby.
   They're for bragging only and never feed the verdict.
@@ -27,12 +30,31 @@ The model is documented at the top of [`js/engine.js`](js/engine.js). Two non-ob
 - **Climbing biases form downward**, because better lobbies mean lower placement. If the average
   lobby got ≥3 subranks tougher, a form or consistency dip is shown but not counted against you.
 
+## Play time (the helper)
+
+The **Play time** card tracks how long Deadlock is open each day. It exists to make the habit
+visible, not to judge it.
+
+- [`helper/helper.py`](helper/helper.py): stdlib Python and nothing more. Every 15s it asks Windows (`tasklist`) whether
+  `deadlock.exe` is running and logs sessions to `%LOCALAPPDATA%\climb-helper\sessions.json`. It
+  serves them read-only on `http://127.0.0.1:47615/sessions`. It never touches the game, so it's
+  anti-cheat safe. It answers only Climb's origins and localhost Host headers.
+- `helper/install-task.ps1` registers the **Climb helper** logon task (current user, no admin)
+  and starts it. To remove it: `Unregister-ScheduledTask -TaskName 'Climb helper' -Confirm:$false`.
+- [`js/play.js`](js/play.js) merges two sources:
+  - Days from the helper's `since` onwards use helper sessions (all time in game, queue
+    included).
+  - Earlier days use the API's match durations (games only, which can lag or undercount).
+- A play-day runs **5 AM to 5 AM**, so late-night play counts toward the evening it belongs to.
+- Without a reachable helper (e.g. on a phone) the card falls back to the API data only.
+
 ## Run / test
 
 No build step. The scripts are plain `<script>` files and the data is cached in localStorage.
 
 ```bash
 node js/tests.js
+node js/play-tests.js
 ```
 
 ```bash
