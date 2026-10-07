@@ -2,6 +2,8 @@
 
 A personal Deadlock progress tracker that answers one question: **am I improving?**
 
+**Live:** https://tripod110.github.io/climb/
+
 It replaces the old `Projects/Deadlock Tracker` (Electron, ~8.8k LOC, dormant since 2026-07).
 That app's coaching and debrief side now lives in POSTMORTEM. Climb only covers rank and progress.
 
