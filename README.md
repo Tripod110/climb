@@ -76,6 +76,11 @@ There's also a `climb` entry in `D:\Claude\.claude\launch.json`.
 service worker keeps serving the old build. That only applies over https (the SW isn't
 registered on localhost).
 
+**Every version bump gets a changelog entry** with the same `v`: at the top of
+[`js/changelog.js`](js/changelog.js) (the in-app "What's new" card and footer list) and in
+[`CHANGELOG.md`](CHANGELOG.md). Keep the wording user-facing: what you'll see, not which file
+changed.
+
 ## Data
 
 - Sources, all from deadlock-api.com (CORS `*`, no server needed):

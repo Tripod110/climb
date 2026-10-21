@@ -213,6 +213,18 @@ button.ghost:disabled { opacity: .45; cursor: progress; }
 .zs { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 2px; font-size: 13px; max-width: 280px; }
 .zs li { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
 
+/* ---------------------------------------------------------------- what's new */
+.whatsnew { border-left: 4px solid var(--accent); }
+.wn-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.whatsnew h3, .changelog h3 { font-size: 14px; margin: 12px 0 4px; font-weight: 650; }
+.whatsnew ul, .changelog ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 13.5px; }
+.whatsnew li, .changelog li { margin-bottom: 4px; }
+button.pill {
+  background: var(--raised); color: var(--ink); border: 1px solid var(--border); border-radius: 999px;
+  padding: 6px 14px; font: inherit; font-size: 13px; font-weight: 550; cursor: pointer;
+}
+.changelog { margin-top: 12px; }
+
 /* ---------------------------------------------------------------- benchmark */
 #bench-t { margin: 12px 0 4px; }
 .bench-hero { padding: 14px 0 4px; border-top: 1px solid var(--border); margin-top: 12px; }

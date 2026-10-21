@@ -3,6 +3,8 @@
 (function () {
   'use strict';
   const E = window.Engine, A = window.Api, S = window.Store, C = window.Charts, P = window.Play;
+  const LOG = window.CHANGELOG || [];
+  const VERSION = LOG.length ? LOG[0].v : 0;
   const ACCT = E.ACCOUNT_ID;
   const HISTORY_TTL = 3 * 60 * 1000;
   const ASSET_TTL = 7 * 86400 * 1000;
@@ -70,6 +72,7 @@
   function render() {
     const M = model();
     renderHeader(M);
+    renderWhatsNew();
     renderPlay(M);
     renderTabs();
     renderVerdict(M);
@@ -92,6 +95,22 @@
       </div>`;
     $('#status').textContent = state.status;
     $('#refresh').disabled = state.busy;
+  }
+
+  // ---------------------------------------------------------------- what's new
+  /* Entries newer than the last one dismissed. A first-ever visit has nothing to compare with,
+     so it starts at the current version instead of replaying the whole history. */
+  if (state.settings.seenV == null) { state.settings.seenV = state.history ? 0 : VERSION; S.set('settings', state.settings); }
+  const entryHtml = e => `<h3>v${e.v} · ${esc(e.title)} <span class="muted small">${esc(e.date)}</span></h3><ul>${e.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`;
+
+  function renderWhatsNew() {
+    const fresh = LOG.filter(e => e.v > state.settings.seenV).slice(0, 2);
+    const el = $('#whatsnew');
+    el.hidden = !fresh.length;
+    if (fresh.length) {
+      el.innerHTML = `<div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="pill" type="button">Got it</button></div>${fresh.map(entryHtml).join('')}`;
+    }
+    $('#changelog').innerHTML = LOG.map(entryHtml).join('');
   }
 
   // ---------------------------------------------------------------- play time
@@ -475,6 +494,10 @@
     const b = e.target.closest('button[data-t]');
     if (!b) return;
     state.settings.benchT = Number(b.dataset.t); S.set('settings', state.settings); renderBench(model());
+  });
+  $('#whatsnew').addEventListener('click', e => {
+    if (!e.target.closest('#wn-ok')) return;
+    state.settings.seenV = VERSION; S.set('settings', state.settings); renderWhatsNew();
   });
   $('#refresh').addEventListener('click', () => refresh(true));
   $('#blend').addEventListener('change', e => {
