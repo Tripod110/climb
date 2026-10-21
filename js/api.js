@@ -45,6 +45,14 @@
     metadata: ids => polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true' +
       '&include_player_kda=true&include_player_final_stats=true&match_ids=' + ids.join(','))),
     bigPatchDays: () => polite(() => getJSON('/v1/patches/big-days')),
+    steamProfile: acct => polite(() => getJSON('/v1/players/steam?account_ids=' + acct)).then(r => (r && r[0]) || null),
+    steamSearch: q => polite(() => getJSON('/v1/players/steam-search?limit=8&search_query=' + encodeURIComponent(q))),
+    rank: acct => polite(() => getJSON('/v1/players/' + acct + '/rank')),
+    /* Whole-game totals per hero (win rate, accuracy) for one account or one lobby-badge range. */
+    heroStats: (from, who) => polite(() => getJSON('/v1/analytics/hero-stats?game_mode=normal&min_unix_timestamp=' + Math.floor(from) +
+      (who.account ? '&account_ids=' + who.account : '') +
+      (who.minBadge ? '&min_average_badge=' + who.minBadge : '') +
+      (who.maxBadge ? '&max_average_badge=' + who.maxBadge : ''))),
     /* Per-time-point stats for one hero, at absolute game times. `who` is either
        { account: id } or { minBadge, maxBadge } (lobby average). Analytics share a 200/min limit
        and the server caches each query for an hour. */

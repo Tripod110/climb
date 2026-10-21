@@ -4,7 +4,13 @@
 (function (root) {
   'use strict';
   const P = 'climb.';
+  /* Data caches live under climb.<account>.<key> so switching Steam accounts never mixes two
+     players' games; settings and the chosen account stay global (climb.<key>). */
+  let ns = '';
   const Store = {
+    useAccount(acct) { ns = acct ? acct + '.' : ''; },
+    getData(key, fallback) { return this.get(ns + key, fallback); },
+    setData(key, value) { return this.set(ns + key, value); },
     get(key, fallback) {
       try {
         const v = localStorage.getItem(P + key);

@@ -56,19 +56,32 @@
     return (rows || []).map(normalizeMatch).filter(m => m.mode !== 'other').sort((x, y) => x.t - y.t || x.id - y.id);
   }
 
-  /* /v1/matches/metadata (bulk) item -> a compact lobby: ~600 bytes instead of ~80KB.
-     players: [team, souls, kills, deaths, assists, playerDamage, healing]; me = index of us. */
+  /* /v1/matches/metadata (bulk) item -> a compact lobby: ~1KB instead of ~80KB.
+     players: [team, souls, kills, deaths, assists, playerDamage, healing,          (0–6, v1)
+               hero, objectiveDamage, damageTaken, lastHits, denies, mvpRank, lane,  (7–13, v2)
+               accuracy %, accountId]                                               (14–15, v2)
+     me = index of us. mvpRank is Valve's own post-game MVP (1–3, 0 = none).
+     LOBBY_V bumps whenever the row grows, so cached lobbies of an older shape get re-fetched. */
+  const LOBBY_V = 2;
   function compactLobby(meta, accountId) {
     const acct = accountId || ACCOUNT_ID;
     const teamNum = t => (typeof t === 'number' ? t : String(t).endsWith('1') ? 1 : 0);
     const players = (meta.players || []).map(p => {
       const fs = p.final_stats || {};
+      const shots = (fs.shots_hit || 0) + (fs.shots_missed || 0);
       return [teamNum(p.team), p.net_worth || fs.net_worth || 0, p.kills || 0, p.deaths || 0,
-        p.assists || 0, fs.player_damage || 0, fs.player_healing || 0];
+        p.assists || 0, fs.player_damage || 0, fs.player_healing || 0,
+        p.hero_id || 0, fs.boss_damage || 0, fs.player_damage_taken || 0, p.last_hits || 0, p.denies || 0,
+        p.mvp_rank || 0, p.assigned_lane || 0, shots ? Math.round(100 * (fs.shots_hit || 0) / shots) : 0,
+        p.account_id || 0];
     });
     const me = (meta.players || []).findIndex(p => p.account_id === acct);
     if (me < 0 || players.length < 2) return null;
-    return { avgBadge: meta.average_badge || null, me, p: players };
+    return {
+      v: LOBBY_V, avgBadge: meta.average_badge || null, me, p: players,
+      dur: meta.duration_s || 0,
+      win: meta.winning_team == null ? null : teamNum(meta.winning_team),
+    };
   }
 
   // ---------------------------------------------------------------- lobby placement
@@ -415,6 +428,8 @@
     { key: 'obj', label: 'Objective damage', f: ['boss_damage'], higher: true },
     { key: 'dmg', label: 'Hero damage', f: ['player_damage'], higher: true },
     { key: 'deaths', label: 'Deaths', f: ['deaths'], higher: false },
+    { key: 'kills', label: 'Kills', f: ['kills'], higher: true },
+    { key: 'assists', label: 'Assists', f: ['assists'], higher: true },
   ];
 
   /* The latest big-patch day at or before `now`, from /v1/patches/big-days (ISO strings). */
@@ -505,7 +520,223 @@
     return { times, headlines };
   }
 
+  // ---------------------------------------------------------------- steam id
+
+  /* Whatever the user pastes -> { account } (a 32-bit account id, what deadlock-api calls
+     account_id / SteamID3) or { search } (a name to look up). Accepts a profile URL, SteamID64,
+     [U:1:n], STEAM_0:x:y, a bare account id, or a persona name. */
+  const STEAM64_BASE = 76561197960265728n;
+  function parseSteamInput(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    let m = s.match(/steamcommunity\.com\/profiles\/(\d{17})/i) || s.match(/^(7656\d{13})$/);
+    if (m) return { account: Number(BigInt(m[1]) - STEAM64_BASE) };
+    m = s.match(/^\[?U:1:(\d+)\]?$/i);
+    if (m) return { account: Number(m[1]) };
+    m = s.match(/^STEAM_[0-5]:([01]):(\d+)$/i);
+    if (m) return { account: Number(m[2]) * 2 + Number(m[1]) };
+    m = s.match(/steamcommunity\.com\/id\/([^/?#]+)/i);
+    if (m) return { search: decodeURIComponent(m[1]) };
+    if (/^\d{1,10}$/.test(s) && Number(s) > 0 && Number(s) < 2 ** 32) return { account: Number(s) };
+    return { search: s };
+  }
+
+  // ---------------------------------------------------------------- impact & game roles
+
+  /* Every player's impact on their own team: their share of the team's souls, damage (or
+     healing, whichever is bigger, so supports aren't invisible), kills + assists and objective
+     damage, each relative to the team average (1.0 = an average teammate), minus a penalty for
+     dying more than the team average. Team-relative on purpose: "did I carry THIS team" is
+     about my five teammates, not the enemy's carry. */
+  function lobbyImpact(L) {
+    const P = L.p;
+    const teams = [0, 1].map(t => P.map((p, i) => i).filter(i => P[i][0] === t));
+    const out = P.map(() => null);
+    for (const idx of teams) {
+      if (!idx.length) continue;
+      const avg = f => mean(idx.map(i => f(P[i])));
+      const a = { souls: avg(p => p[1]), dmg: avg(p => p[5]), heal: avg(p => p[6]), ka: avg(p => p[2] + p[4]),
+        obj: avg(p => p[8] || 0), d: avg(p => p[3]) };
+      for (const i of idx) {
+        const p = P[i];
+        const r = {
+          souls: p[1] / Math.max(1, a.souls),
+          dmg: Math.max(p[5] / Math.max(1, a.dmg), a.heal > 0 ? 0.8 * p[6] / Math.max(1, a.heal) : 0),
+          ka: (p[2] + p[4] + 1) / (a.ka + 1),
+          obj: ((p[8] || 0) + 500) / (a.obj + 500),
+          deaths: (p[3] + 1) / (a.d + 1),
+        };
+        const impact = 0.3 * r.souls + 0.3 * r.dmg + 0.25 * r.ka + 0.15 * r.obj - 0.25 * (r.deaths - 1);
+        out[i] = { impact, r };
+      }
+      const order = idx.slice().sort((x, y) => out[y].impact - out[x].impact);
+      order.forEach((i, k) => { out[i].teamRank = k + 1; out[i].teamSize = idx.length; });
+    }
+    return out;
+  }
+
+  const ROLE_LABEL = {
+    carried: 'Carried', key: 'Key player', solid: 'Solid win', passenger: 'Passenger',
+    lonewolf: 'Couldn’t carry', tough: 'Tough loss', dragged: 'Dragged down',
+  };
+  const ROLE_GOOD = { carried: 1, key: 1, lonewolf: 1, solid: 0, tough: 0, passenger: -1, dragged: -1 };
+  const ROLE_NOTE = {
+    carried: 'Won, and you were clearly your team’s biggest impact.',
+    key: 'One of the two biggest impacts on your team, or one of Valve’s MVPs.',
+    solid: 'Won, pulling your weight in the middle of your team.',
+    passenger: 'Won, but near the bottom of your team’s impact. They carried this one.',
+    lonewolf: 'Lost, but you were clearly your team’s biggest impact.',
+    tough: 'Lost, with you in the middle of your team.',
+    dragged: 'Lost, and you were at the bottom of your team’s impact.',
+  };
+  const TAG2_LABEL = {
+    mvp1: 'MVP', mvp2: '2nd MVP', mvp3: '3rd MVP', farm: 'Top farmer', dmg: 'Top damage',
+    kills: 'Most kills', play: 'Playmaker', obj: 'Objective focus', heal: 'Healer', tank: 'Frontline',
+    survivor: 'Survivor', fed: 'Fed', stomp: 'Stomp', stomped: 'Stomped', long: 'Marathon',
+  };
+  const TAG2_GOOD = { fed: -1, stomped: -1 };
+  const CARRY_IMPACT = 1.3, DRAG_IMPACT = 0.8;
+
+  /* The read on one game: a role (one of ROLE_LABEL) and any number of tags. Needs a v2 lobby. */
+  function gameRole(L, won) {
+    if (!L || L.v !== LOBBY_V) return null;
+    const P = L.p, i = L.me, me = P[i];
+    const imp = lobbyImpact(L)[i];
+    const mvp = me[12] || 0;
+    const top = (col, hi) => rankOf(P.map(p => p[col]), i, hi !== false) === 1;
+    const teamDeaths = P.filter(p => p[0] === me[0]).map(p => p[3]);
+    const mostDeathsOnTeam = me[3] > 0 && me[3] >= Math.max(...teamDeaths);
+    let role;
+    if (won) {
+      role = imp.teamRank === 1 && imp.impact >= CARRY_IMPACT ? 'carried'
+        : imp.teamRank <= 2 || (mvp >= 1 && mvp <= 3) ? 'key'
+        : imp.teamRank >= imp.teamSize - 1 ? 'passenger' : 'solid';
+    } else {
+      role = imp.teamRank === 1 && imp.impact >= CARRY_IMPACT ? 'lonewolf'
+        : imp.teamRank <= 2 || (mvp >= 1 && mvp <= 3) ? 'key'
+        : imp.teamRank === imp.teamSize || imp.impact < DRAG_IMPACT || (mostDeathsOnTeam && imp.teamRank >= 4) ? 'dragged'
+        : 'tough';
+    }
+    const tags = [];
+    if (mvp >= 1 && mvp <= 3) tags.push('mvp' + mvp);
+    if (top(1)) tags.push('farm');
+    if (top(5)) tags.push('dmg');
+    if (top(2)) tags.push('kills');
+    if (rankOf(P.map(p => p[2] + p[4]), i, true) === 1) tags.push('play');
+    if (top(8) && me[8] > 0) tags.push('obj');
+    const heals = P.map(p => p[6]);
+    if (top(6) && me[6] >= 3000 && me[6] >= 1.5 * mean(heals)) tags.push('heal');
+    if (top(9) && me[9] > 0) tags.push('tank');
+    if (top(3, false) && me[3] <= 3) tags.push('survivor');
+    if (me[3] >= 10 || (top(3) && me[3] >= 8)) tags.push('fed');
+    const dur = L.dur || 0;
+    if (dur && dur < 20 * 60) tags.push(won ? 'stomp' : 'stomped');
+    if (dur >= 45 * 60) tags.push('long');
+    return { role, tags, impact: imp.impact, teamRank: imp.teamRank, teamSize: imp.teamSize, r: imp.r, mvp };
+  }
+
+  /* Role counts and rates over a set of games, for the Overview tiles and hero cards. */
+  function roleSummary(games, lobbies) {
+    const counts = Object.fromEntries(Object.keys(ROLE_LABEL).map(k => [k, 0]));
+    let n = 0, impactSum = 0, mvp = 0;
+    for (const m of games) {
+      const g = gameRole(lobbies[m.id], m.won);
+      if (!g) continue;
+      n++; counts[g.role]++; impactSum += g.impact;
+      if (g.mvp >= 1 && g.mvp <= 3) mvp++;
+    }
+    const rate = k => (n ? counts[k] / n : null);
+    return {
+      n, counts, mvp, impact: n ? impactSum / n : null,
+      carry: n ? (counts.carried + counts.lonewolf) / n : null,  // games you were the team's #1, won or lost
+      key: n ? (counts.carried + counts.key + counts.lonewolf) / n : null,
+      dragged: n ? (counts.dragged + counts.passenger) / n : null,
+      rate,
+    };
+  }
+
+  // ---------------------------------------------------------------- rank ladder (Heroes tab)
+
+  /* You on one hero against every rank from Initiate to Eternus, over the same dates. Curve
+     metrics are at a chosen game minute; Win rate and Accuracy are whole-game. For each metric
+     we say which rank's average you reach ("level"), and whether you are behind, on par or
+     ahead of YOUR rank by more than your own game-to-game noise. */
+  const LADDER_TIERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const LADDER_FLAT = 0.08;
+  const LADDER_METRICS = [
+    { key: 'wr', label: 'Win rate', src: 'stats', higher: true, fmt: 'pct', noLevel: true },
+    { key: 'acc', label: 'Accuracy', src: 'stats', higher: true, fmt: 'pct' },
+    { key: 'souls', label: 'Souls', src: 'curve', higher: true },
+    { key: 'lane', label: 'Lane souls', src: 'curve', higher: true },
+    { key: 'jungle', label: 'Jungle souls', src: 'curve', higher: true },
+    { key: 'dmg', label: 'Hero damage', src: 'curve', higher: true },
+    { key: 'obj', label: 'Objective damage', src: 'curve', higher: true },
+    { key: 'kills', label: 'Kills', src: 'curve', higher: true, fmt: 'dec' },
+    { key: 'assists', label: 'Assists', src: 'curve', higher: true, fmt: 'dec' },
+    { key: 'deaths', label: 'Deaths', src: 'curve', higher: false, fmt: 'dec' },
+  ];
+
+  /* /v1/analytics/hero-stats rows -> { [heroId]: { n, wr, acc } }. */
+  function compactHeroStats(rows) {
+    const out = {};
+    for (const r of rows || []) {
+      if (!r.matches) continue;
+      const shots = (r.total_shots_hit || 0) + (r.total_shots_missed || 0);
+      out[r.hero_id] = { n: r.matches, wr: r.wins / r.matches, acc: shots ? r.total_shots_hit / shots : null };
+    }
+    return out;
+  }
+
+  function rankLadder(hero, t, mine, tiers, yourTier) {
+    // mine = { curve, stats }, tiers = { [tier]: { curve, stats } }; curves are compactCurve shapes.
+    const pick = (src, key) => {
+      if (!src) return null;
+      if (key === 'wr' || key === 'acc') { const s = src.stats && src.stats[hero]; return s && s[key] != null ? { v: s[key], sd: null, n: s.n } : null; }
+      const c = src.curve && src.curve[t];
+      return c && c[key] ? { v: c[key][0], sd: c[key][1], n: c.n } : null;
+    };
+    const rows = LADDER_METRICS.map(M => {
+      const you = pick(mine, M.key);
+      const ladder = LADDER_TIERS.map(tier => { const x = pick(tiers[tier], M.key); return { tier, v: x ? x.v : null, n: x ? x.n : 0 }; });
+      if (!you) return Object.assign({ you: null, ladder, level: null, vsTier: null, own: null, next: null }, M);
+      // "Plays like": the rank whose average is closest to yours. Some stats don't climb with
+      // rank (low lobbies deal MORE damage in messier games), so "highest rank you beat" would
+      // mislead. A stat that varies < LADDER_FLAT across ranks is 'flat': rank doesn't move it.
+      let level = null;
+      const vals = ladder.filter(L => L.v != null);
+      if (!M.noLevel && vals.length) {
+        const lo = Math.min(...vals.map(L => L.v)), hi = Math.max(...vals.map(L => L.v));
+        const mid = mean(vals.map(L => L.v));
+        if (mid && (hi - lo) / Math.abs(mid) < LADDER_FLAT) level = 'flat';
+        else level = vals.reduce((b, L) => (Math.abs(L.v - you.v) < Math.abs(b.v - you.v) ? L : b)).tier;
+      }
+      // Behind / on par / ahead of one rank's average, by more than your own game-to-game noise.
+      const versus = tier => {
+        const o = ladder.find(L => L.tier === tier);
+        if (!o || o.v == null) return { status: null, rel: null, v: null };
+        const rel = o.v ? (you.v - o.v) / o.v : 0;
+        let se;
+        if (M.key === 'wr') se = Math.sqrt(Math.max(o.v * (1 - o.v), 0.01) / Math.max(1, you.n));
+        else if (you.sd != null) se = you.sd / Math.sqrt(Math.max(1, you.n));
+        else se = 0;
+        const gap = you.v - o.v;
+        const sig = Math.abs(gap) > 2 * se && Math.abs(rel) >= BENCH_REL_FLOOR;
+        return { status: !sig ? 'par' : (gap > 0) === M.higher ? 'ahead' : 'behind', rel, v: o.v };
+      };
+      const own = versus(yourTier), next = versus(Math.min(11, yourTier + 1));
+      const vsTier = own.status, rel = own.rel;
+      return Object.assign({ you: you.v, n: you.n, ladder, level, vsTier, rel, own, next }, M);
+    });
+    const behind = rows.filter(r => r.vsTier === 'behind').sort((a, b) => Math.abs(b.rel) - Math.abs(a.rel));
+    const ahead = rows.filter(r => r.vsTier === 'ahead').sort((a, b) => Math.abs(b.rel) - Math.abs(a.rel));
+    // What stands between you and the next rank: metrics where you trail its average, biggest first.
+    const toNext = rows.filter(r => r.next && r.next.status === 'behind').sort((a, b) => Math.abs(b.next.rel) - Math.abs(a.next.rel));
+    return { rows, behind, ahead, toNext };
+  }
+
   const Engine = {
+    LOBBY_V, ROLE_LABEL, ROLE_GOOD, ROLE_NOTE, TAG2_LABEL, TAG2_GOOD, LADDER_TIERS, LADDER_METRICS,
+    parseSteamInput, lobbyImpact, gameRole, roleSummary, compactHeroStats, rankLadder,
     BENCH_TIMES, BENCH_STATS, BENCH_MIN_PATCH, BENCH_WIDE_DAYS,
     lastBigPatch, benchWindow, benchHeroes, benchBrackets, compactCurve, benchCompare,
     ACCOUNT_ID, MIN_HERO_GAMES, COMPARE_N, QUADS, QUAD_LABEL, TAG_LABEL, TIER_NAMES,

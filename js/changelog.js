@@ -6,6 +6,16 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 6, date: '2026-10-21', title: 'Rebuilt: tabs, any Steam account, rank ladder',
+      items: [
+        'Climb is now four tabs at the top (Overview, Matches, Heroes, Play time) instead of one long page.',
+        'Use it for any account: paste a Steam profile link or SteamID, or search a Steam name. Click your avatar (top right) to switch.',
+        'Every game now gets a role from your impact on your own team: Carried, Key player, Solid win, Passenger, Couldn’t carry, Tough loss or Dragged down. Plus tags: Valve MVPs, top farmer, top damage, most kills, objectives, healer, frontline, survivor, fed, stomp.',
+        'Matches tab: every game with filters by hero, result, role and mode. Click one for the full 12-player scoreboard and how you compared with your teammates.',
+        'Heroes tab: pick a hero and see 10 stats against the average player at every rank from Initiate to Eternus, what’s holding you back from the next rank, and which rank each stat plays like.',
+      ],
+    },
+    {
       v: 5, date: '2026-10-21', title: 'What’s new + changelog',
       items: [
         'This card: after each update Climb tells you once what changed, then gets out of the way.',

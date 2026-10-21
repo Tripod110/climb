@@ -1,50 +1,53 @@
-/* app.js — wiring: load cache -> render instantly -> refresh from the API -> render again.
-   No numbers are computed here; everything comes from Engine so the tests cover it. */
+/* app.js — state, loading and routing. The page is four tabs (Overview, Matches, Heroes, Play
+   time) plus About, addressed by the URL hash so the back button works. Views live in views.js
+   and only turn the model into HTML; every number comes from Engine so the tests cover it. */
 (function () {
   'use strict';
-  const E = window.Engine, A = window.Api, S = window.Store, C = window.Charts, P = window.Play;
+  const E = window.Engine, A = window.Api, S = window.Store, C = window.Charts, P = window.Play, V = window.Views;
   const LOG = window.CHANGELOG || [];
   const VERSION = LOG.length ? LOG[0].v : 0;
-  const ACCT = E.ACCOUNT_ID;
   const HISTORY_TTL = 3 * 60 * 1000;
   const ASSET_TTL = 7 * 86400 * 1000;
-  const BLEND_DAYS = 120;   // unranked games older than this never enter a baseline
+  const PROFILE_TTL = 86400 * 1000;
   const PATCH_TTL = 86400 * 1000;
   const CURVE_TTL = 3600 * 1000;   // the API caches analytics for an hour, so asking sooner gains nothing
+  const BLEND_DAYS = 120;          // unranked games older than this never enter a baseline
 
   const $ = s => document.querySelector(s);
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  const settings = Object.assign({ window: 'last20', blend: false, games: 'all', benchT: 1200, account: null }, S.get('settings', {}));
+
+  /* One-time move from the single-account Climb (v1–v5): its caches sat at climb.<key> and the
+     account was hard-coded. Adopt that account and carry its history over. */
+  if (!settings.account && S.get('history', null)) {
+    settings.account = E.ACCOUNT_ID;
+    S.useAccount(settings.account);
+    S.setData('history', S.get('history', null));
+    S.set('history', null); S.set('lobbies', null); S.set('curves', null);
+  }
+  if (settings.seenV == null) settings.seenV = settings.account ? 0 : VERSION;
+  S.set('settings', settings);
 
   const state = {
-    history: S.get('history', null),      // { at, matches: [...normalized] }
-    lobbies: S.get('lobbies', {}),        // { matchId: compactLobby }
+    settings,
     assets: S.get('assets', null),        // { at, heroes: {id: {name, icon}}, tiers: [names] }
-    settings: Object.assign({ window: 'last20', blend: false, games: 'all', benchT: 1200 }, S.get('settings', {})),
     patch: S.get('patch', null),          // { at, t }: the last big patch day
-    curves: S.get('curves', {}),          // { 'hero|from|who': { at, c: compactCurve } }
     helper: S.get('helper', null),        // last /sessions payload from the local helper, + `at`
-    helperLive: false,                    // did the helper answer this time?
+    helperLive: false,
     status: '', busy: false,
+    route: { tab: 'overview' },
+    search: null,                         // onboarding: { q, results, busy, error }
   };
+  function loadAccountData() {
+    S.useAccount(settings.account);
+    state.history = S.getData('history', null);     // { at, matches: [...normalized] }
+    state.lobbies = S.getData('lobbies', {});       // { matchId: compactLobby | null }
+    state.curves = S.getData('curves', {});         // { key: { at, c } } curves + hero stats
+    state.profile = S.getData('profile', null);     // { at, name, avatar, rank }
+  }
+  loadAccountData();
 
-  // ---------------------------------------------------------------- formatting
-  const heroName = id => (state.assets && state.assets.heroes[id] && state.assets.heroes[id].name) || 'Hero ' + id;
-  const heroIcon = id => (state.assets && state.assets.heroes[id] && state.assets.heroes[id].icon) || '';
-  const tiers = () => state.assets && state.assets.tiers;
-  const pct = x => Math.round(x * 100) + '%';
-  const signed = C.signed;
-  const ago = t => {
-    const s = Date.now() / 1000 - t;
-    if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm ago';
-    if (s < 86400) return Math.round(s / 3600) + 'h ago';
-    if (s < 86400 * 14) return Math.round(s / 86400) + 'd ago';
-    return new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  };
-  const formWord = s => s >= 0.75 ? 'well above your usual' : s >= 0.2 ? 'above your usual' : s > -0.2 ? 'around your usual' : s > -0.75 ? 'below your usual' : 'well below your usual';
-  const scoreTxt = s => (s >= 0 ? '+' : '−') + Math.abs(s).toFixed(1);
-  const ICON = { 1: '▲', 0: '■', '-1': '▼', null: '·' };
-
-  // ---------------------------------------------------------------- derived model
+  // ---------------------------------------------------------------- model
   function model() {
     const all = (state.history && state.history.matches) || [];
     const ranked = all.filter(m => m.mode === 'ranked');
@@ -52,375 +55,113 @@
     const since = season.length ? season[0].t : 0;
     // 'all' = every ranked + unranked game since the ranked season began. Rank points still come
     // only from ranked games (summarize skips null deltas), so the rank signal stays honest.
-    const allMode = state.settings.games === 'all';
+    const allMode = settings.games === 'all';
     const scope = allMode ? all.filter(m => m.t >= since) : season;
     const blendFrom = Math.max(since, Date.now() / 1000 - BLEND_DAYS * 86400);
     const pool = allMode ? scope
-      : state.settings.blend ? all.filter(m => m.mode === 'ranked' ? m.t >= since : m.t >= blendFrom)
+      : settings.blend ? all.filter(m => m.mode === 'ranked' ? m.t >= since : m.t >= blendFrom)
       : season;
     const perf = E.perfScores(pool, state.lobbies, scope);
-    const w = E.windowsFor(state.settings.window, allMode ? scope : ranked);
+    const w = E.windowsFor(settings.window, allMode ? scope : ranked);
     const cur = E.summarize(w.cur, perf, state.lobbies);
     const prev = w.prev.length ? E.summarize(w.prev, perf, state.lobbies) : null;
     const curRanked = E.summarize(w.cur.filter(m => m.mode === 'ranked'), perf, state.lobbies);
     const v = E.verdict(cur, prev, E.rankUnit(season));
     const seasonSum = E.summarize(season, perf, state.lobbies);
-    return { all, ranked, season, scope, allMode, pool, perf, w, cur, prev, curRanked, v, seasonSum };
+    const lastRanked = ranked[ranked.length - 1];
+    const badge = (state.profile && state.profile.badge) || (lastRanked && lastRanked.badge) || null;
+    return { all, ranked, season, scope, allMode, pool, perf, w, cur, prev, curRanked, v, seasonSum, badge };
   }
 
-  // ---------------------------------------------------------------- render
+  // ---------------------------------------------------------------- context handed to views
+  const heroName = id => (state.assets && state.assets.heroes[id] && state.assets.heroes[id].name) || 'Hero ' + id;
+  const heroIcon = id => (state.assets && state.assets.heroes[id] && state.assets.heroes[id].icon) || '';
+  const ctx = {
+    E, A, C, P, S, state, settings, LOG, VERSION,
+    heroName, heroIcon,
+    tiers: () => state.assets && state.assets.tiers,
+    tierName: t => E.badgeName(t * 10, state.assets && state.assets.tiers),
+    esc: s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])),
+    signed: C.signed, fmtInt: C.fmtInt,
+    pct: x => x == null ? '—' : Math.round(x * 100) + '%',
+    kfmt: v => v == null ? '—' : Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v)),
+    ago: t => {
+      const s = Date.now() / 1000 - t;
+      if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm ago';
+      if (s < 86400) return Math.round(s / 3600) + 'h ago';
+      if (s < 86400 * 14) return Math.round(s / 86400) + 'd ago';
+      return new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    },
+    go: hash => { if (location.hash !== hash) location.hash = hash; else render(); },
+    save: () => S.set('settings', settings),
+    render: () => render(),
+    benchPlan, ensureHeroLadder, searchAccount, setAccount,
+  };
+
+  // ---------------------------------------------------------------- routing + render
+  function parseRoute() {
+    const parts = location.hash.replace(/^#\/?/, '').split('/');
+    const tab = ['overview', 'matches', 'match', 'heroes', 'play', 'about'].includes(parts[0]) ? parts[0] : 'overview';
+    return { tab, id: parts[1] ? Number(parts[1]) : null };
+  }
+
   function render() {
+    state.route = parseRoute();
+    const onboarding = !settings.account;
+    document.body.classList.toggle('onboarding', onboarding);
+    renderTop(onboarding);
+    const main = $('#view');
+    if (onboarding) { V.welcome(main, ctx); return; }
     const M = model();
-    renderHeader(M);
-    renderWhatsNew();
-    renderPlay(M);
-    renderTabs();
-    renderVerdict(M);
-    renderRank(M);
-    renderMix(M);
-    renderGames(M);
-    renderHeroes(M);
-    renderBench(M);
-    renderFooter(M);
-  }
-
-  function renderHeader(M) {
-    const last = M.ranked[M.ranked.length - 1];
-    const badge = last && last.badge;
-    $('#identity').innerHTML = !M.all.length ? '<p class="muted">Loading your matches…</p>' : `
-      ${badge ? `<img class="badge" src="${A.rankImage(badge)}" alt="" width="56" height="56">` : ''}
-      <div>
-        <div class="rank-name">${esc(E.badgeName(badge, tiers()))}</div>
-        <div class="muted">Season: ${M.seasonSum.wins}–${M.seasonSum.losses} · ${M.seasonSum.hasDelta ? signed(M.seasonSum.net) + ' rank pts' : 'no rank-point data'} · ${M.season.length} ranked games</div>
-      </div>`;
+    ctx.M = M;
+    const tab = state.route.tab === 'match' ? 'matches' : state.route.tab;
+    document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === tab ? 'page' : 'false'));
+    const view = { overview: V.overview, matches: V.matches, match: V.match, heroes: V.heroes, play: V.play, about: V.about }[state.route.tab];
+    view(main, ctx);
     $('#status').textContent = state.status;
+  }
+
+  function renderTop(onboarding) {
+    $('#nav').hidden = onboarding;
+    $('#refresh').hidden = onboarding;
     $('#refresh').disabled = state.busy;
+    const p = state.profile;
+    $('#who').hidden = onboarding;
+    $('#who').innerHTML = onboarding ? '' : `
+      ${p && p.avatar ? `<img src="${ctx.esc(p.avatar)}" alt="" width="28" height="28">` : '<span class="av-ph"></span>'}
+      <span class="who-name">${ctx.esc((p && p.name) || 'Account ' + settings.account)}</span>`;
   }
 
-  // ---------------------------------------------------------------- what's new
-  /* Entries newer than the last one dismissed. A first-ever visit has nothing to compare with,
-     so it starts at the current version instead of replaying the whole history. */
-  if (state.settings.seenV == null) { state.settings.seenV = state.history ? 0 : VERSION; S.set('settings', state.settings); }
-  const entryHtml = e => `<h3>v${e.v} · ${esc(e.title)} <span class="muted small">${esc(e.date)}</span></h3><ul>${e.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`;
+  function setStatus(s) { state.status = s; const el = $('#status'); if (el) el.textContent = s; }
 
-  function renderWhatsNew() {
-    const fresh = LOG.filter(e => e.v > state.settings.seenV).slice(0, 2);
-    const el = $('#whatsnew');
-    el.hidden = !fresh.length;
-    if (fresh.length) {
-      el.innerHTML = `<div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="pill" type="button">Got it</button></div>${fresh.map(entryHtml).join('')}`;
+  // ---------------------------------------------------------------- account
+  async function searchAccount(q) {
+    const parsed = E.parseSteamInput(q);
+    if (!parsed) return;
+    if (parsed.account) { await setAccount(parsed.account); return; }
+    state.search = { q, results: null, busy: true, error: null };
+    render();
+    try {
+      const rows = await A.steamSearch(parsed.search);
+      state.search = { q, busy: false, error: null, results: (rows || []).map(r => ({ account: r.account_id, name: r.personaname, avatar: r.avatarmedium || r.avatar, games: r.matches_played_last_30d })) };
+    } catch (e) {
+      state.search = { q, busy: false, results: null, error: 'Couldn’t search right now: ' + e.message };
     }
-    $('#changelog').innerHTML = LOG.map(entryHtml).join('');
+    render();
   }
 
-  // ---------------------------------------------------------------- play time
-  const clock = t => new Date(t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  const dayLabel = key => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); };
-  const hourLabel = h => { const f = x => (x % 12 || 12) + (x % 24 < 12 ? ' AM' : ' PM'); return f(h) + '–' + f(h + 1); };
-
-  function renderPlay(M) {
-    const now = Date.now() / 1000;
-    let H = state.helper;
-    // Helper unreachable: an open session can't be trusted past the last time it reported.
-    if (H && !state.helperLive) {
-      H = Object.assign({}, H, { playing: false, sessions: H.sessions.map(x => x.end == null ? { start: x.start, end: H.at / 1000 } : x) });
-    }
-    const p = P.summary(H, M.all, now);
-    const live = state.helperLive && p.playing;
-    $('#play-live').hidden = !live;
-
-    const vs = p.avgSecs == null ? ''
-      : `<div class="muted">Your usual: <b class="ink">${P.dur(p.avgSecs)}</b> a day over the last ${p.avgDays} days` +
-        (p.todaySecs > p.avgSecs + 600 ? ` · today is <b class="ink">${P.dur(p.todaySecs - p.avgSecs)} over</b>` : '') + '</div>';
-    const sessions = H ? `${p.todaySessions} session${p.todaySessions === 1 ? '' : 's'}${live && p.playingSince ? ' · this one since ' + clock(p.playingSince) : ''}`
-      : 'from matches on deadlock-api (can lag)';
-    const apiToday = M.all.filter(m => P.dayKey(m.t) === p.today).length;
-    $('#play-today').innerHTML = `
-      <div class="big">${P.dur(p.todaySecs)}</div>
-      <div class="muted">${sessions}${H ? ` · ${apiToday} match${apiToday === 1 ? '' : 'es'} on deadlock-api so far` : ''}</div>
-      ${vs}`;
-
-    p.cells.forEach(c => { c.today = c.key === p.today; });
-    C.heatmap($('#play-heat'), p.cells, {
-      label: 'Hours played per day over the last 12 weeks',
-      tipHtml: c => `<b>${dayLabel(c.key)}</b><br>${c.secs ? P.dur(c.secs) : 'Didn’t play'}<br><span class="muted">${c.src === 'helper' ? 'helper: time in game' : 'deadlock-api: matches only'}</span>`,
-    });
-    C.hourBars($('#play-hours'), p.hours, {
-      label: 'Time played by hour of day over the last 4 weeks',
-      tipHtml: (h, v) => `<b>${hourLabel(h)}</b><br>${v ? P.dur(v) + ' over 4 weeks' : 'Never'}`,
-    });
-
-    const since = H && H.since ? new Date(H.since * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : null;
-    $('#play-src').innerHTML = !H
-      ? 'Counting match time from deadlock-api, which can lag or miss games. Run the Climb helper on your PC (<code>helper/install-task.ps1</code>) for real play time.'
-      : `From ${since}: the helper on your PC, counting all time with Deadlock open (queue and menus too). Before that: match time from deadlock-api.` +
-        (state.helperLive ? '' : ` <b class="ink">Helper not reachable</b>, showing what it reported ${ago(state.helper.at / 1000)}.`);
-  }
-
-  async function loadHelper() {
-    const h = await A.helper();
-    state.helperLive = !!h;
-    if (h) { state.helper = Object.assign(h, { at: Date.now() }); S.set('helper', state.helper); }
-  }
-
-  function renderTabs() {
-    document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.w === state.settings.window));
-    document.querySelectorAll('#scope button').forEach(b => b.setAttribute('aria-pressed', b.dataset.g === state.settings.games));
-  }
-
-  function signalLine(s, M) {
-    const d = s.detail, prevLabel = M.w.prevLabel;
-    let text;
-    if (s.text === 'rank') {
-      const R = M.curRanked;
-      if (M.allMode && d.net != null) Object.assign(d, { wins: R.wins, losses: R.losses });
-      const of = M.allMode ? ` over ${R.n} ranked game${R.n === 1 ? '' : 's'}` : '';
-      text = M.allMode && !R.n ? `<b>No ranked games here</b>, so no rank points. Overall ${M.cur.wins}–${M.cur.losses}.`
-        : d.net == null ? `${d.wins}–${d.losses}, but these games carry no rank-point data`
-        : s.dir === 1 ? `<b>Up ${C.fmtInt(d.net)} rank points</b>${of} (${d.wins}–${d.losses})`
-        : s.dir === -1 ? `<b>Down ${C.fmtInt(-d.net)} rank points</b>${of} (${d.wins}–${d.losses})`
-        : `<b>About even on rank</b>: ${signed(d.net)} pts${of} (${d.wins}–${d.losses})`;
-    } else if (s.text === 'form') {
-      if (s.dir == null) text = `<b>Form</b>: only ${d.classified} scored game${d.classified === 1 ? '' : 's'} here, and it needs 3 to call it. (A hero's games are scored once you have ${E.MIN_HERO_GAMES}+ games on it.)`;
-      else if (d.tougher) text = `<b>Placing a little lower</b> than ${esc(prevLabel)}, but your lobbies got about ${Math.round(M.v.lobbyShift)} subranks tougher. Keeping pace there counts.`;
-      else {
-        const vs = d.hasRef ? esc(prevLabel) : 'your usual';
-        const nums = `form ${scoreTxt(d.score)} vs ${scoreTxt(d.ref)}`;
-        text = s.dir === 1 ? `<b>Playing better</b> than ${vs}: ${nums}`
-          : s.dir === -1 ? `<b>Playing worse</b> than ${vs}: ${nums}`
-          : `<b>Playing about the same</b> as ${vs}: ${nums}`;
-      }
-    } else {
-      if (s.dir == null) text = d.of ? `<b>${d.rough} rough game${d.rough === 1 ? '' : 's'}</b> of ${d.of} scored. Nothing earlier to compare with.` : '<b>Consistency</b>: not enough scored games yet.';
-      else if (d.tougher) text = `<b>More rough games</b> (${pct(d.rate)} vs ${pct(d.ref)}) while your lobbies got tougher.`;
-      else text = s.dir === 1 ? `<b>Fewer rough games</b>: ${d.rough} of ${d.of} (${pct(d.rate)}) vs ${pct(d.ref)} before`
-        : s.dir === -1 ? `<b>More rough games</b>: ${d.rough} of ${d.of} (${pct(d.rate)}) vs ${pct(d.ref)} before`
-        : `<b>Steady</b>: ${d.rough} rough of ${d.of} (${pct(d.rate)}) vs ${pct(d.ref)} before`;
-    }
-    const dir = s.dir == null ? 'na' : s.dir === 1 ? 'up' : s.dir === -1 ? 'down' : 'flat';
-    return `<li class="sig ${dir}"><span class="sig-icon" aria-hidden="true">${ICON[s.dir]}</span><span>${text}</span></li>`;
-  }
-
-  function renderVerdict(M) {
-    const v = M.v;
-    const WORD = { improving: 'Improving', holding: 'Holding', slipping: 'Slipping', unknown: 'Not enough games' };
-    const ICONV = { improving: '▲', holding: '■', slipping: '▼', unknown: '·' };
-    const sub = M.cur.n
-      ? `${esc(M.w.label)}: ${M.cur.n} game${M.cur.n === 1 ? '' : 's'}${M.prev ? ' vs ' + esc(M.w.prevLabel) : ''}`
-      : `No ${M.allMode ? '' : 'ranked '}games in this window yet.`;
-    $('#verdict').className = 'card verdict v-' + v.call;
-    $('#verdict').innerHTML = `
-      <div class="v-head">
-        <span class="v-icon" aria-hidden="true">${ICONV[v.call]}</span>
-        <div>
-          <div class="v-word">${WORD[v.call]}</div>
-          <div class="muted">${sub}${v.confidence === 'low' && M.cur.n ? ' · small sample, so treat it as a hint' : ''}</div>
-        </div>
-      </div>
-      <ul class="signals">${v.signals.map(s => signalLine(s, M)).join('')}</ul>`;
-  }
-
-  function renderRank(M) {
-    const pts = E.rankSeries(M.season);
-    // First ranked point inside the window (in 'all' mode the window may start on an unranked game).
-    const t0 = M.w.cur.length ? M.w.cur[0].t : Infinity;
-    const hiFrom = state.settings.window === 'season' ? null : pts.findIndex(p => p.t >= t0);
-    C.rankLine($('#rank-chart'), pts, {
-      hiFrom: hiFrom < 0 ? null : hiFrom,
-      label: 'Cumulative rank points across the season',
-      tipHtml: p => `<b>${signed(p.cum)} pts</b> · ${esc(E.badgeName(p.badge, tiers()))}<br>${p.won ? 'Win' : 'Loss'} on ${esc(heroName(p.hero))} (${signed(p.delta)})<br><span class="muted">${new Date(p.t * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>`,
-    });
-  }
-
-  function renderMix(M) {
-    const rows = [{ label: state.settings.window === 'season' ? '2nd half' : 'Now', q: M.cur.q }];
-    if (M.prev) rows.push({ label: state.settings.window === 'season' ? '1st half' : 'Before', q: M.prev.q });
-    C.mixBars($('#mix-chart'), rows, E.QUADS, E.QUAD_LABEL);
-    $('#mix-legend').innerHTML = E.QUADS.map(q =>
-      `<li><span class="key q-${q}"></span>${E.QUAD_LABEL[q]} <span class="num">${M.cur.q[q]}${M.prev ? ' <span class="muted">/ ' + M.prev.q[q] + '</span>' : ''}</span></li>`).join('');
-    const unscored = M.cur.n - M.cur.classified;
-    $('#mix-note').textContent = unscored > 0 ? `${unscored} game${unscored === 1 ? ' in this window isn’t' : 's in this window aren’t'} scored yet (a hero needs ${E.MIN_HERO_GAMES}+ games, or lobby data is still loading).` : '';
-  }
-
-  function gameRow(m, M) {
-    const p = M.perf.get(m.id), L = state.lobbies[m.id];
-    const st = L ? E.lobbyStats(L) : null;
-    const cls = E.classify(m, p);
-    const heroGames = M.pool.filter(x => x.hero === m.hero && state.lobbies[x.id]).length;
-    const chip = cls ? `<span class="chip"><span class="key q-${cls}"></span>${E.QUAD_LABEL[cls]}</span>`
-      : `<span class="chip muted">${L ? `Unscored · ${heroGames}/${E.MIN_HERO_GAMES} games` : 'Lobby loading…'}</span>`;
-    const modeTag = M.allMode && m.mode !== 'ranked' ? '<span class="tag mode">Unranked</span>' : '';
-    const tags = modeTag + (st ? st.tags.map(t => `<span class="tag">${E.TAG_LABEL[t]}</span>`).join('') : '');
-    const delta = m.delta == null ? '' : `<span class="delta ${m.delta > 0 ? 'pos' : m.delta < 0 ? 'neg' : ''}">${signed(m.delta)}</span>`;
-    const icon = heroIcon(m.hero);
-    let detail = '';
-    if (st) {
-      const n = st.size;
-      const place = (label, r, note) => `<div class="place"><span class="muted">${label}</span><b>#${r}</b><span class="muted">/${n}${note ? ' ' + note : ''}</span></div>`;
-      const zRow = p ? ['souls', 'dmg', 'ka', 'deaths'].map(k => {
-        const z = p.z[k]; if (z == null) return '';
-        const lab = { souls: 'Souls', dmg: 'Damage', ka: 'Kills + assists', deaths: 'Staying alive' }[k];
-        return `<li><span>${lab}</span><span class="${z >= 0.2 ? 'pos' : z <= -0.2 ? 'neg' : 'muted'}">${scoreTxt(z)}</span></li>`;
-      }).join('') : '';
-      detail = `
-        <div class="detail">
-          <div class="places">
-            ${place('Souls', st.ranks.souls)}${place('Damage', st.ranks.dmg)}${place('K+A', st.ranks.ka)}${place('Deaths', st.ranks.deaths, '(fewest = #1)')}
-          </div>
-          <p class="muted small">${m.k}/${m.d}/${m.a} · ${C.fmtInt(m.souls)} souls · ${Math.round(m.dur / 60)} min${L.avgBadge ? ' · lobby avg ' + esc(E.badgeName(L.avgBadge, tiers())) : ''}</p>
-          ${p ? `<p class="small">Form <b>${scoreTxt(p.score)}</b>, ${formWord(p.score)}, compared with your ${p.base} other ${esc(heroName(m.hero))} games:</p><ul class="zs">${zRow}</ul>`
-              : `<p class="small muted">No form score yet. This game is compared only once you have ${E.MIN_HERO_GAMES}+ games on ${esc(heroName(m.hero))}.</p>`}
-        </div>`;
-    }
-    return `
-      <li><details>
-        <summary>
-          ${icon ? `<img class="hero-ic" src="${icon}" alt="" width="36" height="36" loading="lazy">` : '<span class="hero-ic"></span>'}
-          <span class="g-main">
-            <span class="g-title"><b>${esc(heroName(m.hero))}</b> <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span> ${delta}</span>
-            <span class="g-sub">${chip}${tags}</span>
-          </span>
-          <span class="g-time muted">${ago(m.t)}</span>
-        </summary>
-        ${detail}
-      </details></li>`;
-  }
-
-  function renderGames(M) {
-    const games = M.w.cur.slice().reverse();
-    $('#games-title').textContent = state.settings.window === 'season' ? 'Games: second half of season' : 'Games: ' + M.w.label.toLowerCase();
-    $('#games').innerHTML = games.length ? games.map(m => gameRow(m, M)).join('') : `<li class="muted">No ${M.allMode ? '' : 'ranked '}games here yet.</li>`;
-  }
-
-  function renderHeroes(M) {
-    const rows = E.heroBreakdown(M.scope, M.perf);
-    $('#heroes').innerHTML = `
-      <thead><tr><th>Hero</th><th class="n">Games</th><th class="n">W–L</th><th class="n">Rank pts</th><th>Form</th><th>Mix</th></tr></thead>
-      <tbody>${rows.map(r => `
-        <tr>
-          <td class="h">${heroIcon(r.hero) ? `<img src="${heroIcon(r.hero)}" alt="" width="24" height="24" loading="lazy">` : ''}${esc(heroName(r.hero))}</td>
-          <td class="n">${r.games}</td>
-          <td class="n">${r.wins}–${r.losses}</td>
-          <td class="n">${r.hasDelta ? signed(r.net) : '—'}</td>
-          <td>${!r.ready ? `<span class="muted">${r.games}/${E.MIN_HERO_GAMES} games</span>` : r.trend == null ? '<span class="muted">building</span>' : `<span class="${r.trend >= 0.2 ? 'pos' : r.trend <= -0.2 ? 'neg' : 'muted'}">${r.trend >= 0.2 ? '▲ rising' : r.trend <= -0.2 ? '▼ dipping' : '■ steady'}</span>`}</td>
-          <td>${C.miniMix(r.q, E.QUADS)}</td>
-        </tr>`).join('')}</tbody>`;
-  }
-
-  // ---------------------------------------------------------------- benchmark
-  /* Everything the benchmark needs, derived from history + patch day. It always uses every game
-     (ranked and unranked): the reference curves don't split by mode either. */
-  function benchPlan(M) {
-    const now = Date.now() / 1000;
-    const patchT = state.patch ? state.patch.t : null;
-    const last = M.ranked[M.ranked.length - 1];
-    const br = E.benchBrackets(last && last.badge);
-    const who = {
-      me: { account: ACCT },
-      bracket: { minBadge: br.bracket.min, maxBadge: br.bracket.max },
-      ref: br.ref ? { minBadge: br.ref.min } : null,
-    };
-    const heroes = E.benchHeroes(M.all, patchT, now).map(w => {
-      const key = k => `${w.hero}|${Math.floor(w.from)}|${k}`;
-      return Object.assign(w, { keys: { me: key('me'), bracket: key('b' + br.bracket.min), ref: br.ref ? key('r' + br.ref.min) : null } });
-    });
-    return { patchT, br, who, heroes };
-  }
-
-  const kfmt = (v, key) => key === 'deaths' ? v.toFixed(1) : v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v));
-  const relTxt = r => (r > 0 ? '+' : '−') + Math.abs(Math.round(r * 100)) + '%';
-  const dayFmt = t => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-
-  function renderBench(M) {
-    const P = benchPlan(M);
-    const T = state.settings.benchT;
-    const tierName = tier => E.badgeName(tier * 10, tiers());
-    const refName = P.br.ref ? tierName(P.br.ref.tier) + (P.br.ref.tier < 11 ? '+' : '') : null;
-    const brName = tierName(P.br.bracket.tier);
-    $('#bench-title').textContent = refName ? `You vs ${refName} on your heroes` : 'You vs your bracket on your heroes';
-    document.querySelectorAll('#bench-t button').forEach(b => b.setAttribute('aria-pressed', Number(b.dataset.t) === T));
-    const curve = k => k && state.curves[k] ? state.curves[k].c : null;
-
-    if (!M.all.length) { $('#bench-list').innerHTML = '<p class="muted">Loading your matches…</p>'; return; }
-    if (!P.heroes.length) {
-      $('#bench-list').innerHTML = `<p class="muted">No hero has ${E.MIN_HERO_GAMES}+ games in the last ${E.BENCH_WIDE_DAYS} days yet.</p>`;
-      return;
-    }
-    $('#bench-list').innerHTML = P.heroes.map(h => {
-      const mine = curve(h.keys.me), base = curve(h.keys.bracket), ref = curve(h.keys.ref);
-      const icon = heroIcon(h.hero);
-      const win = !h.widened ? `since the ${dayFmt(P.patchT)} patch · ${h.n} games`
-        : `last ${E.BENCH_WIDE_DAYS} days · ${h.n} games` + (h.spansPatch ? ', spans a patch' : '');
-      const head = `<div class="b-head">${icon ? `<img src="${icon}" alt="" width="28" height="28" loading="lazy">` : ''}
-        <b>${esc(heroName(h.hero))}</b><span class="muted small${h.widened ? ' widened' : ''}">${esc(win)}</span></div>`;
-      if (!mine || !base || (P.who.ref && !ref)) return `<div class="bench-hero">${head}<p class="muted small">Loading curves…</p></div>`;
-      const cmp = E.benchCompare(mine, base, ref);
-      const lines = !refName ? ''
-        : cmp.headlines.length
-        ? cmp.headlines.map(x => `<li class="${x.good ? 'pos' : 'neg'}"><b>${esc(x.label)} ${relTxt(x.rel)}</b> at ${x.t / 60} min <span class="muted">(${kfmt(x.you, x.key)} vs ${kfmt(x.ref, x.key)})</span></li>`).join('')
-        : `<li class="muted">On par with ${esc(refName)} at 15 and 20 min: no gap bigger than your normal game-to-game swing.</li>`;
-      const at = cmp.times[T];
-      const table = !at ? `<p class="muted small">None of your ${esc(heroName(h.hero))} games in this window reached ${T / 60} min.</p>` : `
-        <div class="table-wrap"><table class="heroes bench">
-          <thead><tr><th>At ${T / 60} min</th><th class="n">You</th><th class="n">${esc(brName)}</th>${refName ? `<th class="n">${esc(refName)}</th><th class="n">Gap</th>` : ''}</tr></thead>
-          <tbody>${at.rows.map(r => `<tr>
-            <td>${esc(r.label)}</td>
-            <td class="n"><b>${kfmt(r.you, r.key)}</b></td>
-            <td class="n muted">${r.bracket == null ? '—' : kfmt(r.bracket, r.key)}</td>
-            ${refName ? `<td class="n">${kfmt(r.ref, r.key)}</td>
-            <td class="n">${r.sig ? `<span class="${r.good ? 'pos' : 'neg'}">${relTxt(r.rel)}</span>` : '<span class="muted" title="Within your normal game-to-game swing">≈</span>'}</td>` : ''}
-          </tr>`).join('')}</tbody>
-        </table></div>
-        <p class="muted small">${at.n} of your games reached ${T / 60} min${T === 1800 ? ', so short games and stomps drop out here' : ''}.</p>`;
-      return `<div class="bench-hero">${head}<ul class="b-lines">${lines}</ul>${table}</div>`;
-    }).join('');
-  }
-
-  async function loadPatch() {
-    if (state.patch && Date.now() - state.patch.at < PATCH_TTL) return;
-    const t = E.lastBigPatch(await A.bigPatchDays(), Date.now() / 1000);
-    state.patch = { at: Date.now(), t };
-    S.set('patch', state.patch);
-  }
-
-  async function loadBench() {
-    const P = benchPlan(model());
-    const jobs = [];
-    for (const h of P.heroes) {
-      for (const k of ['me', 'bracket', 'ref']) {
-        const key = h.keys[k];
-        if (!key || !P.who[k]) continue;
-        const hit = state.curves[key];
-        if (hit && Date.now() - hit.at < CURVE_TTL) continue;
-        jobs.push({ key, hero: h.hero, from: h.from, who: P.who[k] });
-      }
-    }
-    for (let i = 0; i < jobs.length; i++) {
-      const j = jobs[i];
-      setStatus(`Loading benchmarks… ${i + 1}/${jobs.length}`);
-      state.curves[j.key] = { at: Date.now(), c: E.compactCurve(await A.curve(j.hero, j.from, j.who)) };
-      if (i % 3 === 2 || i === jobs.length - 1) render();
-    }
-    // Keep only the curves the current plan uses, so old windows don't pile up in localStorage.
-    const used = new Set(P.heroes.flatMap(h => Object.values(h.keys)));
-    for (const k of Object.keys(state.curves)) if (!used.has(k)) delete state.curves[k];
-    S.set('curves', state.curves);
-  }
-
-  function renderFooter(M) {
-    $('#blend').checked = state.settings.blend;
-    $('#blend').closest('label').hidden = M.allMode;   // 'all' already uses every game
-    const need = lobbyTargets(M);
-    const have = need.filter(id => state.lobbies[id]).length;
-    $('#data-status').textContent = `${M.all.length} matches on record · lobby data for ${have}/${need.length} games in use` +
-      (state.history ? ` · history updated ${ago(state.history.at / 1000)}` : '');
+  async function setAccount(acct) {
+    settings.account = acct;
+    settings.seenV = VERSION;
+    ctx.save();
+    state.search = null;
+    loadAccountData();
+    location.hash = '#/overview';
+    render();
+    await refresh(false);
   }
 
   // ---------------------------------------------------------------- loading
-  function lobbyTargets(M) {
-    return (M || model()).pool.map(m => m.id);
-  }
-
   async function loadAssets() {
     if (state.assets && Date.now() - state.assets.at < ASSET_TTL) return;
     const [heroes, ranks] = await Promise.all([A.heroes(), A.ranks()]);
@@ -432,44 +173,144 @@
     S.set('assets', state.assets);
   }
 
-  async function loadHistory(force) {
-    if (!force && state.history && Date.now() - state.history.at < HISTORY_TTL) return;
-    const rows = await A.history(ACCT);
-    state.history = { at: Date.now(), matches: E.normalizeHistory(rows) };
-    S.set('history', state.history);
+  async function loadProfile() {
+    if (state.profile && Date.now() - state.profile.at < PROFILE_TTL) return;
+    const acct = settings.account;
+    const [p, r] = await Promise.all([A.steamProfile(acct).catch(() => null), A.rank(acct).catch(() => null)]);
+    if (acct !== settings.account) return;
+    state.profile = { at: Date.now(), name: p && p.personaname, avatar: p && (p.avatarmedium || p.avatar), badge: (r && r.badge) || null };
+    S.setData('profile', state.profile);
   }
 
+  async function loadHistory(force) {
+    if (!force && state.history && Date.now() - state.history.at < HISTORY_TTL) return;
+    const acct = settings.account;
+    const rows = await A.history(acct);
+    if (acct !== settings.account) return;
+    state.history = { at: Date.now(), matches: E.normalizeHistory(rows) };
+    S.setData('history', state.history);
+  }
+
+  async function loadPatch() {
+    if (state.patch && Date.now() - state.patch.at < PATCH_TTL) return;
+    const t = E.lastBigPatch(await A.bigPatchDays(), Date.now() / 1000);
+    state.patch = { at: Date.now(), t };
+    S.set('patch', state.patch);
+  }
+
+  /* Lobbies for every game in the pool (season, or season + blend). A cached lobby of an older
+     shape counts as missing so roles get computed for it. */
   async function loadLobbies() {
-    const missing = lobbyTargets().filter(id => !(id in state.lobbies)).reverse(); // newest first
+    const acct = settings.account;
+    // The season pool first (it feeds form and the verdict), then every older match so the
+    // Matches tab can read any game. Once cached, a lobby is never fetched again.
+    const M0 = model();
+    const inPool = new Set(M0.pool.map(m => m.id));
+    const want = [...M0.all.filter(m => !inPool.has(m.id)).map(m => m.id), ...inPool];
+    const missing = want.filter(id => !(id in state.lobbies) || (state.lobbies[id] && state.lobbies[id].v !== E.LOBBY_V)).reverse();
     for (let i = 0; i < missing.length; i += A.BATCH) {
       const ids = missing.slice(i, i + A.BATCH);
       setStatus(`Loading lobbies… ${Math.min(i + A.BATCH, missing.length)}/${missing.length}`);
       const metas = await A.metadata(ids);
+      if (acct !== settings.account) return;
       const got = new Set();
       for (const meta of metas) {
-        const L = E.compactLobby(meta, ACCT);
+        const L = E.compactLobby(meta, acct);
         if (L) { state.lobbies[meta.match_id] = L; got.add(meta.match_id); }
       }
       // A match the API has no metadata for is recorded as null so we don't ask forever.
       for (const id of ids) if (!got.has(id)) state.lobbies[id] = null;
-      S.set('lobbies', state.lobbies);
+      S.setData('lobbies', state.lobbies);
       render();
       if (i + A.BATCH < missing.length) await A.sleep(A.SPACING_MS);
     }
   }
 
-  function setStatus(s) { state.status = s; $('#status').textContent = s; }
+  async function loadHelper() {
+    const h = await A.helper();
+    state.helperLive = !!h;
+    if (h) { state.helper = Object.assign(h, { at: Date.now() }); S.set('helper', state.helper); }
+  }
 
+  /* Runs fetch jobs 4 at a time (the analytics limit is 200/min, so this never trips it). */
+  async function runJobs(jobs, label) {
+    let done = 0;
+    const worker = async () => {
+      while (jobs.length) {
+        const j = jobs.shift();
+        const data = await j.fetch();
+        state.curves[j.key] = { at: Date.now(), c: j.compact(data) };
+        done++;
+        setStatus(`${label}… ${done}`);
+        if (done % 4 === 0) render();
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+  }
+  const fresh = key => state.curves[key] && Date.now() - state.curves[key].at < CURVE_TTL;
+
+  // ---------------------------------------------------------------- per-hero ladder data
+  /* The window for a hero: games since the last big patch, widened to 60 days under 8 games
+     (Engine.benchWindow). A hero with too few games still gets the 60-day window so the ladder
+     can show what the ranks do, with your row marked as thin. */
+  function benchPlan(M, hero) {
+    const now = Date.now() / 1000;
+    const patchT = state.patch ? state.patch.t : null;
+    const w = E.benchWindow(M.all, hero, patchT, now);
+    const wideFrom = Math.min(patchT == null ? Infinity : patchT, Math.floor(now / 86400 - E.BENCH_WIDE_DAYS) * 86400);
+    const n = M.all.filter(m => m.hero === hero && m.t >= wideFrom).length;
+    return w || { hero, from: wideFrom, n, widened: true, spansPatch: patchT != null && wideFrom < patchT, thin: true };
+  }
+  const ladderKeys = (hero, from, acct) => {
+    const f = Math.floor(from);
+    const k = { me: `c|${hero}|${f}|a${acct}`, meStats: `s|${f}|a${acct}`, tiers: {} };
+    for (const t of E.LADDER_TIERS) k.tiers[t] = { curve: `c|${hero}|${f}|t${t}`, stats: `s|${f}|t${t}` };
+    return k;
+  };
+  ctx.ladderKeys = ladderKeys;
+
+  let ladderBusy = null;
+  async function ensureHeroLadder(hero) {
+    if (ladderBusy === hero) return;
+    const M = model();
+    const plan = benchPlan(M, hero);
+    const acct = settings.account;
+    const k = ladderKeys(hero, plan.from, acct);
+    const jobs = [];
+    const curveJob = (key, who) => ({ key, fetch: () => A.curve(hero, plan.from, who), compact: E.compactCurve });
+    const statsJob = (key, who) => ({ key, fetch: () => A.heroStats(plan.from, who), compact: E.compactHeroStats });
+    if (!fresh(k.me)) jobs.push(curveJob(k.me, { account: acct }));
+    if (!fresh(k.meStats)) jobs.push(statsJob(k.meStats, { account: acct }));
+    for (const t of E.LADDER_TIERS) {
+      const who = { minBadge: t * 10 + 1, maxBadge: t * 10 + 6 };
+      if (!fresh(k.tiers[t].curve)) jobs.push(curveJob(k.tiers[t].curve, who));
+      if (!fresh(k.tiers[t].stats)) jobs.push(statsJob(k.tiers[t].stats, who));
+    }
+    if (!jobs.length) return;
+    ladderBusy = hero;
+    try {
+      await runJobs(jobs, 'Loading rank comparison');
+      // Drop cached curves/stats nothing points at any more (old windows, other heroes > 7 days).
+      for (const key of Object.keys(state.curves)) if (Date.now() - state.curves[key].at > 7 * 86400 * 1000) delete state.curves[key];
+      S.setData('curves', state.curves);
+      setStatus('');
+    } catch (e) {
+      setStatus(e.waitMs ? 'deadlock-api is rate-limiting. Try again in a minute.' : 'Couldn’t load the rank comparison: ' + e.message);
+    } finally {
+      ladderBusy = null;
+      render();
+    }
+  }
+
+  // ---------------------------------------------------------------- refresh
   async function refresh(force) {
-    if (state.busy) return;
+    if (state.busy || !settings.account) return;
     state.busy = true; setStatus('Updating…'); render();
     loadHelper().then(render);
     try {
       await loadAssets();
-      await loadHistory(force);
+      await Promise.all([loadProfile(), loadHistory(force), loadPatch()]);
       render();
-      await loadPatch();
-      await loadBench();
       await loadLobbies();
       setStatus('');
     } catch (e) {
@@ -480,34 +321,14 @@
   }
 
   // ---------------------------------------------------------------- events
-  $('#tabs').addEventListener('click', e => {
-    const b = e.target.closest('button[data-w]');
-    if (!b) return;
-    state.settings.window = b.dataset.w; S.set('settings', state.settings); render();
-  });
-  $('#scope').addEventListener('click', e => {
-    const b = e.target.closest('button[data-g]');
-    if (!b) return;
-    state.settings.games = b.dataset.g; S.set('settings', state.settings); render(); refresh(false);
-  });
-  $('#bench-t').addEventListener('click', e => {
-    const b = e.target.closest('button[data-t]');
-    if (!b) return;
-    state.settings.benchT = Number(b.dataset.t); S.set('settings', state.settings); renderBench(model());
-  });
-  $('#whatsnew').addEventListener('click', e => {
-    if (!e.target.closest('#wn-ok')) return;
-    state.settings.seenV = VERSION; S.set('settings', state.settings); renderWhatsNew();
-  });
+  window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
   $('#refresh').addEventListener('click', () => refresh(true));
-  $('#blend').addEventListener('change', e => {
-    state.settings.blend = e.target.checked; S.set('settings', state.settings); render(); refresh(false);
-  });
+  $('#who').addEventListener('click', () => ctx.go('#/about'));
   let rt;
-  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => renderRank(model()), 120); });
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 150); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
   // The helper is local and cheap, so poll it once a minute while the page is visible.
-  setInterval(() => { if (!document.hidden) loadHelper().then(render); }, 60 * 1000);
+  setInterval(() => { if (!document.hidden && settings.account) loadHelper().then(() => { if (state.route.tab === 'play') render(); }); }, 60 * 1000);
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 

@@ -1,35 +1,58 @@
 # Climb
 
-A personal Deadlock progress tracker that answers one question: **am I improving?**
+A simple Deadlock tracker for any Steam account. It answers three questions: **am I improving,
+which games did I carry, and what separates my hero play from the next rank?**
 
 **Live:** https://tripod110.github.io/climb/
 
 It replaces the old `Projects/Deadlock Tracker` (Electron, ~8.8k LOC, dormant since 2026-07).
-That app's coaching and debrief side now lives in POSTMORTEM. Climb only covers rank and progress.
+Build-less, plain `<script>` files, localStorage, deadlock-api.com only.
 
-## What it shows
+## Layout
 
-- **Verdict**: Improving, Holding or Slipping, for *last session*, *last 20* or *season*. It's
-  built from three signals, each compared with the window before:
+Hash-routed tabs (`#/overview`, `#/matches`, `#/match/<id>`, `#/heroes/<heroId>`, `#/play`,
+`#/about`). `js/app.js` holds state, loading and routing; `js/views.js` has one render function
+per page; every number comes from `js/engine.js` (tests: `node js/tests.js`).
+
+- **First visit**: paste a Steam profile URL, SteamID64, `[U:1:n]`, `STEAM_0:x:y` or account id,
+  or search a Steam name (`/v1/players/steam-search`). `Engine.parseSteamInput` handles the
+  formats. Data caches are namespaced per account (`climb.<account>.<key>`); the pre-v6
+  single-account cache migrates on first load.
+- **Overview**: verdict plus stat tiles (win rate, rank points, carried, key player,
+  dragged/passenger, MVPs) for *last session*, *last 20* or *season*, the role mix, recent
+  matches, heroes and the rank chart.
+- **Matches**: every game with role, tags and an impact bar, filterable. A match page shows the
+  12-player scoreboard, your share vs an average teammate, and form vs your usual on that hero.
+- **Heroes**: pick a hero. It shows your roles on it, then a **rank ladder**: 10 stats vs the
+  average game in each rank's lobbies (Initiate–Eternus, 22 analytics calls, cached for an hour).
+  For each stat it marks behind / on par / ahead of your rank and the next one, and which rank
+  it "plays like".
+- **Play time**: the helper-backed play tracker (below).
+
+## The model
+
+- **Verdict**: Improving, Holding or Slipping. It's built from three signals, each compared with
+  the window before:
   1. **Rank points**: the sum of the API's per-game `ranked_delta`. These are real deltas, not
      an MMR estimate.
   2. **Form**: how you played compared with your own other games **on the same hero**.
-  3. **Consistency**: the share of rough games.
-- **Ranked / All games** (default All): "All" adds your unranked games since the ranked season
-  began to the windows, form, consistency, game list and heroes. Rank points (and the rank chart)
-  only ever come from ranked games.
-- **Match classes**: Earned win, Passenger win, Unlucky loss and Rough game, from result × form.
-- **Lobby tags** (Farmer, Damage, Playmaker, Survivor, Support): you placed top in that one lobby.
-  They're for bragging only and never feed the verdict.
-
-- **Benchmark** (you vs better players on your heroes): your average curve on a hero at 15 / 20 /
-  30 min, next to your own bracket and Phantom+ lobbies over the same dates. The data is
-  `/v1/analytics/player-performance-curve` with `resolution=0`. End-of-game totals and win rate
-  look flat across ranks, so only matched minutes are compared.
-  - Window: games since the last big patch (`/v1/patches/big-days`). Under 8 of them, it widens
-    to 60 days and is labelled; under 5, the hero is skipped.
+  3. **Consistency**: the share of rough games (result × form).
+- **Impact and roles** (`lobbyImpact`, `gameRole`):
+  - Impact = 0.3 × souls + 0.3 × damage (or 0.8 × healing) + 0.25 × kills+assists + 0.15 ×
+    objectives, each relative to your own team's average, minus 0.25 × the extra deaths ratio.
+  - Wins: Carried (team #1 with impact ≥ 1.3), Key player (top 2 or a Valve MVP), Solid,
+    Passenger (bottom two).
+  - Losses: Couldn't carry, Key player, Tough loss, Dragged down (last on the team, impact
+    < 0.8, or most deaths while 4th or lower).
+  - Lobby rows are compact arrays. `LOBBY_V` bumps when they grow, and older rows get
+    re-fetched.
+- **Rank ladder** (`rankLadder`):
+  - Curve stats (`/v1/analytics/player-performance-curve`, `resolution=0`) at 15 / 20 / 30 min;
+    win rate and accuracy from `/v1/analytics/hero-stats`.
+  - Window: games since the last big patch, or the last 60 days if there are fewer than 8.
   - A gap is only called when it beats 2 standard errors of your mean and is at least 5%.
-  - The rules are in the `benchmark` section of `engine.js`.
+  - "Plays like" = the rank with the nearest average. A stat that moves under 8% from Initiate
+    to Eternus is "same at every rank".
 
 The model is documented at the top of [`js/engine.js`](js/engine.js). Two non-obvious rules:
 

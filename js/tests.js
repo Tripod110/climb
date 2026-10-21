@@ -37,7 +37,8 @@
   const L = E.compactLobby(meta);
   eq('lobby finds me', L.me, 4);
   eq('lobby team parsed from "Team0"', L.p[4][0], 0);
-  eq('lobby row shape', L.p[4], [0, 34000, 4, 7, 5, 12000, 9000]);
+  eq('lobby row shape', L.p[4].slice(0, 7), [0, 34000, 4, 7, 5, 12000, 9000]);
+  eq('lobby v2 keeps account id + version', [L.p[4][15], L.v], [E.ACCOUNT_ID, E.LOBBY_V]);
   eq('lobby without me is null', E.compactLobby({ players: meta.players.slice(5) }), null);
 
   // ---------------------------------------------------------------- lobby stats
@@ -183,6 +184,70 @@
     eq('fewer deaths = good', [at('deaths').sig, at('deaths').good], [true, true]);
     eq('headlines: behind first', cmp.headlines.map(h => h.key), ['jungle', 'deaths']);
     eq('no reference: nothing called', E.benchCompare(curve({}), null, null).headlines, []);
+  }
+
+  // ---------------------------------------------------------------- steam id
+  eq('steam64 -> account', E.parseSteamInput('76561198147259613'), { account: 186993885 });
+  eq('profile url -> account', E.parseSteamInput('https://steamcommunity.com/profiles/76561198147259613/'), { account: 186993885 });
+  eq('[U:1:n]', E.parseSteamInput('[U:1:186993885]'), { account: 186993885 });
+  eq('STEAM_0:x:y', E.parseSteamInput('STEAM_0:1:93496942'), { account: 186993885 });
+  eq('bare account id', E.parseSteamInput(' 186993885 '), { account: 186993885 });
+  eq('vanity url -> search', E.parseSteamInput('https://steamcommunity.com/id/tripod/'), { search: 'tripod' });
+  eq('name -> search', E.parseSteamInput('Tripod'), { search: 'Tripod' });
+  eq('empty', E.parseSteamInput('  '), null);
+
+  // ---------------------------------------------------------------- roles
+  {
+    // row: [team, souls, k, d, a, dmg, heal, hero, obj, taken, lh, denies, mvp, lane, acc, acct]
+    const pl = (team, souls, k, d, a, dmg, o) => Object.assign([team, souls, k, d, a, dmg, 0, 1, 1000, 10000, 100, 5, 0, 1, 50, 0], o || {});
+    const lobby = (meRow, won, dur) => {
+      const p = [meRow];
+      for (let j = 0; j < 5; j++) p.push(pl(0, 30000, 5, 5, 8, 25000));
+      for (let j = 0; j < 6; j++) p.push(pl(1, 30000, 5, 5, 8, 25000));
+      return { v: E.LOBBY_V, me: 0, p, dur: dur || 1800, win: won ? 0 : 1 };
+    };
+    const carry = E.gameRole(lobby(pl(0, 50000, 14, 2, 10, 50000), true), true);
+    eq('carried: won as team #1 by a distance', [carry.role, carry.teamRank], ['carried', 1]);
+    ok('carry tags', ['farm', 'dmg', 'kills', 'survivor'].every(t => carry.tags.includes(t)), carry.tags);
+    eq('lonewolf: same game lost', E.gameRole(lobby(pl(0, 50000, 14, 2, 10, 50000), false), false).role, 'lonewolf');
+    const drag = E.gameRole(lobby(pl(0, 18000, 1, 12, 3, 9000), false), false);
+    eq('dragged: lost at the bottom of the team', [drag.role, drag.teamRank], ['dragged', 6]);
+    ok('fed tag', drag.tags.includes('fed'), drag.tags);
+    eq('passenger: won at the bottom', E.gameRole(lobby(pl(0, 18000, 1, 12, 3, 9000), true), true).role, 'passenger');
+    eq('Valve MVP counts as key player', E.gameRole(lobby(pl(0, 30000, 5, 5, 8, 25000, { 12: 2 }), true), true).role, 'key');
+    {
+      const spread = lobby(pl(0, 30000, 5, 5, 8, 25000), true);
+      [40000, 36000, 26000, 22000, 20000].forEach((souls, j) => { spread.p[j + 1][1] = souls; });
+      eq('middle of the team, won: solid', E.gameRole(spread, true).role, 'solid');
+    }
+    ok('short win = stomp', E.gameRole(lobby(pl(0, 29000, 5, 5, 7, 24000), true, 1000), true).tags.includes('stomp'));
+    eq('old lobby shape: no role', E.gameRole({ me: 0, p: [[0, 1, 1, 1, 1, 1, 1]] }, true), null);
+    const sum = E.roleSummary([{ id: 1, won: true }, { id: 2, won: false }, { id: 3, won: true }],
+      { 1: lobby(pl(0, 50000, 14, 2, 10, 50000), true), 2: lobby(pl(0, 18000, 1, 12, 3, 9000), false) });
+    eq('role summary counts only v2 lobbies', [sum.n, sum.counts.carried, sum.counts.dragged, sum.carry, sum.dragged], [2, 1, 1, 0.5, 0.5]);
+  }
+
+  // ---------------------------------------------------------------- rank ladder
+  {
+    eq('hero stats compacted', E.compactHeroStats([{ hero_id: 7, matches: 10, wins: 6, total_shots_hit: 30, total_shots_missed: 70 }]),
+      { 7: { n: 10, wr: 0.6, acc: 0.3 } });
+    const curveAt = (vals, n) => ({ 1200: Object.assign({ n }, ...E.BENCH_STATS.map(s => ({ [s.key]: [vals[s.key] != null ? vals[s.key] : 100, vals.sd || 0] }))) });
+    const tiers = {};
+    for (const t of E.LADDER_TIERS) tiers[t] = { curve: curveAt({ jungle: 1000 + t * 200, deaths: 6 - t * 0.3 }, 5000), stats: { 7: { n: 5000, wr: 0.5, acc: 0.4 + t * 0.01 } } };
+    // You: Sentinel (4). Jungle 1500 = tier-2 level (1400) but below tier 3 (1600), with a tight SD so it's called.
+    const mine = { curve: curveAt({ jungle: 1500, deaths: 2.5, sd: 100 }, 20), stats: { 7: { n: 20, wr: 0.55, acc: 0.45 } } };
+    const L = E.rankLadder(7, 1200, mine, tiers, 4);
+    const row = k => L.rows.find(r => r.key === k);
+    eq('jungle level = nearest rank average', row('jungle').level, 2);
+    eq('jungle behind your own rank', row('jungle').vsTier, 'behind');
+    eq('deaths: fewer than every rank = nearest is Eternus', row('deaths').level, 11);
+    eq('stat that barely moves across ranks is flat', row('souls').level, 'flat');
+    eq('win rate has no level', row('wr').level, null);
+    eq('win rate 55% vs 50% over 20 games is noise', row('wr').vsTier, 'par');
+    eq('accuracy reaches tier 5', row('acc').level, 5);
+    eq('behind list leads with jungle', L.behind[0].key, 'jungle');
+    eq('next rank (Mystic) gap named', [L.toNext[0].key, L.rows.find(r => r.key === 'jungle').next.v], ['jungle', 2000]);
+    eq('missing data: null row', E.rankLadder(7, 1800, mine, tiers, 4).rows.find(r => r.key === 'souls').you, null);
   }
 
   // ---------------------------------------------------------------- misc

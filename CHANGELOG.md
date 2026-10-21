@@ -4,6 +4,26 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v6 (2026-10-21): Rebuilt with tabs, any Steam account, and a rank ladder
+- The single long page is replaced by four tabs: Overview, Matches, Heroes and Play time. Account
+  and About open from the avatar.
+- Works for any account: paste a Steam profile link, SteamID64, [U:1:n] or STEAM_0 id, or search
+  a Steam name. Each account keeps its own cache. The old single-account cache moves over
+  automatically.
+- Game roles, from your impact on your own team:
+  - wins: Carried, Key player, Solid win, Passenger;
+  - losses: Couldn't carry, Key player, Tough loss, Dragged down.
+- Game tags: Valve MVPs, top farmer, top damage, most kills, playmaker, objectives, healer,
+  frontline, survivor, fed, stomp, marathon.
+- Matches tab: every game, filterable. Each match page has the full 12-player scoreboard, your
+  share vs an average teammate, and form vs your usual on that hero.
+- Heroes tab: pick a hero to see 10 stats vs the average game at all 11 ranks.
+  - Stats: win rate, accuracy, souls, lane, jungle, hero damage, objectives, kills, assists,
+    deaths.
+  - Shows what's holding you back from the next rank, what's already above yours, and which rank
+    each stat plays like.
+- Lobby data is now kept for every match, not just this season's.
+
 ## v5 (2026-10-21): What's new + changelog
 - After each update, a "What's new" card says once what changed. Dismiss it with "Got it".
 - The full changelog is at the bottom of the page, under "Changelog".
