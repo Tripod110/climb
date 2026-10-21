@@ -2,10 +2,10 @@
    - Navigations are NETWORK-FIRST, so index.html (which carries the ?v=N references) is never stale.
    - Versioned assets are CACHE-FIRST, matched exactly including the query (never ignoreSearch).
    - deadlock-api.com and helper (127.0.0.1) requests are not touched. Freshness lives in the app's own localStorage cache. */
-const CACHE = 'climb-v3';
+const CACHE = 'climb-v4';
 const SHELL = [
-  './', 'index.html', 'style.css?v=3',
-  'js/engine.js?v=3', 'js/store.js?v=3', 'js/api.js?v=3', 'js/play.js?v=3', 'js/charts.js?v=3', 'js/app.js?v=3',
+  './', 'index.html', 'style.css?v=4',
+  'js/engine.js?v=4', 'js/store.js?v=4', 'js/api.js?v=4', 'js/play.js?v=4', 'js/charts.js?v=4', 'js/app.js?v=4',
   'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 

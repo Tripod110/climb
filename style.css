@@ -213,6 +213,16 @@ button.ghost:disabled { opacity: .45; cursor: progress; }
 .zs { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 2px; font-size: 13px; max-width: 280px; }
 .zs li { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
 
+/* ---------------------------------------------------------------- benchmark */
+#bench-t { margin: 12px 0 4px; }
+.bench-hero { padding: 14px 0 4px; border-top: 1px solid var(--border); margin-top: 12px; }
+.bench-hero:first-child { border-top: 0; margin-top: 4px; }
+.b-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.b-head img { border-radius: 6px; }
+.b-head .widened { color: var(--ink-2); }
+.b-lines { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: 14px; }
+.heroes.bench td:first-child { color: var(--ink-2); }
+
 /* ---------------------------------------------------------------- heroes table */
 .table-wrap { overflow-x: auto; margin-top: 8px; }
 .heroes { width: 100%; border-collapse: collapse; font-size: 13.5px; }
@@ -235,7 +245,10 @@ button.ghost:disabled { opacity: .45; cursor: progress; }
   .v-word { font-size: 28px; }
   .detail { padding-left: 0; }
   .places { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .heroes th:nth-child(4), .heroes td:nth-child(4) { display: none; }
+  #heroes th:nth-child(4), #heroes td:nth-child(4) { display: none; }
+  .heroes.bench { font-size: 12.5px; }
+  .heroes.bench th, .heroes.bench td { padding: 6px 4px; }
+  .heroes.bench td:first-child { white-space: normal; }
 }
 @media (forced-colors: active) {
   .seg, .key, .cell, .hbar { forced-color-adjust: none; }

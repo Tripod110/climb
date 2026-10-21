@@ -152,7 +152,7 @@
     wrap.className = 'heat-wrap';
     const days = document.createElement('div');
     days.className = 'heat-days';
-    days.innerHTML = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun'].map(d => `<span>${d}</span>`).join('');
+    days.innerHTML = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<span>${d}</span>`).join('');
     const grid = document.createElement('div');
     grid.className = 'heat';
     grid.setAttribute('role', 'img');

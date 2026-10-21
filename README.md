@@ -22,6 +22,15 @@ That app's coaching and debrief side now lives in POSTMORTEM. Climb only covers 
 - **Lobby tags** (Farmer, Damage, Playmaker, Survivor, Support): you placed top in that one lobby.
   They're for bragging only and never feed the verdict.
 
+- **Benchmark** (you vs better players on your heroes): your average curve on a hero at 15 / 20 /
+  30 min, next to your own bracket and Phantom+ lobbies over the same dates. The data is
+  `/v1/analytics/player-performance-curve` with `resolution=0`. End-of-game totals and win rate
+  look flat across ranks, so only matched minutes are compared.
+  - Window: games since the last big patch (`/v1/patches/big-days`). Under 8 of them, it widens
+    to 60 days and is labelled; under 5, the hero is skipped.
+  - A gap is only called when it beats 2 standard errors of your mean and is at least 5%.
+  - The rules are in the `benchmark` section of `engine.js`.
+
 The model is documented at the top of [`js/engine.js`](js/engine.js). Two non-obvious rules:
 
 - **Form** uses lobby-relative ratios (your souls / lobby average, etc.) z-scored against your

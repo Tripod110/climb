@@ -117,6 +117,74 @@
   eq('form dip neutralised in tougher lobbies', vc.signals[1].dir, 0);
   eq('climbing + keeping pace in tougher lobbies = improving', vc.call, 'improving');
 
+  // ---------------------------------------------------------------- briefing
+  {
+    const now = 200 * D;
+    const g = [];
+    let id = 1;
+    const add = (hero, won, delta, extra) => g.push(Object.assign({ id: id++, t: now - 20 * D + id * H, dur: 1800, hero, won, delta, badge: 42, souls: 36000, d: 5 }, extra));
+    for (let i = 0; i < 10; i++) add(1, i < 8, i < 8 ? 400 : -300);                      // hot: 8-2
+    for (let i = 0; i < 8; i++) add(2, i < 2, i < 2 ? 300 : -300, { d: i < 3 ? 4 : 8 }); // cold: 2-6, dying more lately
+    for (let i = 0; i < 3; i++) add(3, true, 300);                                        // too few games to name
+    const names = { 1: 'Pocket', 2: 'Paradox', 3: 'Shiv' };
+    const lob = {};
+    g.forEach(m => { lob[m.id] = { me: 0, p: Array.from({ length: 12 }, (_, j) => [0, j === 0 ? (m.won ? 50000 : 20000) : 30000, 5, 5, 5, 1, 0]) }; });
+    const b = E.briefing(g, lob, { now, heroName: h => names[h] });
+    eq('briefing title', b.title, 'Sentinel 2 · last 20: 12–8, +1,900');
+    eq('briefing hot hero', b.hot, 'Pocket is gaining you rank: 8–2, +2,600 over its last 10');
+    eq('briefing cold hero + stat shift', b.cold, 'Paradox is costing you rank: 2–6, −1,200 over its last 8, dying more (8.0 vs 4.0)');
+    ok('briefing lever names souls split', /top 3 in souls/.test(b.lever), b.lever);
+    eq('briefing ignores heroes not played in 30 days', E.briefing(g, lob, { now: now + 60 * D, heroName: h => names[h] }).hot, null);
+    eq('briefing on no games', E.briefing([], {}, {}), null);
+    eq('stat shift needs 8 games', E.heroStatShift(g.slice(0, 5)), null);
+  }
+
+  // ---------------------------------------------------------------- benchmark
+  {
+    const now = 100 * D, patch = now - 10 * D;
+    eq('last big patch = latest one not in the future',
+      E.lastBigPatch([new Date((now + D) * 1000).toISOString(), new Date(patch * 1000).toISOString(), '2020-01-01T00:00:00Z'], now), patch);
+    eq('no patch days', E.lastBigPatch([], now), null);
+
+    const g = [];
+    const add = (hero, daysAgo) => g.push({ hero, t: now - daysAgo * D });
+    for (let i = 0; i < 9; i++) add(1, 2);                          // 9 since patch: patch window
+    for (let i = 0; i < 3; i++) add(2, 2); for (let i = 0; i < 4; i++) add(2, 30);  // 3 since, 7 in 60d: widened
+    for (let i = 0; i < 2; i++) add(3, 2); for (let i = 0; i < 2; i++) add(3, 40);  // 4 in 60d: dropped
+    for (let i = 0; i < 6; i++) add(4, 80);                         // nothing in 60d: dropped
+    const w1 = E.benchWindow(g, 1, patch, now);
+    eq('enough games since patch: patch window', [w1.from, w1.n, w1.widened], [patch, 9, false]);
+    const w2 = E.benchWindow(g, 2, patch, now);
+    eq('too few since patch: widened to 60 days, spans patch', [w2.from, w2.n, w2.widened, w2.spansPatch], [now - 60 * D, 7, true, true]);
+    eq('too few even in 60 days: not benchmarked', E.benchWindow(g, 3, patch, now), null);
+    eq('patch older than 60 days widens back to the patch', E.benchWindow(g, 4, now - 90 * D, now).from, now - 90 * D);
+    eq('bench heroes: qualifying ones, most games first', E.benchHeroes(g, patch, now).map(w => w.hero), [1, 2]);
+
+    eq('Sentinel bracket vs Phantom+', E.benchBrackets(43), { bracket: { min: 41, max: 46, tier: 4 }, ref: { min: 91, tier: 9 } });
+    eq('Phantom compares with Eternus', E.benchBrackets(95).ref, { min: 111, tier: 11 });
+    eq('Eternus has no reference', E.benchBrackets(114).ref, null);
+
+    const row = (t, n, o) => Object.assign({ game_time: t, samples: n }, ...E.BENCH_STATS.flatMap(s => s.f).map(f => ({ [f + '_avg']: 0, [f + '_std']: 0 })), o);
+    const cc = E.compactCurve([row(600, 9, {}), row(1200, 10, { gold_lane_creep_avg: 4000, gold_lane_creep_orbs_avg: 1000, gold_lane_creep_std: 300, gold_lane_creep_orbs_std: 100 })]);
+    eq('curve keeps bench times only', Object.keys(cc), ['1200']);
+    eq('lane souls = creeps + orbs, SDs added', cc[1200].lane, [5000, 400]);
+
+    // You: 10 games, jungle 1400±800 vs ref 2100 → gap −700, SE 253, called. Lane 4700±800 vs
+    // 4900 → −4%, under the floor. Deaths 2 vs 3 → ahead.
+    const curve = o => ({ 1200: Object.assign({ n: 10 }, ...E.BENCH_STATS.map(s => ({ [s.key]: [100, 0] })), o) });
+    const cmp = E.benchCompare(
+      curve({ jungle: [1400, 800], lane: [4700, 800], deaths: [2, 0.5] }),
+      curve({ jungle: [2000, 0] }),
+      curve({ jungle: [2100, 0], lane: [4900, 0], deaths: [3, 0] }));
+    const at = k => cmp.times[1200].rows.find(r => r.key === k);
+    eq('jungle gap called', [at('jungle').gap, at('jungle').sig, at('jungle').good], [-700, true, false]);
+    eq('bracket shown alongside', at('jungle').bracket, 2000);
+    eq('small gap not called', at('lane').sig, false);
+    eq('fewer deaths = good', [at('deaths').sig, at('deaths').good], [true, true]);
+    eq('headlines: behind first', cmp.headlines.map(h => h.key), ['jungle', 'deaths']);
+    eq('no reference: nothing called', E.benchCompare(curve({}), null, null).headlines, []);
+  }
+
   // ---------------------------------------------------------------- misc
   eq('badge 42 = Sentinel 2', E.badgeName(42), 'Sentinel 2');
   eq('badge 24 = Seeker 4', E.badgeName(24), 'Seeker 4');

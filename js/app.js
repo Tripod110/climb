@@ -7,6 +7,8 @@
   const HISTORY_TTL = 3 * 60 * 1000;
   const ASSET_TTL = 7 * 86400 * 1000;
   const BLEND_DAYS = 120;   // unranked games older than this never enter a baseline
+  const PATCH_TTL = 86400 * 1000;
+  const CURVE_TTL = 3600 * 1000;   // the API caches analytics for an hour, so asking sooner gains nothing
 
   const $ = s => document.querySelector(s);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -15,7 +17,9 @@
     history: S.get('history', null),      // { at, matches: [...normalized] }
     lobbies: S.get('lobbies', {}),        // { matchId: compactLobby }
     assets: S.get('assets', null),        // { at, heroes: {id: {name, icon}}, tiers: [names] }
-    settings: Object.assign({ window: 'last20', blend: false, games: 'all' }, S.get('settings', {})),
+    settings: Object.assign({ window: 'last20', blend: false, games: 'all', benchT: 1200 }, S.get('settings', {})),
+    patch: S.get('patch', null),          // { at, t }: the last big patch day
+    curves: S.get('curves', {}),          // { 'hero|from|who': { at, c: compactCurve } }
     helper: S.get('helper', null),        // last /sessions payload from the local helper, + `at`
     helperLive: false,                    // did the helper answer this time?
     status: '', busy: false,
@@ -73,6 +77,7 @@
     renderMix(M);
     renderGames(M);
     renderHeroes(M);
+    renderBench(M);
     renderFooter(M);
   }
 
@@ -283,6 +288,106 @@
         </tr>`).join('')}</tbody>`;
   }
 
+  // ---------------------------------------------------------------- benchmark
+  /* Everything the benchmark needs, derived from history + patch day. It always uses every game
+     (ranked and unranked): the reference curves don't split by mode either. */
+  function benchPlan(M) {
+    const now = Date.now() / 1000;
+    const patchT = state.patch ? state.patch.t : null;
+    const last = M.ranked[M.ranked.length - 1];
+    const br = E.benchBrackets(last && last.badge);
+    const who = {
+      me: { account: ACCT },
+      bracket: { minBadge: br.bracket.min, maxBadge: br.bracket.max },
+      ref: br.ref ? { minBadge: br.ref.min } : null,
+    };
+    const heroes = E.benchHeroes(M.all, patchT, now).map(w => {
+      const key = k => `${w.hero}|${Math.floor(w.from)}|${k}`;
+      return Object.assign(w, { keys: { me: key('me'), bracket: key('b' + br.bracket.min), ref: br.ref ? key('r' + br.ref.min) : null } });
+    });
+    return { patchT, br, who, heroes };
+  }
+
+  const kfmt = (v, key) => key === 'deaths' ? v.toFixed(1) : v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v));
+  const relTxt = r => (r > 0 ? '+' : '−') + Math.abs(Math.round(r * 100)) + '%';
+  const dayFmt = t => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  function renderBench(M) {
+    const P = benchPlan(M);
+    const T = state.settings.benchT;
+    const tierName = tier => E.badgeName(tier * 10, tiers());
+    const refName = P.br.ref ? tierName(P.br.ref.tier) + (P.br.ref.tier < 11 ? '+' : '') : null;
+    const brName = tierName(P.br.bracket.tier);
+    $('#bench-title').textContent = refName ? `You vs ${refName} on your heroes` : 'You vs your bracket on your heroes';
+    document.querySelectorAll('#bench-t button').forEach(b => b.setAttribute('aria-pressed', Number(b.dataset.t) === T));
+    const curve = k => k && state.curves[k] ? state.curves[k].c : null;
+
+    if (!M.all.length) { $('#bench-list').innerHTML = '<p class="muted">Loading your matches…</p>'; return; }
+    if (!P.heroes.length) {
+      $('#bench-list').innerHTML = `<p class="muted">No hero has ${E.MIN_HERO_GAMES}+ games in the last ${E.BENCH_WIDE_DAYS} days yet.</p>`;
+      return;
+    }
+    $('#bench-list').innerHTML = P.heroes.map(h => {
+      const mine = curve(h.keys.me), base = curve(h.keys.bracket), ref = curve(h.keys.ref);
+      const icon = heroIcon(h.hero);
+      const win = !h.widened ? `since the ${dayFmt(P.patchT)} patch · ${h.n} games`
+        : `last ${E.BENCH_WIDE_DAYS} days · ${h.n} games` + (h.spansPatch ? ', spans a patch' : '');
+      const head = `<div class="b-head">${icon ? `<img src="${icon}" alt="" width="28" height="28" loading="lazy">` : ''}
+        <b>${esc(heroName(h.hero))}</b><span class="muted small${h.widened ? ' widened' : ''}">${esc(win)}</span></div>`;
+      if (!mine || !base || (P.who.ref && !ref)) return `<div class="bench-hero">${head}<p class="muted small">Loading curves…</p></div>`;
+      const cmp = E.benchCompare(mine, base, ref);
+      const lines = !refName ? ''
+        : cmp.headlines.length
+        ? cmp.headlines.map(x => `<li class="${x.good ? 'pos' : 'neg'}"><b>${esc(x.label)} ${relTxt(x.rel)}</b> at ${x.t / 60} min <span class="muted">(${kfmt(x.you, x.key)} vs ${kfmt(x.ref, x.key)})</span></li>`).join('')
+        : `<li class="muted">On par with ${esc(refName)} at 15 and 20 min: no gap bigger than your normal game-to-game swing.</li>`;
+      const at = cmp.times[T];
+      const table = !at ? `<p class="muted small">None of your ${esc(heroName(h.hero))} games in this window reached ${T / 60} min.</p>` : `
+        <div class="table-wrap"><table class="heroes bench">
+          <thead><tr><th>At ${T / 60} min</th><th class="n">You</th><th class="n">${esc(brName)}</th>${refName ? `<th class="n">${esc(refName)}</th><th class="n">Gap</th>` : ''}</tr></thead>
+          <tbody>${at.rows.map(r => `<tr>
+            <td>${esc(r.label)}</td>
+            <td class="n"><b>${kfmt(r.you, r.key)}</b></td>
+            <td class="n muted">${r.bracket == null ? '—' : kfmt(r.bracket, r.key)}</td>
+            ${refName ? `<td class="n">${kfmt(r.ref, r.key)}</td>
+            <td class="n">${r.sig ? `<span class="${r.good ? 'pos' : 'neg'}">${relTxt(r.rel)}</span>` : '<span class="muted" title="Within your normal game-to-game swing">≈</span>'}</td>` : ''}
+          </tr>`).join('')}</tbody>
+        </table></div>
+        <p class="muted small">${at.n} of your games reached ${T / 60} min${T === 1800 ? ', so short games and stomps drop out here' : ''}.</p>`;
+      return `<div class="bench-hero">${head}<ul class="b-lines">${lines}</ul>${table}</div>`;
+    }).join('');
+  }
+
+  async function loadPatch() {
+    if (state.patch && Date.now() - state.patch.at < PATCH_TTL) return;
+    const t = E.lastBigPatch(await A.bigPatchDays(), Date.now() / 1000);
+    state.patch = { at: Date.now(), t };
+    S.set('patch', state.patch);
+  }
+
+  async function loadBench() {
+    const P = benchPlan(model());
+    const jobs = [];
+    for (const h of P.heroes) {
+      for (const k of ['me', 'bracket', 'ref']) {
+        const key = h.keys[k];
+        if (!key || !P.who[k]) continue;
+        const hit = state.curves[key];
+        if (hit && Date.now() - hit.at < CURVE_TTL) continue;
+        jobs.push({ key, hero: h.hero, from: h.from, who: P.who[k] });
+      }
+    }
+    for (let i = 0; i < jobs.length; i++) {
+      const j = jobs[i];
+      setStatus(`Loading benchmarks… ${i + 1}/${jobs.length}`);
+      state.curves[j.key] = { at: Date.now(), c: E.compactCurve(await A.curve(j.hero, j.from, j.who)) };
+      if (i % 3 === 2 || i === jobs.length - 1) render();
+    }
+    // Keep only the curves the current plan uses, so old windows don't pile up in localStorage.
+    const used = new Set(P.heroes.flatMap(h => Object.values(h.keys)));
+    for (const k of Object.keys(state.curves)) if (!used.has(k)) delete state.curves[k];
+    S.set('curves', state.curves);
+  }
+
   function renderFooter(M) {
     $('#blend').checked = state.settings.blend;
     $('#blend').closest('label').hidden = M.allMode;   // 'all' already uses every game
@@ -344,6 +449,8 @@
       await loadAssets();
       await loadHistory(force);
       render();
+      await loadPatch();
+      await loadBench();
       await loadLobbies();
       setStatus('');
     } catch (e) {
@@ -363,6 +470,11 @@
     const b = e.target.closest('button[data-g]');
     if (!b) return;
     state.settings.games = b.dataset.g; S.set('settings', state.settings); render(); refresh(false);
+  });
+  $('#bench-t').addEventListener('click', e => {
+    const b = e.target.closest('button[data-t]');
+    if (!b) return;
+    state.settings.benchT = Number(b.dataset.t); S.set('settings', state.settings); renderBench(model());
   });
   $('#refresh').addEventListener('click', () => refresh(true));
   $('#blend').addEventListener('change', e => {

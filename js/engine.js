@@ -306,10 +306,212 @@
     return sub ? name + ' ' + sub : name;
   }
 
+  // ---------------------------------------------------------------- pre-queue briefing
+
+  /* The launch notification: a few lines, rank-first, read in five seconds before queuing.
+     Everything is a count or an average. It says what moved and never why. */
+  const BRIEF_HERO_N = 10;              // a hero's "recent" = its last 10 season games
+  const BRIEF_ACTIVE_S = 30 * 86400;    // only heroes played in the last 30 days are worth naming
+  const BRIEF_MIN_SIDE = 8;             // both sides of a lever split need 8+ games
+
+  const fmtInt = n => String(Math.round(Math.abs(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const signedInt = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtInt(n);
+  const wl = ms => { const w = ms.filter(m => m.won).length; return { w, l: ms.length - w }; };
+
+  /* The stat that moved most on a hero: its last 5 games vs its earlier season games. Returns
+     a short phrase, or null when nothing moved by 10%+ or the sample is too thin. */
+  function heroStatShift(games) {
+    if (games.length < 8) return null;
+    const recent = games.slice(-5), before = games.slice(0, -5);
+    const spm = ms => mean(ms.map(m => m.souls / Math.max(1, m.dur / 60)));
+    const dpg = ms => mean(ms.map(m => m.d));
+    const cands = [
+      { a: spm(recent), b: spm(before), up: 'more souls/min', down: 'fewer souls/min', goodUp: true, fmt: x => fmtInt(x) },
+      { a: dpg(recent), b: dpg(before), up: 'dying more', down: 'dying less', goodUp: false, fmt: x => x.toFixed(1) },
+    ].map(c => Object.assign(c, { rel: c.b ? (c.a - c.b) / c.b : 0 }))
+      .filter(c => Math.abs(c.rel) >= 0.1)
+      .sort((x, y) => Math.abs(y.rel) - Math.abs(x.rel));
+    if (!cands.length) return null;
+    const c = cands[0];
+    return { text: `${c.a > c.b ? c.up : c.down} (${c.fmt(c.a)} vs ${c.fmt(c.b)})`, good: (c.a > c.b) === c.goodUp };
+  }
+
+  function briefing(ranked, lobbies, opts) {
+    const o = Object.assign({ now: Date.now() / 1000, heroName: id => 'Hero ' + id, tiers: null }, opts);
+    const season = seasonOf(ranked);
+    if (!season.length) return null;
+    const last = season[season.length - 1];
+    const unit = rankUnit(season);
+    const recent = season.slice(-COMPARE_N);
+    const r = wl(recent), net = recent.reduce((s, m) => s + (m.delta || 0), 0);
+    const title = `${badgeName(last.badge, o.tiers)} · last ${recent.length}: ${r.w}–${r.l}, ${signedInt(net)}`;
+
+    // Hot and cold heroes by rank points over each hero's recent games.
+    const byHero = new Map();
+    for (const m of season) { if (!byHero.has(m.hero)) byHero.set(m.hero, []); byHero.get(m.hero).push(m); }
+    const heroes = [...byHero].filter(([, ms]) => ms.length >= 4 && o.now - ms[ms.length - 1].t <= BRIEF_ACTIVE_S)
+      .map(([hero, ms]) => {
+        const g = ms.slice(-BRIEF_HERO_N);
+        return { hero, all: ms, g, net: g.reduce((s, m) => s + (m.delta || 0), 0), ...wl(g) };
+      });
+    const hot = heroes.filter(h => h.net >= unit).sort((a, b) => b.net - a.net)[0] || null;
+    const cold = heroes.filter(h => h.net <= -unit).sort((a, b) => a.net - b.net)[0] || null;
+    const heroLine = (h, verb) => {
+      const shift = heroStatShift(h.all);
+      return `${o.heroName(h.hero)} is ${verb}: ${h.w}–${h.l}, ${signedInt(h.net)} over its last ${h.g.length}` +
+        (shift ? `, ${shift.text}` : '');
+    };
+
+    // The lever: which lobby placement splits your wins most clearly this season.
+    let lever = null;
+    const placed = season.filter(m => lobbies[m.id]).map(m => ({ m, s: lobbyStats(lobbies[m.id]) }));
+    const splits = [
+      { name: 'top 3 in souls', test: x => x.s.ranks.souls <= 3 },
+      { name: 'one of the 2 fewest deaths in the lobby', test: x => x.s.ranks.deaths <= 2 },
+    ].map(sp => {
+      const yes = placed.filter(sp.test).map(x => x.m), no = placed.filter(x => !sp.test(x)).map(x => x.m);
+      if (yes.length < BRIEF_MIN_SIDE || no.length < BRIEF_MIN_SIDE) return null;
+      const a = wl(yes), b = wl(no);
+      const ra = a.w / yes.length, rb = b.w / no.length;
+      return { ...sp, a, b, ra, rb, gap: ra - rb };
+    }).filter(Boolean).sort((x, y) => y.gap - x.gap);
+    if (splits.length && splits[0].gap >= 0.15) {
+      const s = splits[0];
+      lever = `You win ${Math.round(s.ra * 100)}% when you're ${s.name} (${s.a.w}–${s.a.l}), ${Math.round(s.rb * 100)}% otherwise.`;
+    }
+
+    return {
+      title,
+      hot: hot ? heroLine(hot, 'gaining you rank') : null,
+      cold: cold ? heroLine(cold, 'costing you rank') : null,
+      lever,
+      lastId: last.id,
+    };
+  }
+
+  // ---------------------------------------------------------------- benchmark
+
+  /* You vs better players on the same hero, minute for minute. End-of-game averages are useless
+     here: win rate is ~50% at every rank and Phantom lobbies' totals look like Sentinel's because
+     their games are shorter. Matched game times do separate them, but only from Phantom up
+     (Sentinel → Emissary moved ~1% per tier when checked on 2026-10-21), so the reference is
+     Phantom+ and your own bracket is shown as the baseline.
+     Window per hero: games since the last big patch; under BENCH_MIN_PATCH of them it widens to
+     BENCH_WIDE_DAYS and says so; under MIN_HERO_GAMES even then, the hero isn't benchmarked.
+     A gap is only called when it beats 2 standard errors of YOUR mean (the reference averages
+     thousands of games, so its own error is negligible) and is at least 5%. */
+  const BENCH_MIN_PATCH = 8;
+  const BENCH_WIDE_DAYS = 60;
+  const BENCH_MAX_HEROES = 6;
+  const BENCH_TIMES = [900, 1200, 1800];   // 30 min only counts games that lasted that long
+  const BENCH_REL_FLOOR = 0.05;
+  /* Each stat = the curve's fields summed. Lane and jungle souls each come in two parts (creep
+     kills + the orbs you secure); those parts sum, with death losses, to net worth. Their SDs are
+     added, not combined in quadrature, which errs towards calling fewer gaps. */
+  const BENCH_STATS = [
+    { key: 'souls', label: 'Souls', f: ['net_worth'], higher: true },
+    { key: 'lane', label: 'Lane souls', f: ['gold_lane_creep', 'gold_lane_creep_orbs'], higher: true },
+    { key: 'jungle', label: 'Jungle souls', f: ['gold_neutral_creep', 'gold_neutral_creep_orbs'], higher: true },
+    { key: 'obj', label: 'Objective damage', f: ['boss_damage'], higher: true },
+    { key: 'dmg', label: 'Hero damage', f: ['player_damage'], higher: true },
+    { key: 'deaths', label: 'Deaths', f: ['deaths'], higher: false },
+  ];
+
+  /* The latest big-patch day at or before `now`, from /v1/patches/big-days (ISO strings). */
+  function lastBigPatch(days, now) {
+    const ts = (days || []).map(d => Date.parse(d) / 1000).filter(t => t <= now);
+    return ts.length ? Math.max(...ts) : null;
+  }
+
+  /* Whole days, so the widened window (and the curve cache keyed on it) only moves once a day. */
+  const benchWideFrom = now => Math.floor(now / 86400 - BENCH_WIDE_DAYS) * 86400;
+
+  function benchWindow(games, hero, patchT, now) {
+    const mine = games.filter(m => m.hero === hero);
+    const wideFrom = benchWideFrom(now);
+    if (patchT != null) {
+      const n = mine.filter(m => m.t >= patchT).length;
+      if (n >= BENCH_MIN_PATCH) return { hero, from: patchT, n, widened: false, spansPatch: false };
+    }
+    const from = patchT == null ? wideFrom : Math.min(patchT, wideFrom);
+    const n = mine.filter(m => m.t >= from).length;
+    if (n < MIN_HERO_GAMES) return null;
+    return { hero, from, n, widened: true, spansPatch: patchT != null && from < patchT };
+  }
+
+  /* Your most-played heroes over the wide window that qualify, most games first. */
+  function benchHeroes(games, patchT, now) {
+    const wideFrom = Math.min(patchT == null ? Infinity : patchT, benchWideFrom(now));
+    const count = new Map();
+    for (const m of games) if (m.t >= wideFrom) count.set(m.hero, (count.get(m.hero) || 0) + 1);
+    return [...count.keys()].map(h => benchWindow(games, h, patchT, now)).filter(Boolean)
+      .sort((a, b) => b.n - a.n || a.hero - b.hero).slice(0, BENCH_MAX_HEROES);
+  }
+
+  /* Lobby-average badge ranges for "your bracket" (your tier, all subranks) and the reference.
+     Phantom and Ascendant players get compared with Eternus; Eternus players have no one above. */
+  function benchBrackets(badge) {
+    const tier = badge == null ? 0 : Math.floor(badge / 10);
+    const bracket = { min: tier * 10 + 1, max: tier * 10 + 6, tier };
+    const ref = tier >= 11 ? null : tier >= 9 ? { min: 111, tier: 11 } : { min: 91, tier: 9 };
+    return { bracket, ref };
+  }
+
+  /* /v1/analytics/player-performance-curve (resolution=0) rows -> { [time]: { n, [stat]: [avg, sd] } }
+     for BENCH_TIMES only. A few hundred bytes instead of ~20KB. */
+  function compactCurve(rows) {
+    const out = {};
+    for (const r of rows || []) {
+      if (!BENCH_TIMES.includes(r.game_time)) continue;
+      const c = { n: r.samples || 0 };
+      for (const s of BENCH_STATS) {
+        c[s.key] = [s.f.reduce((x, f) => x + (r[f + '_avg'] || 0), 0), s.f.reduce((x, f) => x + (r[f + '_std'] || 0), 0)];
+      }
+      out[r.game_time] = c;
+    }
+    return out;
+  }
+
+  function benchCompare(mine, bracket, ref) {
+    const times = {};
+    for (const t of BENCH_TIMES) {
+      const me = mine && mine[t], vs = ref && ref[t], base = bracket && bracket[t];
+      if (!me || !me.n) continue;
+      times[t] = {
+        n: me.n,
+        rows: BENCH_STATS.map(s => {
+          const [you, sd] = me[s.key];
+          const r = vs ? vs[s.key][0] : null;
+          const gap = r == null ? null : you - r;
+          const rel = r ? gap / r : null;
+          const se = sd / Math.sqrt(me.n);
+          const sig = gap != null && me.n >= 2 && Math.abs(gap) > 2 * se && Math.abs(rel) >= BENCH_REL_FLOOR;
+          return { key: s.key, label: s.label, you, bracket: base ? base[s.key][0] : null, ref: r, gap, rel, sig,
+            good: gap == null ? null : (gap > 0) === s.higher };
+        }),
+      };
+    }
+    // Headlines: called gaps at 15 and 20 min (30 is long games only), behind first, biggest first,
+    // one per stat (its larger gap of the two times).
+    const best = new Map();
+    for (const t of [900, 1200]) {
+      for (const r of (times[t] ? times[t].rows : [])) {
+        if (!r.sig) continue;
+        const cur = best.get(r.key);
+        if (!cur || Math.abs(r.rel) > Math.abs(cur.rel)) best.set(r.key, Object.assign({ t }, r));
+      }
+    }
+    const headlines = [...best.values()].sort((a, b) => (a.good - b.good) || Math.abs(b.rel) - Math.abs(a.rel)).slice(0, 2);
+    return { times, headlines };
+  }
+
   const Engine = {
+    BENCH_TIMES, BENCH_STATS, BENCH_MIN_PATCH, BENCH_WIDE_DAYS,
+    lastBigPatch, benchWindow, benchHeroes, benchBrackets, compactCurve, benchCompare,
     ACCOUNT_ID, MIN_HERO_GAMES, COMPARE_N, QUADS, QUAD_LABEL, TAG_LABEL, TIER_NAMES,
     ladder, normalizeMatch, normalizeHistory, compactLobby, lobbyStats, perfScores, classify,
     seasonOf, sessionOf, windowsFor, summarize, rankUnit, verdict, rankSeries, heroBreakdown, badgeName,
+    heroStatShift, briefing,
   };
   root.Engine = Engine;
   if (typeof module === 'object' && module.exports) module.exports = Engine;

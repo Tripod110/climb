@@ -29,7 +29,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Climb">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <main>
@@ -98,6 +98,17 @@
   </section>
 
   <section class="card">
+    <h2 id="bench-title">You vs better players on your heroes</h2>
+    <p class="muted small">Your average game on each hero, minute by minute, next to lobbies of your rank and lobbies two-plus tiers above, over the same dates. Below Phantom the numbers barely move between ranks, so that's where the comparison starts. A gap is only called when it's bigger than your normal game-to-game swing.</p>
+    <nav id="bench-t" class="tabs" aria-label="Game time">
+      <button type="button" data-t="900">15 min</button>
+      <button type="button" data-t="1200">20 min</button>
+      <button type="button" data-t="1800">30 min</button>
+    </nav>
+    <div id="bench-list"></div>
+  </section>
+
+  <section class="card">
     <details class="how">
       <summary><h2>How this works</h2></summary>
       <ul>
@@ -106,6 +117,7 @@
         <li><b>Tags</b> (Farmer, Damage, Playmaker, Survivor, Support) mean you placed top 3 (top 2 for Survivor and Support) in that one lobby. They're for bragging and don't change the verdict.</li>
         <li><b>The verdict</b> combines rank points, form and consistency (how many rough games you had), each compared with the window before. Climbing puts you in harder lobbies, so if your lobbies got 3+ subranks tougher, placing lower there isn't counted against you.</li>
         <li><b>Ranked / All games</b>: "All games" adds your unranked matches (since the ranked season began) to form, consistency, the game list and heroes. Rank points only ever come from ranked games, and the rank chart stays ranked-only.</li>
+        <li><b>Benchmark</b> uses your games since the last big patch. A hero with fewer than 8 of those widens to the last 60 days (labelled), and one with fewer than 5 even then is left out. It counts ranked and unranked games, whatever the switch above says.</li>
         <li>It never guesses <i>why</i> a game went the way it did. For that, use POSTMORTEM.</li>
       </ul>
     </details>
@@ -114,11 +126,11 @@
     <p class="muted small">Data from <a href="https://deadlock-api.com" rel="noopener" target="_blank">deadlock-api.com</a>. New games can take a while to show up there.</p>
   </section>
 </main>
-<script src="js/engine.js?v=3"></script>
-<script src="js/store.js?v=3"></script>
-<script src="js/api.js?v=3"></script>
-<script src="js/play.js?v=3"></script>
-<script src="js/charts.js?v=3"></script>
-<script src="js/app.js?v=3"></script>
+<script src="js/engine.js?v=4"></script>
+<script src="js/store.js?v=4"></script>
+<script src="js/api.js?v=4"></script>
+<script src="js/play.js?v=4"></script>
+<script src="js/charts.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
 </body>
 </html>

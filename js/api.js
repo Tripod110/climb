@@ -1,5 +1,5 @@
 /* api.js — the only file that talks to the network: deadlock-api.com, plus the Climb helper on
-   127.0.0.1 if this PC runs one (the CSP in index.html enforces that). Every call is either one-off (match history, assets) or batched
+   127.0.0.1 if this PC runs one (the CSP in index.html enforces that). Every call is either one-off (match history, assets, benchmark curves) or batched
    (lobby metadata, 30 matches per request) because the API's limits are shared and tight:
    the bulk metadata endpoint allows 30 requests/min per IP. */
 (function (root) {
@@ -44,6 +44,15 @@
        the whole time series. Still ~80KB per match, which is why we compact it immediately. */
     metadata: ids => polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true' +
       '&include_player_kda=true&include_player_final_stats=true&match_ids=' + ids.join(','))),
+    bigPatchDays: () => polite(() => getJSON('/v1/patches/big-days')),
+    /* Per-time-point stats for one hero, at absolute game times. `who` is either
+       { account: id } or { minBadge, maxBadge } (lobby average). Analytics share a 200/min limit
+       and the server caches each query for an hour. */
+    curve: (hero, from, who) => polite(() => getJSON('/v1/analytics/player-performance-curve?resolution=0&game_mode=normal' +
+      '&hero_ids=' + hero + '&min_unix_timestamp=' + Math.floor(from) +
+      (who.account ? '&account_ids=' + who.account : '') +
+      (who.minBadge ? '&min_average_badge=' + who.minBadge : '') +
+      (who.maxBadge ? '&max_average_badge=' + who.maxBadge : ''))),
     /* The local helper (helper/helper.py) on this PC. Resolves to null when it isn't running or
        this device doesn't have one (phone), so callers just hide what needs it. */
     helper: async () => {
