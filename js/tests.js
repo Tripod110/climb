@@ -250,6 +250,39 @@
     eq('missing data: null row', E.rankLadder(7, 1800, mine, tiers, 4).rows.find(r => r.key === 'souls').you, null);
   }
 
+  // ---------------------------------------------------------------- coach debrief
+  {
+    eq('zone: Amber deep in -y = near own base', E.mapZone(0, -9000, 0), 'near your base, centre');
+    eq('zone: same spot for Sapphire = near enemy base', E.mapZone(0, -9000, 1), 'near the enemy base, centre');
+    eq('zone: east, mid-map', E.mapZone(7000, 500, 0), 'mid-map, east side');
+    const ME = 555;
+    const snaps = (k) => [[360, 3000 * k, 1, 0, 0, 1000, 2000, 100, 30], [720, 8000 * k, 2, 1, 1, 4000, 4500, 600, 70]];
+    const meta = {
+      duration_s: 1500, winning_team: 'Team1',
+      players: [
+        { player_slot: 1, team: 'Team0', hero_id: 7, assigned_lane: 4, account_id: ME,
+          stats: snaps(1).map(s => ({ time_stamp_s: s[0], net_worth: s[1], kills: s[2], deaths: s[3], assists: s[4], player_damage: s[5], gold_lane_creep: s[6], gold_neutral_creep: s[7], creep_kills: s[8] })),
+          items: [{ game_time_s: 400, item_id: 11, sold_time_s: 0 }, { game_time_s: 90, item_id: 10, sold_time_s: 700 }, { game_time_s: 5, item_id: 999 }],
+          death_details: [{ game_time_s: 283, killer_player_slot: 2, death_pos: [7000, 500, 0], time_to_kill_s: 3.14 }] },
+        { player_slot: 2, team: 'Team1', hero_id: 8, assigned_lane: 4, account_id: 2,
+          stats: snaps(1.5).map(s => ({ time_stamp_s: s[0], net_worth: s[1] })) },
+      ],
+    };
+    const D = E.compactMatchDetail(meta, ME);
+    eq('detail keeps my deaths', D.players[0].deaths, [[283, 2, 7000, 500, 3.1]]);
+    eq('detail drops other players’ items', D.players[1].items, null);
+    const pl = (team, o) => Object.assign([team, 10000, 2, 1, 1, 4000, 0, 7, 500, 0, 0, 0, 0, 4, 50, 0], o || {});
+    const L = { v: E.LOBBY_V, me: 0, avgBadge: 43, dur: 1500, win: 1, p: [pl(0, { 7: 7, 15: ME }), pl(1, { 7: 8, 15: 2 })] };
+    const m = { hero: 7, won: false, mode: 'ranked', delta: -250, dur: 1500, k: 2, d: 1, a: 1, souls: 10000, lh: 70 };
+    const b = E.debriefBrief(m, L, D, E.gameRole(L, false), null, { heroName: id => ({ 7: 'Haze', 8: 'Lash' })[id], items: { 10: ['Headshot Booster', 'weapon', 1, 800], 11: ['Mystic Burst', 'spirit', 1, 800] }, tierName: t => E.TIER_NAMES[t] });
+    eq('brief: death with killer + zone + clock', b.deaths, [{ at: '4:43', killed_by: 'Lash', where: 'mid-map, east side', seconds_to_die: 3.1 }]);
+    eq('brief: items in time order, unknown ids dropped', b.item_buys.map(x => x.item + (x.sold_at ? '>' + x.sold_at : '')), ['Headshot Booster>11:40', 'Mystic Burst']);
+    eq('brief: lane opponent souls', b.economy_timeline[0].lane_opponents_avg_souls, 4500);
+    eq('brief: lobby rank named', b.match.lobby_average_rank, 'Sentinel');
+    eq('brief: you marked on your team', b.your_team.filter(r => r.is_you).length, 1);
+    ok('brief has no ladder unless given', !('hero_vs_ranks' in b));
+  }
+
   // ---------------------------------------------------------------- misc
   eq('badge 42 = Sentinel 2', E.badgeName(42), 'Sentinel 2');
   eq('badge 24 = Seeker 4', E.badgeName(24), 'Seeker 4');

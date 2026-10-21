@@ -261,6 +261,25 @@ a.mrow.l::before { background: var(--bad); }
 .sb .hero-ic { width: 26px; height: 26px; border-radius: 6px; }
 .you-tag { font-size: 10.5px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
 
+/* ---------------------------------------------------------------- coach */
+.coach { border-top: 2px solid var(--accent); }
+.coach-sum { font-size: 16px; font-weight: 600; margin: 0 0 14px; max-width: 760px; }
+.coach-pts { list-style: none; padding: 0; margin: 0 0 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.coach-pts li { background: var(--raised); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+.coach-pts li.good { box-shadow: inset 3px 0 0 var(--good); }
+.coach-pts li.bad { box-shadow: inset 3px 0 0 var(--bad); }
+.cp-title { font-weight: 650; }
+.coach-pts li.good .cp-title { color: var(--good-text); }
+.coach-pts li.bad .cp-title { color: var(--bad-text); }
+.cp-ev { font-size: 13px; }
+.cp-fix { font-size: 13.5px; }
+.coach-focus { background: var(--wash); border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; display: grid; gap: 4px; font-weight: 600; }
+.coach-busy { display: flex; align-items: center; gap: 10px; }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-2); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.field { display: grid; gap: 4px; margin: 10px 0; }
+.field select { height: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
+
 /* ---------------------------------------------------------------- heroes */
 .hero-pick { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 12px; margin-bottom: 8px; scrollbar-width: thin; }
 .hp {
@@ -364,6 +383,7 @@ a.mrow.l::before { background: var(--bad); }
   .tiles-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .role-legend { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .shares { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .coach-pts { grid-template-columns: minmax(0, 1fr); }
   .mrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px; row-gap: 4px; }
   .mrow > :nth-child(2), .mrow > :nth-child(5), .mrow > :nth-child(9) { display: none; }
   .mhead { display: none; }

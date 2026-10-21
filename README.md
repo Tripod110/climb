@@ -28,6 +28,14 @@ per page; every number comes from `js/engine.js` (tests: `node js/tests.js`).
   For each stat it marks behind / on par / ahead of your rank and the next one, and which rank
   it "plays like".
 - **Play time**: the helper-backed play tracker (below).
+- **AI coach** (match page, "Coach me"): `Engine.debriefBrief` builds a ~5 KB factual brief from
+  `/v1/matches/metadata` with items, death details and stat snapshots. It includes deaths with
+  time, killer, coarse map zone (`mapZone`) and time-to-kill, item buys, souls vs lane opponents,
+  both scoreboards, form vs your usual, and the hero's rank-ladder gaps. `js/coach.js` sends it
+  to Gemini with `DEBRIEF_SYSTEM` (use only the brief's facts) and the JSON `DEBRIEF_SCHEMA`
+  (summary, 3 points, focus).
+  - The key is the user's own: pasted in About, stored in `climb.coach` in this browser, never in
+    the repo. Results are cached per match in `climb.<account>.debriefs`.
 
 ## The model
 

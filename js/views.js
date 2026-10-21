@@ -287,7 +287,37 @@
               : `<p class="muted small">Form vs your usual appears once you have ${E.MIN_HERO_GAMES}+ games on this hero.</p>`}
         </section>
       </div>
+      ${coachCard(c, m)}
       <section class="card flush scoreboard">${team(myTeam)}${team(1 - myTeam)}</section>`;
+    const cb = host.querySelector('[data-coach]');
+    if (cb) cb.addEventListener('click', () => c.runDebrief(m.id, cb.dataset.coach === 'again'));
+  }
+
+  function coachCard(c, m) {
+    const st = c.state, d = st.debriefs[m.id], busy = st.coaching[m.id];
+    const head = '<div class="card-head"><div><div class="t-label">AI coach</div><h2>Debrief</h2></div>';
+    if (!st.coach.key) {
+      return `<section class="card coach">${head}</div><p class="muted">Get three specific points on this match: what decided it, what you did well, and one thing to change next game. It reads your deaths, item timings, souls vs your lane opponents and your gaps against the next rank.</p>
+        <p><a class="more" href="#/about">Add your Gemini API key in Account & about →</a></p></section>`;
+    }
+    if (busy) return `<section class="card coach">${head}</div><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(busy)}</p></section>`;
+    if (!d) {
+      return `<section class="card coach">${head}<button type="button" class="btn" data-coach="go">Coach me</button></div>
+        <p class="muted small">Sends a ~5 KB summary of this match to Gemini (${c.esc(st.coach.model)}) with your key. About 15 seconds.</p></section>`;
+    }
+    if (d.error) {
+      return `<section class="card coach">${head}<button type="button" class="btn ghost-btn" data-coach="again">Try again</button></div><p class="neg">${c.esc(d.error)}</p></section>`;
+    }
+    const x = d.data;
+    return `<section class="card coach">${head}<button type="button" class="btn ghost-btn" data-coach="again" title="Ask again">↻ Redo</button></div>
+      <p class="coach-sum">${c.esc(x.summary)}</p>
+      <ol class="coach-pts">${(x.points || []).map(p => `<li class="${p.kind === 'strength' ? 'good' : 'bad'}">
+        <div class="cp-title">${p.kind === 'strength' ? '▲' : '▼'} ${c.esc(p.title)}</div>
+        <div class="cp-ev muted">${c.esc(p.evidence)}</div>
+        <div class="cp-fix"><b>Next game:</b> ${c.esc(p.fix)}</div></li>`).join('')}</ol>
+      <div class="coach-focus"><span class="t-label">Focus next ${c.esc(c.heroName(m.hero))} game</span><div>${c.esc(x.focus_next_game)}</div></div>
+      <p class="muted small">Gemini ${c.esc(d.model)} · ${c.ago(d.at / 1000)}${d.tokens ? ' · ' + c.fmtInt(d.tokens) + ' tokens' : ''}. It only sees this match’s numbers, so treat it as a second opinion, not gospel.</p>
+    </section>`;
   }
 
   // ---------------------------------------------------------------- heroes + rank ladder
@@ -439,6 +469,16 @@
           <div id="acct-results"></div>
           <p class="muted small">Each account keeps its own cache in this browser. Nothing leaves your device except requests to deadlock-api.com.</p>
         </section>
+        <section class="card"><h2>AI coach (Gemini)</h2>
+          ${st.coach.key ? `<p>Key saved in this browser · ${st.coach.models.length} models available</p>
+            <label class="field"><span class="muted small">Model</span><select id="coach-model">${st.coach.models.map(m => `<option value="${c.esc(m.id)}"${m.id === st.coach.model ? ' selected' : ''}>${c.esc(m.label)} (${c.esc(m.id)})</option>`).join('')}</select></label>
+            <button type="button" class="btn ghost-btn" id="coach-clear">Remove key</button>`
+          : `<p class="muted small">Paste your own Gemini API key (from Google AI Studio). It’s stored only in this browser and sent only to Google, never anywhere else. Match summaries you debrief go to Google with it.</p>
+            <form id="coach-form" class="acct-form small-form" autocomplete="off">
+              <input id="coach-key" type="password" placeholder="Gemini API key" spellcheck="false" autocomplete="off">
+              <button type="submit" class="btn">Save</button>
+            </form><p id="coach-msg" class="small"></p>`}
+        </section>
         <section class="card"><h2>Data</h2>
           <p class="muted small">${c.M.all.length} matches on record · ${lob.filter(L => L && L.v === E.LOBBY_V).length} lobbies read${st.history ? ` · history updated ${c.ago(st.history.at / 1000)}` : ''}</p>
           <label class="toggle"><input type="checkbox" id="blend"${S.blend ? ' checked' : ''}${S.games === 'all' ? ' disabled' : ''}> Blend unranked games (last 120 days) into hero baselines when “Ranked” is selected</label>
@@ -472,6 +512,18 @@
       } catch (err) { out.innerHTML = `<p class="neg">Couldn’t search right now: ${c.esc(err.message)}</p>`; }
     });
     host.querySelector('#blend').addEventListener('change', e => { S.blend = e.target.checked; c.save(); });
+    const cf = host.querySelector('#coach-form');
+    if (cf) cf.addEventListener('submit', async e => {
+      e.preventDefault();
+      const msg = host.querySelector('#coach-msg');
+      msg.className = 'small muted'; msg.textContent = 'Checking the key…';
+      const r = await c.saveCoachKey(host.querySelector('#coach-key').value);
+      if (r && r.error) { msg.className = 'small neg'; msg.textContent = r.error; }
+    });
+    const sel = host.querySelector('#coach-model');
+    if (sel) sel.addEventListener('change', e => c.setCoachModel(e.target.value));
+    const clr = host.querySelector('#coach-clear');
+    if (clr) clr.addEventListener('click', () => c.clearCoach());
   }
 
   root.Views = { welcome, overview, matches, match, heroes, play, about };

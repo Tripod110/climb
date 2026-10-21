@@ -3,7 +3,7 @@
    and only turn the model into HTML; every number comes from Engine so the tests cover it. */
 (function () {
   'use strict';
-  const E = window.Engine, A = window.Api, S = window.Store, C = window.Charts, P = window.Play, V = window.Views;
+  const E = window.Engine, A = window.Api, S = window.Store, C = window.Charts, P = window.Play, V = window.Views, K = window.Coach;
   const LOG = window.CHANGELOG || [];
   const VERSION = LOG.length ? LOG[0].v : 0;
   const HISTORY_TTL = 3 * 60 * 1000;
@@ -29,6 +29,9 @@
   S.set('settings', settings);
 
   const state = {
+    coach: S.get('coach', { key: '', model: null, models: [] }),   // your Gemini key: this browser only
+    items: S.get('items', null),          // { at, map: compactItems }
+    coaching: {},                         // matchId -> 'working' while a debrief runs
     settings,
     assets: S.get('assets', null),        // { at, heroes: {id: {name, icon}}, tiers: [names] }
     patch: S.get('patch', null),          // { at, t }: the last big patch day
@@ -44,6 +47,7 @@
     state.lobbies = S.getData('lobbies', {});       // { matchId: compactLobby | null }
     state.curves = S.getData('curves', {});         // { key: { at, c } } curves + hero stats
     state.profile = S.getData('profile', null);     // { at, name, avatar, rank }
+    state.debriefs = S.getData('debriefs', {});     // { matchId: { at, model, data } | { error } }
   }
   loadAccountData();
 
@@ -87,6 +91,7 @@
     kfmt: v => v == null ? '—' : Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v)),
     ago: t => {
       const s = Date.now() / 1000 - t;
+      if (s < 60) return 'just now';
       if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm ago';
       if (s < 86400) return Math.round(s / 3600) + 'h ago';
       if (s < 86400 * 14) return Math.round(s / 86400) + 'd ago';
@@ -95,7 +100,7 @@
     go: hash => { if (location.hash !== hash) location.hash = hash; else render(); },
     save: () => S.set('settings', settings),
     render: () => render(),
-    benchPlan, ensureHeroLadder, searchAccount, setAccount,
+    benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach,
   };
 
   // ---------------------------------------------------------------- routing + render
@@ -298,6 +303,70 @@
       setStatus(e.waitMs ? 'deadlock-api is rate-limiting. Try again in a minute.' : 'Couldn’t load the rank comparison: ' + e.message);
     } finally {
       ladderBusy = null;
+      render();
+    }
+  }
+
+  // ---------------------------------------------------------------- coach (Gemini)
+  async function saveCoachKey(key) {
+    key = String(key || '').trim();
+    if (!key) return { error: 'Paste a key first.' };
+    try {
+      const list = await K.models(key);
+      if (!list.length) return { error: 'That key works, but it can’t reach any Gemini text models.' };
+      state.coach = { key, models: list, model: K.pickDefault(list) };
+      S.set('coach', state.coach);
+      render();
+      return { ok: true };
+    } catch (e) { return { error: e.message }; }
+  }
+  function setCoachModel(id) { state.coach.model = id; S.set('coach', state.coach); }
+  function clearCoach() { state.coach = { key: '', model: null, models: [] }; S.set('coach', state.coach); render(); }
+
+  async function loadItems() {
+    if (state.items && Date.now() - state.items.at < ASSET_TTL) return;
+    state.items = { at: Date.now(), map: E.compactItems(await A.upgradeItems()) };
+    S.set('items', state.items);
+  }
+
+  /* Debrief one match: full match detail + item names + (if loadable) your rank ladder on that
+     hero -> a compact brief -> Gemini -> cached per match. `force` re-asks. */
+  async function runDebrief(matchId, force) {
+    if (state.coaching[matchId]) return;
+    if (!state.coach.key || !state.coach.model) return;
+    if (!force && state.debriefs[matchId] && state.debriefs[matchId].data) return;
+    const M = model();
+    const m = M.all.find(x => x.id === matchId);
+    const L = state.lobbies[matchId];
+    if (!m || !L || L.v !== E.LOBBY_V) return;
+    state.coaching[matchId] = 'Reading the match…'; render();
+    try {
+      const [meta] = await Promise.all([A.matchDetail(matchId), loadItems()]);
+      const D = meta && E.compactMatchDetail(meta, settings.account);
+      if (!D) throw new Error('deadlock-api has no detailed data for this match yet.');
+      state.coaching[matchId] = 'Comparing with your rank…'; render();
+      let ladder = null;
+      const yourTier = M.badge ? Math.floor(M.badge / 10) : 0;
+      try {
+        await ensureHeroLadder(m.hero);
+        const plan = benchPlan(M, m.hero), k = ladderKeys(m.hero, plan.from, settings.account);
+        const get = key => state.curves[key] ? state.curves[key].c : null;
+        const tiersData = {};
+        for (const t of E.LADDER_TIERS) tiersData[t] = { curve: get(k.tiers[t].curve), stats: get(k.tiers[t].stats) };
+        const mine = { curve: get(k.me), stats: get(k.meStats) };
+        if (mine.curve && mine.stats) ladder = E.rankLadder(m.hero, 1200, mine, tiersData, yourTier);
+      } catch (e) { /* the debrief still works without the ladder */ }
+      const brief = E.debriefBrief(m, L, D, E.gameRole(L, m.won), M.perf.get(m.id), {
+        heroName, items: state.items.map, tierName: ctx.tierName, ladder, yourTier,
+      });
+      state.coaching[matchId] = 'Coach is thinking…'; render();
+      const out = await K.json(state.coach.key, state.coach.model, E.DEBRIEF_SYSTEM, JSON.stringify(brief), E.DEBRIEF_SCHEMA);
+      state.debriefs[matchId] = { at: Date.now(), model: state.coach.model, data: out.data, tokens: out.usage && out.usage.totalTokenCount };
+    } catch (e) {
+      state.debriefs[matchId] = { at: Date.now(), error: e.message };
+    } finally {
+      delete state.coaching[matchId];
+      S.setData('debriefs', state.debriefs);
       render();
     }
   }

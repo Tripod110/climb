@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 7, date: '2026-10-21', title: 'AI coach: match debriefs',
+      items: [
+        'Every match page has a “Coach me” button. Gemini reads that game (your deaths and where they happened, item timings, souls vs your lane opponents, your gaps against the next rank on that hero) and gives three specific points plus one focus for your next game.',
+        'Uses your own Gemini API key, added in Account & about. It stays in this browser and is only ever sent to Google.',
+      ],
+    },
+    {
       v: 6, date: '2026-10-21', title: 'Rebuilt: tabs, any Steam account, rank ladder',
       items: [
         'Climb is now four tabs at the top (Overview, Matches, Heroes, Play time) instead of one long page.',

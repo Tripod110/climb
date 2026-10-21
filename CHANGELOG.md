@@ -4,6 +4,19 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v7 (2026-10-21): AI coach, match debriefs
+- Each match page has a "Coach me" button. Gemini gets a ~5 KB brief of that game and returns three
+  specific points (strengths and mistakes, each tied to a number) plus one focus for your next game.
+  The brief covers:
+  - your deaths, with time, killer, map zone and how fast you died;
+  - your item buys in order;
+  - souls vs your lane opponents at 6, 9, 12, 15, 20, 25 and 30 min;
+  - both scoreboards;
+  - your gaps against the next rank on that hero.
+- Uses your own Gemini key, set in Account & about. It's stored in this browser only and sent only
+  to Google. Debriefs are cached per match.
+- The coach is told to use only facts in the brief and never to invent hero, item or patch details.
+
 ## v6 (2026-10-21): Rebuilt with tabs, any Steam account, and a rank ladder
 - The single long page is replaced by four tabs: Overview, Matches, Heroes and Play time. Account
   and About open from the avatar.

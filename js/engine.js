@@ -734,7 +734,156 @@
     return { rows, behind, ahead, toNext };
   }
 
+  // ---------------------------------------------------------------- coach debrief (AI)
+
+  /* The AI coach only ever sees what this section hands it: a compact, factual brief of one
+     match. Everything is computed here (pure, tested); coach.js just sends it. The rules in
+     DEBRIEF_SYSTEM forbid using anything not in the brief, because general models know little
+     about Deadlock and patches move fast. */
+
+  /* /v1/assets/items/by-type/upgrade -> { id: [name, slot, tier, cost] } */
+  function compactItems(rows) {
+    const out = {};
+    for (const i of rows || []) if (i && i.id && i.name) out[i.id] = [i.name, i.item_slot_type || '', i.item_tier || 0, i.cost || 0];
+    return out;
+  }
+
+  /* Full metadata for one match (items, death details, stat snapshots) -> what the brief needs.
+     Snapshots: [t, souls, kills, deaths, assists, heroDamage, laneSouls, jungleSouls, lastHits]. */
+  function compactMatchDetail(meta, accountId) {
+    const teamNum = t => (typeof t === 'number' ? t : String(t).endsWith('1') ? 1 : 0);
+    const players = (meta.players || []).map(p => ({
+      slot: p.player_slot, team: teamNum(p.team), hero: p.hero_id, lane: p.assigned_lane || 0, acct: p.account_id,
+      snaps: (p.stats || []).map(s => [s.time_stamp_s, s.net_worth || 0, s.kills || 0, s.deaths || 0, s.assists || 0, s.player_damage || 0,
+        (s.gold_lane_creep || 0) + (s.gold_lane_creep_orbs || 0), (s.gold_neutral_creep || 0) + (s.gold_neutral_creep_orbs || 0), s.creep_kills || 0]),
+      items: p.account_id === accountId ? (p.items || []).map(x => [x.game_time_s, x.item_id, x.sold_time_s || 0]) : null,
+      deaths: p.account_id === accountId ? (p.death_details || []).map(d => [d.game_time_s, d.killer_player_slot,
+        Math.round((d.death_pos || [])[0] || 0), Math.round((d.death_pos || [])[1] || 0), Math.round((d.time_to_kill_s || 0) * 10) / 10]) : null,
+    }));
+    const me = players.find(p => p.acct === accountId);
+    if (!me) return null;
+    return { v: 1, dur: meta.duration_s || 0, win: meta.winning_team == null ? null : teamNum(meta.winning_team), players };
+  }
+
+  /* World position -> a coarse zone a player can picture, from that player's side. The map is a
+     circle (radius ~10.7k) with Amber's base at -y and Sapphire's at +y; lanes run along y at
+     x ≈ -7k, 0 and +7k. Coarse on purpose: it says where, not exactly where. */
+  function mapZone(x, y, team) {
+    const own = team === 0 ? -y : y;   // + = towards your own base
+    const half = own > 7500 ? 'near your base' : own > 1500 ? 'your half' : own < -7500 ? 'near the enemy base' : own < -1500 ? 'enemy half' : 'mid-map';
+    const side = x < -3000 ? 'west side' : x > 3000 ? 'east side' : 'centre';
+    return `${half}, ${side}`;
+  }
+
+  const clock = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+  /* -> a plain object; JSON.stringify of it is the user message. opts: heroName, items (compact),
+     tierName, ladder (rankLadder result at 20 min, optional), yourTier. */
+  function debriefBrief(m, L, D, g, perf, opts) {
+    const o = Object.assign({ heroName: id => 'Hero ' + id, items: {}, tierName: t => 'Tier ' + t, ladder: null, yourTier: 0 }, opts);
+    const me = D.players.find(p => p.acct === (L.p[L.me][15] || null)) || D.players.find(p => p.items);
+    const bySlot = new Map(D.players.map(p => [p.slot, p]));
+    const nm = id => o.heroName(id);
+    const snapAt = (p, t) => { let best = null; for (const s of p.snaps) if (s[0] <= t) best = s; return best; };
+    const laneOpp = D.players.filter(p => p.team !== me.team && p.lane === me.lane);
+    const laneMate = D.players.filter(p => p.team === me.team && p.lane === me.lane && p !== me);
+    const econ = [360, 540, 720, 900, 1200, 1500, 1800].filter(t => t <= D.dur).map(t => {
+      const s = snapAt(me, t);
+      if (!s) return null;
+      const opp = laneOpp.map(p => snapAt(p, t)).filter(Boolean);
+      const teamS = D.players.filter(p => p.team === me.team).map(p => snapAt(p, t)).filter(Boolean);
+      const enemyS = D.players.filter(p => p.team !== me.team).map(p => snapAt(p, t)).filter(Boolean);
+      return {
+        at: clock(t), your_souls: s[1], lane_souls: s[6], jungle_souls: s[7], k_d_a: `${s[2]}/${s[3]}/${s[4]}`,
+        lane_opponents_avg_souls: opp.length ? Math.round(mean(opp.map(x => x[1]))) : null,
+        team_souls_total: teamS.reduce((a, x) => a + x[1], 0), enemy_souls_total: enemyS.reduce((a, x) => a + x[1], 0),
+      };
+    }).filter(Boolean);
+    const deaths = (me.deaths || []).map(([t, slot, x, y, ttk]) => {
+      const k = bySlot.get(slot);
+      return { at: clock(t), killed_by: k ? nm(k.hero) : 'unknown', where: mapZone(x, y, me.team), seconds_to_die: ttk };
+    });
+    const items = (me.items || []).filter(([, id]) => o.items[id]).sort((x, y) => x[0] - y[0]).map(([t, id, sold]) => {
+      const it = o.items[id];
+      return Object.assign({ at: clock(t), item: it[0], slot: it[1], tier: it[2] }, sold ? { sold_at: clock(sold) } : {});
+    });
+    const row = r => ({ hero: nm(r[7]), k_d_a: `${r[2]}/${r[3]}/${r[4]}`, souls: r[1], hero_damage: r[5], healing: r[6], objective_damage: r[8], valve_mvp: r[12] || 0 });
+    const team = t => L.p.filter(r => r[0] === t).map(r => Object.assign(row(r), r === L.p[L.me] ? { is_you: true } : {}));
+    const brief = {
+      match: {
+        hero: nm(m.hero), result: m.won ? 'win' : 'loss', duration: clock(D.dur || m.dur), mode: m.mode,
+        rank_points_change: m.delta, lobby_average_rank: L.avgBadge ? o.tierName(Math.floor(L.avgBadge / 10)) : null,
+      },
+      you: {
+        k_d_a: `${m.k}/${m.d}/${m.a}`, souls: m.souls, last_hits: m.lh,
+        climb_role: g ? ROLE_LABEL[g.role] : null,
+        climb_role_meaning: g ? ROLE_NOTE[g.role] : null,
+        impact_vs_average_teammate: g ? Math.round(g.impact * 100) / 100 : null,
+        impact_rank_on_team: g ? `${g.teamRank} of ${g.teamSize}` : null,
+        share_vs_average_teammate: g ? Object.fromEntries(Object.entries(g.r).map(([k, v]) => [k, Math.round(v * 100) + '%'])) : null,
+        tags: g ? g.tags.map(t => TAG2_LABEL[t]) : [],
+        accuracy_pct: L.p[L.me][14] || null,
+        lane_partners: laneMate.map(p => nm(p.hero)),
+        lane_opponents: laneOpp.map(p => nm(p.hero)),
+      },
+      vs_your_usual_on_this_hero: perf ? Object.assign({ games_compared: perf.base },
+        Object.fromEntries(Object.entries(perf.z).filter(([, v]) => v != null).map(([k, v]) => [{ souls: 'souls', dmg: 'damage', ka: 'kills_assists', deaths: 'staying_alive' }[k], Math.round(v * 10) / 10]))) : null,
+      economy_timeline: econ,
+      deaths,
+      item_buys: items,
+      your_team: team(L.p[L.me][0]),
+      enemy_team: team(1 - L.p[L.me][0]),
+    };
+    if (o.ladder) {
+      brief.hero_vs_ranks = {
+        note: `Your recent average on ${nm(m.hero)} vs the average ${nm(m.hero)} game in each rank's lobbies, at 20 min (win rate and accuracy whole-game). Your rank: ${o.yourTier ? o.tierName(o.yourTier) : 'unranked'}.`,
+        stats: o.ladder.rows.filter(r => r.you != null).map(r => ({
+          stat: r.label, you: Math.round(r.you * 100) / 100,
+          your_rank_avg: r.own && r.own.v != null ? Math.round(r.own.v * 100) / 100 : null,
+          next_rank_avg: r.next && r.next.v != null ? Math.round(r.next.v * 100) / 100 : null,
+          vs_next_rank: r.next ? r.next.status : null,
+        })),
+      };
+    }
+    return brief;
+  }
+
+  const DEBRIEF_SYSTEM = [
+    'You are a blunt, specific Deadlock coach reviewing ONE match for the player marked is_you.',
+    'Rules:',
+    '- Use ONLY facts in the brief. Every point must cite at least one number or time from it.',
+    '- Never invent hero abilities, item effects, map details or patch facts. Only name items and heroes that appear in the brief.',
+    '- Zones are coarse ("enemy half, east side"); do not claim more precision than that.',
+    '- Prefer the pattern that cost the most: early deaths, souls falling behind lane opponents, late core items, dying fast (low seconds_to_die = caught out).',
+    '- If the player played well, say so plainly, then give the one thing that would have made it better.',
+    '- "fix" is one concrete thing to do next game, phrased as an instruction.',
+    '- Plain words, no hype, no emojis. Short.',
+  ].join('\n');
+
+  const DEBRIEF_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      summary: { type: 'STRING', description: 'One sentence: what decided this game for the player.' },
+      points: {
+        type: 'ARRAY', minItems: 3, maxItems: 3,
+        items: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING', description: 'A few words.' },
+            evidence: { type: 'STRING', description: 'The numbers/times from the brief that show it.' },
+            fix: { type: 'STRING', description: 'One concrete instruction for next game.' },
+            kind: { type: 'STRING', enum: ['strength', 'mistake'] },
+          },
+          required: ['title', 'evidence', 'fix', 'kind'],
+        },
+      },
+      focus_next_game: { type: 'STRING', description: 'The single thing to focus on next game on this hero.' },
+    },
+    required: ['summary', 'points', 'focus_next_game'],
+  };
+
   const Engine = {
+    compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
     LOBBY_V, ROLE_LABEL, ROLE_GOOD, ROLE_NOTE, TAG2_LABEL, TAG2_GOOD, LADDER_TIERS, LADDER_METRICS,
     parseSteamInput, lobbyImpact, gameRole, roleSummary, compactHeroStats, rankLadder,
     BENCH_TIMES, BENCH_STATS, BENCH_MIN_PATCH, BENCH_WIDE_DAYS,
