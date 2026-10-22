@@ -7,9 +7,11 @@
   const ICONV = { improving: '▲', holding: '■', slipping: '▼', unknown: '·' };
   const WORD = { improving: 'Improving', holding: 'Holding', slipping: 'Slipping', unknown: 'Not enough games' };
   const roleClass = (E, r) => E.ROLE_GOOD[r] > 0 ? 'good' : E.ROLE_GOOD[r] < 0 ? 'bad' : 'flat';
-  const roleChip = (c, g, id) => g ? `<span class="role ${roleClass(c.E, g.role)}">${c.E.ROLE_LABEL[g.role]}</span>`
+  const firstChip = g => g && g.lobbyFirst ? '<span class="first" title="Valve named you MVP: 1st in the lobby">★ 1st</span>' : '';
+  const roleChip = (c, g, id) => g ? `${firstChip(g)}<span class="role ${roleClass(c.E, g.role)}">${c.E.ROLE_LABEL[g.role]}</span>`
     : id != null && c.state.lobbies[id] === null ? '<span class="role pending">No lobby data</span>' : '<span class="role pending">Reading lobby…</span>';
-  const tagChips = (c, g, max) => !g ? '' : g.tags.slice(0, max || 99).map(t => `<span class="tag${c.E.TAG2_GOOD[t] < 0 ? ' warn' : ''}">${c.E.TAG2_LABEL[t]}</span>`).join('');
+  // MVP #1 already shows as the gold ★ 1st chip, so its tag is left out of the tag list.
+  const tagChips = (c, g, max) => !g ? '' : g.tags.filter(t => t !== 'mvp1').slice(0, max || 99).map(t => `<span class="tag${c.E.TAG2_GOOD[t] < 0 ? ' warn' : ''}">${c.E.TAG2_LABEL[t]}</span>`).join('');
   const icon = (c, hero, size) => {
     const src = c.heroIcon(hero);
     return src ? `<img class="hero-ic" src="${src}" alt="" width="${size}" height="${size}" loading="lazy">` : `<span class="hero-ic" style="width:${size}px;height:${size}px"></span>`;
@@ -387,7 +389,7 @@
         <div class="mrow mhead"><span>Hero</span><span>Result</span><span>Role</span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="hide-s">Impact</span><span class="n">Rank</span><span class="n">When</span></div>
         ${shown.length ? shown.map(({ m, g, L }) => {
           const me = L && L.p[L.me];
-          return `<a class="mrow ${m.won ? 'w' : 'l'}" href="#/match/${m.id}">
+          return `<a class="mrow ${m.won ? 'w' : 'l'}${g && g.lobbyFirst ? ' gold' : ''}" href="#/match/${m.id}">
             <span class="mh">${icon(c, m.hero, 32)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
             <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span>
             <span class="mrole">${fmark(m.id)}${roleChip(c, g, m.id)}<span class="tags">${tagChips(c, g, 2)}</span></span>
@@ -443,7 +445,7 @@
         <div class="sb sb-h"><span>Hero</span><span class="n">K/D/A</span><span class="n">Souls</span><span class="n">Damage</span><span class="n hide-s">Heal</span><span class="n hide-s">Obj</span><span class="hide-s">Impact</span></div>
         ${idx.map(i => {
           const r = L.p[i], you = i === L.me;
-          return `<div class="sb${you ? ' you' : ''}"><span class="mh">${icon(c, r[7], 26)}<span>${c.esc(c.heroName(r[7]))}${you ? ' <span class="you-tag">You</span>' : ''}${r[12] >= 1 && r[12] <= 3 ? ` <span class="tag">MVP${r[12] > 1 ? ' ' + r[12] : ''}</span>` : ''}</span></span>
+          return `<div class="sb${you ? ' you' : ''}"><span class="mh">${icon(c, r[7], 26)}<span>${c.esc(c.heroName(r[7]))}${you ? ' <span class="you-tag">You</span>' : ''}${r[12] === 1 ? ' <span class="first">★ MVP</span>' : r[12] >= 2 && r[12] <= 3 ? ` <span class="tag">MVP ${r[12]}</span>` : ''}</span></span>
             <span class="n">${r[2]}<span class="sl">/</span>${r[3]}<span class="sl">/</span>${r[4]}</span><span class="n">${c.kfmt(r[1])}</span><span class="n">${c.kfmt(r[5])}</span>
             <span class="n hide-s">${c.kfmt(r[6])}</span><span class="n hide-s">${c.kfmt(r[8])}</span><span class="hide-s">${impactBar(imp[i].impact)}</span></div>`;
         }).join('')}</div>`;
@@ -451,8 +453,9 @@
     const myTeam = L.p[L.me][0];
     host.innerHTML = head + `
       <div class="grid-2">
-        <section class="card role-card ${roleClass(E, g.role)}">
+        <section class="card role-card ${roleClass(E, g.role)}${g.lobbyFirst ? ' gold' : ''}">
           <div class="t-label">Your role</div>
+          ${g.lobbyFirst ? '<div class="first-line">★ 1st in the lobby · Valve’s MVP</div>' : ''}
           <div class="role-big">${E.ROLE_LABEL[g.role]}</div>
           <p class="muted">${roleNote}</p>
           <p>#${g.teamRank} of ${g.teamSize} on your team by impact · impact <b>${g.impact.toFixed(2)}</b> <span class="muted small">(1.00 = an average teammate)</span></p>

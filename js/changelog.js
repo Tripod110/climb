@@ -6,6 +6,12 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 11, date: '2026-10-22', title: 'Gold for 1st in the lobby',
+      items: [
+        'Games where Valve named you MVP (1st in the whole lobby) now stand out in gold: a ★ 1st badge and a gold edge in the Matches list and recent matches, and a gold role card on the match page.',
+      ],
+    },
+    {
       v: 10, date: '2026-10-22', title: 'Focus loop: one habit at a time',
       items: [
         'Pick one habit in the Coach tab, or let the coach pick it. Every game after that gets a ✓ or ✗, shown on the Overview, the Coach tab and the Matches list.',

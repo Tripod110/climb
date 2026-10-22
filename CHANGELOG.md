@@ -4,6 +4,14 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v11 (2026-10-22): Gold for 1st in the lobby
+- Valve's post-game MVP #1 (`mvp_rank` 1, i.e. 1st of all 12) is marked gold everywhere a game
+  appears: a ★ 1st chip, a gold left edge in the Matches list, a gold match-page role card, and
+  ★ MVP on the scoreboard. `gameRole().lobbyFirst` carries it.
+- Why Valve's MVP and not Climb's impact: impact is team-relative, so it doesn't rank across the
+  lobby. On 60 real games the two "#1"s never agreed (6 Valve MVPs, 3 impact #1s, 0 overlap).
+  Gold is the only place that colour is used.
+
 ## v10 (2026-10-22): Focus loop
 - One habit at a time, chosen from a fixed catalog (`Engine.HABITS`) of things Climb can check per
   game. Examples: no deaths before 10:00, never caught out, ahead of lane opponents at 12:00,

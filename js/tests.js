@@ -215,6 +215,8 @@
     ok('fed tag', drag.tags.includes('fed'), drag.tags);
     eq('passenger: won at the bottom', E.gameRole(lobby(pl(0, 18000, 1, 12, 3, 9000), true), true).role, 'passenger');
     eq('Valve MVP counts as key player', E.gameRole(lobby(pl(0, 30000, 5, 5, 8, 25000, { 12: 2 }), true), true).role, 'key');
+    eq('Valve MVP #1 = 1st in the lobby', [E.gameRole(lobby(pl(0, 30000, 5, 5, 8, 25000, { 12: 1 }), true), true).lobbyFirst,
+      E.gameRole(lobby(pl(0, 30000, 5, 5, 8, 25000, { 12: 2 }), true), true).lobbyFirst], [true, false]);
     {
       const spread = lobby(pl(0, 30000, 5, 5, 8, 25000), true);
       [40000, 36000, 26000, 22000, 20000].forEach((souls, j) => { spread.p[j + 1][1] = souls; });

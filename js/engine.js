@@ -632,7 +632,9 @@
     const dur = L.dur || 0;
     if (dur && dur < 20 * 60) tags.push(won ? 'stomp' : 'stomped');
     if (dur >= 45 * 60) tags.push('long');
-    return { role, tags, impact: imp.impact, teamRank: imp.teamRank, teamSize: imp.teamSize, r: imp.r, mvp };
+    // lobbyFirst: Valve's own post-game MVP #1, the "1st in the lobby" shown in-game. Climb's impact
+    // score is team-relative, so it doesn't rank across both teams; on 60 real games the two never agreed.
+    return { role, tags, impact: imp.impact, teamRank: imp.teamRank, teamSize: imp.teamSize, r: imp.r, mvp, lobbyFirst: mvp === 1 };
   }
 
   /* Role counts and rates over a set of games, for the Overview tiles and hero cards. */
