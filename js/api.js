@@ -18,9 +18,18 @@
       const s = j && j.error && j.error.quota && j.error.quota.next_request_in;
       throw new RateLimited(Math.max(2, s || 10) * 1000);
     }
-    if (!r.ok) throw new Error('deadlock-api ' + r.status + ' on ' + path.split('?')[0]);
+    if (!r.ok) {
+      const err = new Error('deadlock-api ' + r.status + ' on ' + path.split('?')[0]);
+      err.status = r.status;
+      throw err;
+    }
     return r.json();
   }
+
+  /* The bulk metadata endpoint answers 404 "No matches found" when NONE of the requested ids
+     exist on deadlock-api (e.g. very old 2024 matches). That's an empty result, not a failure:
+     callers then record those ids as null and never ask again. */
+  const emptyOn404 = p => p.catch(e => { if (e.status === 404) return []; throw e; });
 
   const sleep = ms => new Promise(res => setTimeout(res, ms));
 
@@ -42,18 +51,18 @@
     ranks: () => polite(() => getJSON('/v1/assets/ranks')),
     /* include_player_final_stats is the cheap flavour: the last sample of each stat instead of
        the whole time series. Still ~80KB per match, which is why we compact it immediately. */
-    metadata: ids => polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true' +
-      '&include_player_kda=true&include_player_final_stats=true&match_ids=' + ids.join(','))),
+    metadata: ids => emptyOn404(polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true' +
+      '&include_player_kda=true&include_player_final_stats=true&match_ids=' + ids.join(',')))),
     bigPatchDays: () => polite(() => getJSON('/v1/patches/big-days')),
     /* One match with everything the coach needs: item buys, death details, stat snapshots.
        ~400KB raw; compacted to ~6KB by Engine.compactMatchDetail straight away. */
-    matchDetail: id => polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true&include_player_items=true' +
-      '&include_player_death_details=true&include_player_stats=true&match_ids=' + id)).then(r => (r && r[0]) || null),
+    matchDetail: id => emptyOn404(polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true&include_player_items=true' +
+      '&include_player_death_details=true&include_player_stats=true&match_ids=' + id))).then(r => (r && r[0]) || null),
     upgradeItems: () => polite(() => getJSON('/v1/assets/items/by-type/upgrade')),
     /* Same as matchDetail for up to 10 matches at once (~5MB per batch raw), plus final stats so
        a lobby can be built from the same response. */
-    matchDetails: ids => polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true&include_player_items=true' +
-      '&include_player_death_details=true&include_player_stats=true&include_player_final_stats=true&match_ids=' + ids.join(','))),
+    matchDetails: ids => emptyOn404(polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true&include_player_items=true' +
+      '&include_player_death_details=true&include_player_stats=true&include_player_final_stats=true&match_ids=' + ids.join(',')))),
     steamProfile: acct => polite(() => getJSON('/v1/players/steam?account_ids=' + acct)).then(r => (r && r[0]) || null),
     steamSearch: q => polite(() => getJSON('/v1/players/steam-search?limit=8&search_query=' + encodeURIComponent(q))),
     rank: acct => polite(() => getJSON('/v1/players/' + acct + '/rank')),

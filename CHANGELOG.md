@@ -4,6 +4,13 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v9 (2026-10-21): Fix for the deadlock-api 404
+- deadlock-api answers 404 "No matches found" when none of a batch's matches exist on its side.
+  That happens for the oldest 2024 matches. Since v6 fetches lobbies for every match, this stopped
+  loading with "Couldn't reach deadlock-api: deadlock-api 404 on /v1/matches/metadata". Bulk and
+  single metadata calls now treat that 404 as empty, so those matches are recorded as having no
+  lobby data.
+
 ## v8 (2026-10-21): Coach tab, your last 30 games read together
 - New **Coach** tab. Climb counts patterns across your last 30 games, wins vs losses, using
   `Engine.aggregateGames`:

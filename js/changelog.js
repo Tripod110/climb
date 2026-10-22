@@ -6,6 +6,12 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 9, date: '2026-10-21', title: 'Fix: “Couldn’t reach deadlock-api: 404”',
+      items: [
+        'Your oldest matches (mid-2024) have no lobby data on deadlock-api, and a batch of only those made Climb stop loading with a 404. They’re now marked as “No lobby data” and loading carries on.',
+      ],
+    },
+    {
       v: 8, date: '2026-10-21', title: 'Coach tab: your last 30 games, read together',
       items: [
         'New Coach tab. Climb counts patterns across your last 30 games, wins vs losses: deaths per game and before 10:00, when and where you die and who kills you, souls vs your lane opponents at 12 and 20 minutes, the 20–30 minute swing, and when you finish your first tier-3 and tier-4 items.',
