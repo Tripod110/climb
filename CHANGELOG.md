@@ -4,6 +4,23 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v10 (2026-10-22): Focus loop
+- One habit at a time, chosen from a fixed catalog (`Engine.HABITS`) of things Climb can check per
+  game. Examples: no deaths before 10:00, never caught out, ahead of lane opponents at 12:00,
+  25 CS by 12:00, tier 4 by 24:00. Habits that partly follow the result (late deaths, death rate)
+  are tagged.
+- A habit is only offered if passing it split your own wins from losses by 10+ points over your
+  last 30 games (`habitCatalog`). "Tier 3 by 13:00" made no difference for the user, so it isn't
+  offered.
+- "Let the coach pick": Gemini chooses from the eligible ids (an enum, so it can't invent a
+  habit) and says why and how. Without a key, Climb picks the habit with the biggest split
+  (`suggestHabit`).
+- Every game since the start gets a ✓ or ✗ (Overview card, Coach tab, Matches list). After 15
+  games the pass rate is compared with your baseline, with a 2-SE threshold (`focusProgress`). A
+  habit is mastered at 7 of your last 10. Past habits are kept.
+- Why habits and not averaged targets: on 60 real games, a 1-death change in late deaths needed
+  ~60 games to detect. A pass-rate change shows in ~15.
+
 ## v9 (2026-10-21): Fix for the deadlock-api 404
 - deadlock-api answers 404 "No matches found" when none of a batch's matches exist on its side.
   That happens for the oldest 2024 matches. Since v6 fetches lobbies for every match, this stopped

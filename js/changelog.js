@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 10, date: '2026-10-22', title: 'Focus loop: one habit at a time',
+      items: [
+        'Pick one habit in the Coach tab, or let the coach pick it. Every game after that gets a ✓ or ✗, shown on the Overview, the Coach tab and the Matches list.',
+        'Only habits that actually split your wins from your losses can be picked. Each shows how often you pass it and your win rate when you do vs don’t.',
+        'After 15 games Climb tells you whether your pass rate really moved. A habit is mastered at 7 of your last 10, then you pick the next. Past habits are kept with their results.',
+      ],
+    },
+    {
       v: 9, date: '2026-10-21', title: 'Fix: “Couldn’t reach deadlock-api: 404”',
       items: [
         'Your oldest matches (mid-2024) have no lobby data on deadlock-api, and a batch of only those made Climb stop loading with a 404. They’re now marked as “No lobby data” and loading carries on.',

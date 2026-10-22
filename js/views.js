@@ -71,6 +71,7 @@
     host.innerHTML = `
       ${fresh.length ? `<section class="card whatsnew"><div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="btn ghost-btn" type="button">Got it</button></div>
         ${fresh.map(e => `<h3>v${e.v} · ${c.esc(e.title)}</h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>` : ''}
+      ${focusCard(c, false)}
 
       <div class="page-head">
         <div class="ident">
@@ -185,6 +186,89 @@
     return `<li class="sig ${dir}"><span class="sig-icon" aria-hidden="true">${ic}</span><span>${text}</span></li>`;
   }
 
+  // ---------------------------------------------------------------- focus loop
+  const pc0 = v => v == null ? '—' : Math.round(v * 100) + '%';
+  const dots = recent => `<span class="dots" aria-label="${recent.filter(Boolean).length} of last ${recent.length} passed">${recent.map(x => `<span class="dot ${x ? 'y' : 'n'}">${x ? '✓' : '✗'}</span>`).join('')}${'<span class="dot e"></span>'.repeat(Math.max(0, 10 - recent.length))}</span>`;
+
+  function verdictLine(c, p) {
+    const E = c.E;
+    if (p.graduated) return `<span class="pos"><b>Mastered.</b> ${p.recent.filter(Boolean).length} of your last 10 passed. Time for the next habit.</span>`;
+    if (p.verdict === 'early') return `<span class="muted">${p.n ? `${p.passes} of ${p.n} so far. ` : 'No games since you started. '}Climb can call it after ${E.FOCUS_MIN_GAMES} games (${p.needed} to go).</span>`;
+    const from = `${pc0(p.baseline)} → ${pc0(p.rate)} over ${p.n} games`;
+    return p.verdict === 'improved' ? `<span class="pos"><b>It’s working:</b> ${from}.</span>`
+      : p.verdict === 'worse' ? `<span class="neg"><b>Slipping:</b> ${from}.</span>`
+      : `<span><b>No real change yet:</b> ${from}. Keep at it, or try a different habit.</span>`;
+  }
+
+  /* full = the Coach tab version (why/how, games since start, controls); otherwise the Overview card. */
+  function focusCard(c, full) {
+    const E = c.E, st = c.state, f = st.focus.active;
+    if (!f) {
+      if (!full) return `<section class="card focus-card empty"><div><div class="t-label">Your focus</div><b>No habit picked yet.</b>
+        <span class="muted small">One habit at a time, checked every game.</span></div><a class="btn" href="#/coach">Pick a habit</a></section>`;
+      return '';
+    }
+    const h = E.habitById(f.habit), p = c.focusNow();
+    if (!h || !p) return '';
+    const head = `<div class="fc-head"><div><div class="t-label">Your focus${f.by === 'coach' ? ' · picked by the coach' : f.by === 'climb' ? ' · Climb’s pick' : ''}</div>
+      <div class="fc-habit">${c.esc(h.label)}</div></div>${dots(p.recent)}</div>
+      <p class="fc-line">${verdictLine(c, p)}</p>
+      <p class="muted small">Before you started: you passed it in ${pc0(f.baseline.rate)} of your last ${f.baseline.n} games, and won ${pc0(f.baseline.wrPass)} of those vs ${pc0(f.baseline.wrFail)} of the rest.</p>`;
+    if (!full) return `<section class="card focus-card${p.graduated ? ' done' : ''}">${head}<a class="more" href="#/coach">Details →</a></section>`;
+    const res = p.results.slice().reverse().slice(0, 15);
+    return `<section class="card focus-card${p.graduated ? ' done' : ''}">${head}
+      ${f.why ? `<p class="fc-why">${c.esc(f.why)}</p>` : ''}
+      ${f.how && f.how.length ? `<div class="t-label">How to pass it</div><ul class="fc-how">${f.how.map(x => `<li>${c.esc(x)}</li>`).join('')}</ul>` : ''}
+      ${res.length ? `<div class="t-label">Games since you started</div><ul class="fc-games">${res.map(r => `<li><a href="#/match/${r.m.id}">
+        <span class="dot ${r.pass ? 'y' : 'n'}">${r.pass ? '✓' : '✗'}</span>${icon(c, r.m.hero, 22)}<span>${c.esc(c.heroName(r.m.hero))}</span>
+        <span class="${r.m.won ? 'win' : 'loss'}">${r.m.won ? 'W' : 'L'}</span><span class="muted small">${c.ago(r.m.t)}</span></a></li>`).join('')}</ul>` : ''}
+      <div class="fc-actions">
+        ${p.graduated ? '<button type="button" class="btn" data-focus="graduate">Mark mastered, pick the next</button>' : ''}
+        <button type="button" class="btn ghost-btn" data-focus="drop">Drop this habit</button>
+      </div></section>`;
+  }
+
+  /* The Coach tab's habit picker: every habit with your pass rate and win-rate split. */
+  function habitPicker(c) {
+    const E = c.E, st = c.state;
+    const cat = c.focusCatalog();
+    const rows = cat.filter(x => x.n);
+    const busy = st.analyzing;
+    const hasKey = !!st.coach.key;
+    return `<section class="card">
+      <div class="card-head"><div><div class="t-label">Focus loop</div><h2>Pick one habit to work on</h2>
+        <p class="muted small">Every game gets a ✓ or ✗. After ${E.FOCUS_MIN_GAMES} games Climb says whether your pass rate really moved, and a habit is mastered at ${E.FOCUS_GRAD[0]} of your last ${E.FOCUS_GRAD[1]}. Only habits that split <i>your</i> wins from your losses can be picked.</p></div>
+        <button type="button" class="btn" data-focus="coach"${busy ? ' disabled' : ''}>${hasKey ? 'Let the coach pick' : 'Pick for me'}</button></div>
+      ${busy ? `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(busy)}</p>` : ''}
+      ${st.focusError ? `<p class="neg small">${c.esc(st.focusError)}</p>` : ''}
+      <div class="table-wrap"><table class="tbl habits"><thead><tr><th>Habit</th><th class="n">You pass it</th><th class="n">Win rate passed</th><th class="n">Not passed</th><th></th></tr></thead>
+      <tbody>${rows.map(x => `<tr class="${x.eligible ? '' : 'dim'}"><td>${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result: losing games also causes this">follows result</span>' : ''}</td>
+        <td class="n">${pc0(x.passRate)}</td><td class="n pos">${pc0(x.wrPass)}</td><td class="n neg">${pc0(x.wrFail)}</td>
+        <td class="n">${x.eligible ? `<button type="button" class="btn ghost-btn sm" data-pick="${x.id}">Pick</button>` : `<span class="muted small" title="Passing it made no clear difference to your win rate">no difference</span>`}</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted small">From your last ${rows.length ? rows[0].n : 0} games with match detail.</p>
+    </section>`;
+  }
+
+  function focusHistory(c) {
+    const E = c.E, H = c.state.focus.history;
+    if (!H.length) return '';
+    const OUT = { graduated: 'Mastered', dropped: 'Dropped', switched: 'Switched' };
+    return `<section class="card"><h2>Past habits</h2><ul class="fc-hist">${H.map(x => `<li>
+      <span>${c.esc((E.habitById(x.habit) || { label: x.habit }).label)}</span>
+      <span class="muted small">${pc0(x.baseline)} → ${pc0(x.rate)} over ${x.n} games</span>
+      <span class="role ${x.outcome === 'graduated' ? 'good' : ''}">${OUT[x.outcome] || x.outcome}</span></li>`).join('')}</ul></section>`;
+  }
+
+  function bindFocus(host, c) {
+    host.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => c.startFocus(b.dataset.pick, null, null, 'you')));
+    host.querySelectorAll('[data-focus]').forEach(b => b.addEventListener('click', () => {
+      const a = b.dataset.focus;
+      if (a === 'coach') c.coachPickHabit();
+      else if (a === 'drop') c.endFocus('dropped');
+      else if (a === 'graduate') { c.endFocus('graduated'); }
+    }));
+  }
+
   // ---------------------------------------------------------------- coach (last 30 games)
   function coach(host, c) {
     const E = c.E, st = c.state, N = c.ANALYSIS_N;
@@ -215,6 +299,7 @@
     const bar = (v, cls) => `<span class="pbar"><span class="${cls}" style="width:${v == null ? 0 : Math.round(100 * v / maxPhase)}%"></span></span>`;
 
     host.innerHTML = head + `
+      ${c.state.focus.active ? focusCard(c, true) : habitPicker(c)}
       ${aiCard(c, A)}
       <div class="t-label sec">The numbers · wins vs losses</div>
       <div class="tiles tiles-6">
@@ -237,7 +322,10 @@
       </div>
       <section class="card flush"><div class="pad"><h2>Heroes in these games</h2></div>
         <div class="table-wrap"><table class="tbl"><thead><tr><th>Hero</th><th class="n">Games</th><th class="n">Win rate</th><th class="n">Deaths / game</th><th class="n">Before 10:00</th></tr></thead>
-        <tbody>${A.heroes.map(h => `<tr><td><a class="mh" href="#/heroes/${h.hero}">${icon(c, h.hero, 24)}<span>${c.esc(h.name)}</span></a></td><td class="n">${h.n}</td><td class="n">${Math.round(h.winRate * 100)}%</td><td class="n">${one(h.deathsPerGame)}</td><td class="n">${one(h.before10PerGame)}</td></tr>`).join('')}</tbody></table></div></section>`;
+        <tbody>${A.heroes.map(h => `<tr><td><a class="mh" href="#/heroes/${h.hero}">${icon(c, h.hero, 24)}<span>${c.esc(h.name)}</span></a></td><td class="n">${h.n}</td><td class="n">${Math.round(h.winRate * 100)}%</td><td class="n">${one(h.deathsPerGame)}</td><td class="n">${one(h.before10PerGame)}</td></tr>`).join('')}</tbody></table></div></section>
+      ${c.state.focus.active ? habitPicker(c).replace('Pick one habit to work on', 'Switch habit') : ''}
+      ${focusHistory(c)}`;
+    bindFocus(host, c);
     const go = host.querySelector('[data-analyze]');
     if (go) go.addEventListener('click', () => c.runAnalysis(go.dataset.analyze === 'again'));
   }
@@ -282,6 +370,10 @@
         && (matchFilter.mode === 'all' || m.mode === matchFilter.mode)
         && (matchFilter.role === 'all' || (g && g.role === matchFilter.role)));
     const shown = rows.slice(0, 150);
+    const fp = c.state.focus.active ? c.focusNow() : null;
+    const fpass = new Map(fp ? fp.results.map(r => [r.m.id, r.pass]) : []);
+    const fh = fp ? c.E.habitById(c.state.focus.active.habit) : null;
+    const fmark = id => fpass.has(id) ? `<span class="dot ${fpass.get(id) ? 'y' : 'n'}" title="${c.esc(fh.label)}: ${fpass.get(id) ? 'passed' : 'missed'}">${fpass.get(id) ? '✓' : '✗'}</span>` : '';
     const opt = (v, l, cur) => `<option value="${v}"${String(v) === String(cur) ? ' selected' : ''}>${c.esc(l)}</option>`;
     host.innerHTML = `
       <div class="page-head"><div><h1 class="page-title">Matches</h1><p class="muted small">${rows.length} of ${M.all.length} matches. Click one for the full lobby.</p></div>
@@ -298,7 +390,7 @@
           return `<a class="mrow ${m.won ? 'w' : 'l'}" href="#/match/${m.id}">
             <span class="mh">${icon(c, m.hero, 32)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
             <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span>
-            <span class="mrole">${roleChip(c, g, m.id)}<span class="tags">${tagChips(c, g, 2)}</span></span>
+            <span class="mrole">${fmark(m.id)}${roleChip(c, g, m.id)}<span class="tags">${tagChips(c, g, 2)}</span></span>
             <span class="n">${kda(m)}</span>
             <span class="n hide-s">${c.kfmt(m.souls)}</span>
             <span class="n hide-s">${me ? c.kfmt(me[5]) : '—'}</span>

@@ -1047,7 +1047,110 @@
     required: ['headline', 'patterns', 'strengths', 'next_sessions_plan'],
   };
 
+  // ---------------------------------------------------------------- focus loop (one habit at a time)
+
+  /* Why habits and not averaged goals: on the user's 60 games (2026-10-22) per-game counts were
+     far too noisy. A 1-death drop in late deaths needs ~60 games to show, while a pass/fail habit
+     gives feedback every game and a pass RATE settles in ~15. Each habit is checkable from one
+     game's data. `outcome: true` marks habits that partly follow the result (losing causes late
+     deaths), which are offered last. A habit is only offered when passing it actually split YOUR
+     wins from losses (FOCUS_MIN_LIFT), so advice like "tier 3 by 13:00", which made no
+     difference (52%/52%), never becomes a goal. */
+  const FOCUS_MIN_GAMES = 15;     // games before the pass rate gets a verdict
+  const FOCUS_GRAD = [7, 10];     // graduate at 7 passes in your last 10
+  const FOCUS_MIN_LIFT = 0.10;    // win-rate gap (pass vs fail) a habit needs to be offered
+  const FOCUS_MIN_SIDE = 5;       // games on each side of that split
+
+  const deathsIn = (D, a, b) => { const me = D && D.players.find(p => p.items); return me ? (me.deaths || []).filter(d => d[0] >= a && d[0] < b) : null; };
+  const meOf = D => D && D.players.find(p => p.items);
+  const snapAtT = (p, t) => { let b = null; for (const s of p.snaps) if (s[0] <= t) b = s; return b; };
+  const firstTierAt = (D, items, tier) => {
+    const me = meOf(D);
+    if (!me || !items) return null;
+    const x = (me.items || []).filter(([, id]) => items[id] && items[id][2] >= tier).sort((a, b) => a[0] - b[0])[0];
+    return x ? x[0] : Infinity;
+  };
+  /* test(m, L, D, items) -> true / false / null (can't tell from this game's data). */
+  const HABITS = [
+    { id: 'early0', label: 'No deaths before 10:00', short: 'No early deaths', test: (m, L, D) => { const d = deathsIn(D, 0, 600); return d ? d.length === 0 : null; } },
+    { id: 'early1', label: 'At most 1 death before 10:00', short: '≤1 early death', test: (m, L, D) => { const d = deathsIn(D, 0, 600); return d ? d.length <= 1 : null; } },
+    { id: 'nocatch', label: `Never caught out (no death within ${FAST_DEATH_S}s of taking damage)`, short: 'Never caught out', test: (m, L, D) => { const me = meOf(D); return me ? !(me.deaths || []).some(d => d[4] > 0 && d[4] <= FAST_DEATH_S) : null; } },
+    { id: 'ahead12', label: 'Ahead of your lane opponents in souls at 12:00', short: 'Ahead at 12:00', test: (m, L, D) => {
+      const me = meOf(D); if (!me || D.dur < 720) return null;
+      const opps = D.players.filter(p => p.team !== me.team && p.lane === me.lane).map(p => snapAtT(p, 720)).filter(Boolean);
+      const mine = snapAtT(me, 720); return mine && opps.length ? mine[1] > mean(opps.map(s => s[1])) : null; } },
+    { id: 'cs12', label: '25+ last hits by 12:00', short: '25 CS by 12:00', test: (m, L, D) => { const me = meOf(D); const s = me && D.dur >= 720 ? snapAtT(me, 720) : null; return s ? s[8] >= 25 : null; } },
+    { id: 'tier3', label: 'First tier-3 item before 13:00', short: 'Tier 3 by 13:00', test: (m, L, D, items) => { const t = firstTierAt(D, items, 3); return t == null ? null : t < 780; } },
+    { id: 'tier4', label: 'First tier-4 item before 24:00', short: 'Tier 4 by 24:00', test: (m, L, D, items) => { const t = firstTierAt(D, items, 4); return t == null || (t === Infinity && D.dur < 1440) ? null : t < 1440; } },
+    { id: 'rate', label: 'Under 1.2 deaths per 10 minutes', short: '<1.2 deaths / 10 min', outcome: true, test: m => m.dur ? (m.d / (m.dur / 60)) * 10 < 1.2 : null },
+    { id: 'late2', label: 'At most 2 deaths after 20:00', short: '≤2 late deaths', outcome: true, test: (m, L, D) => { if (!D || D.dur < 1500) return null; const d = deathsIn(D, 1200, Infinity); return d ? d.length <= 2 : null; } },
+  ];
+  const habitById = id => HABITS.find(h => h.id === id) || null;
+
+  /* entries: [{ m, L, D }] -> [{ m, pass }] where pass is true / false / null. */
+  function habitResults(habit, entries, items) {
+    return entries.map(e => ({ m: e.m, pass: e.m ? habit.test(e.m, e.L, e.D, items) : null }));
+  }
+
+  /* Every habit over a sample: how often you pass, and your win rate when you do vs don't. */
+  function habitCatalog(entries, items) {
+    return HABITS.map(h => {
+      const r = habitResults(h, entries, items).filter(x => x.pass != null);
+      const yes = r.filter(x => x.pass), no = r.filter(x => !x.pass);
+      const wr = xs => xs.length ? xs.filter(x => x.m.won).length / xs.length : null;
+      const lift = yes.length && no.length ? wr(yes) - wr(no) : null;
+      const eligible = yes.length >= FOCUS_MIN_SIDE && no.length >= FOCUS_MIN_SIDE && lift != null && lift >= FOCUS_MIN_LIFT;
+      return { id: h.id, label: h.label, short: h.short, outcome: !!h.outcome, n: r.length, passRate: r.length ? yes.length / r.length : null,
+        wrPass: wr(yes), wrFail: wr(no), nPass: yes.length, nFail: no.length, lift, eligible };
+    }).sort((a, b) => (b.eligible - a.eligible) || (a.outcome - b.outcome) || ((b.lift || -1) - (a.lift || -1)));
+  }
+
+  /* The habit Climb itself would pick: the biggest win-rate split among eligible habits that you
+     don't already pass most of the time, preferring ones that don't follow the result. */
+  function suggestHabit(catalog) {
+    const ok = catalog.filter(c => c.eligible && c.passRate < FOCUS_GRAD[0] / FOCUS_GRAD[1]);
+    return (ok.find(c => !c.outcome) || ok[0] || null);
+  }
+
+  /* goal: { habit, start (unix), baseline: { rate, n } }; entries: every game since start, oldest first.
+     -> { n, passes, rate, recent: [true/false…] (last 10, oldest first), verdict, graduated } */
+  function focusProgress(goal, entries, items) {
+    const h = habitById(goal.habit);
+    if (!h) return null;
+    const r = habitResults(h, entries.filter(e => e.m && e.m.t >= goal.start), items).filter(x => x.pass != null);
+    const passes = r.filter(x => x.pass).length, n = r.length;
+    const rate = n ? passes / n : null;
+    const recent = r.slice(-FOCUS_GRAD[1]).map(x => x.pass);
+    const p0 = goal.baseline && goal.baseline.rate != null ? goal.baseline.rate : null;
+    let verdict = 'early';
+    if (n >= FOCUS_MIN_GAMES && p0 != null) {
+      const se = Math.sqrt(Math.max(p0 * (1 - p0), 0.04) / n);
+      verdict = rate - p0 > 2 * se ? 'improved' : p0 - rate > 2 * se ? 'worse' : 'same';
+    }
+    const graduated = recent.length >= FOCUS_GRAD[1] && recent.filter(Boolean).length >= FOCUS_GRAD[0];
+    return { n, passes, rate, recent, verdict, graduated, results: r, baseline: p0, needed: Math.max(0, FOCUS_MIN_GAMES - n) };
+  }
+
+  const FOCUS_SYSTEM = [
+    'You are a Deadlock coach choosing ONE habit for the player to work on next.',
+    'You get the player\'s recent stats and a catalog of habits Climb can check in every game, each with how often the player passes it and their win rate when they pass vs fail.',
+    'Rules:',
+    '- Choose only an id from the catalog with eligible=true. Prefer habits that do not follow the result (outcome=false) and that the player passes less than 70% of the time.',
+    '- Pick the habit most likely to win them games, using the win-rate split and the rest of the stats.',
+    '- "why" cites the numbers. "how" gives 2–3 concrete things to do in-game to pass it. No invented hero or item facts.',
+  ].join('\n');
+  const focusSchema = ids => ({
+    type: 'OBJECT',
+    properties: {
+      habit_id: { type: 'STRING', enum: ids },
+      why: { type: 'STRING', description: 'One or two sentences with the numbers.' },
+      how: { type: 'ARRAY', minItems: 2, maxItems: 3, items: { type: 'STRING' } },
+    },
+    required: ['habit_id', 'why', 'how'],
+  });
+
   const Engine = {
+    HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
     LOBBY_V, ROLE_LABEL, ROLE_GOOD, ROLE_NOTE, TAG2_LABEL, TAG2_GOOD, LADDER_TIERS, LADDER_METRICS,

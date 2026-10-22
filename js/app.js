@@ -52,6 +52,7 @@
     state.debriefs = S.getData('debriefs', {});     // { matchId: { at, model, data } | { error } }
     state.details = S.getData('details', {});       // { matchId: compactMatchDetail } (last ~60)
     state.analysis = S.getData('analysis', null);   // { at, lastId, n, model, data } (+ error)
+    state.focus = S.getData('focus', { active: null, history: [] });  // the focus loop (see Engine.focusProgress)
   }
   loadAccountData();
 
@@ -105,6 +106,7 @@
     save: () => S.set('settings', settings),
     render: () => render(),
     benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
+    focusEntries, focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
   };
 
   // ---------------------------------------------------------------- routing + render
@@ -380,13 +382,20 @@
   const ANALYSIS_N = 30;
   const DETAILS_KEEP = 60;
   const lastGames = () => model().all.slice(-ANALYSIS_N);
+  /* Games that need match detail: the last ANALYSIS_N, plus everything since the focus started. */
+  const detailGames = () => {
+    const all = model().all;
+    const f = state.focus && state.focus.active;
+    const since = f ? all.filter(m => m.t >= f.start).length : 0;
+    return all.slice(-Math.min(DETAILS_KEEP, Math.max(ANALYSIS_N, since)));
+  };
 
   /* Match detail for your last ANALYSIS_N games, 10 per request, cached. Details older than the
      last DETAILS_KEEP games are dropped so localStorage stays small (~6KB each). */
   async function ensureDetails() {
     if (state.detailsBusy || !settings.account) return;
     const acct = settings.account;
-    const missing = lastGames().filter(m => !state.details[m.id]).map(m => m.id);
+    const missing = detailGames().filter(m => !state.details[m.id]).map(m => m.id);
     if (!missing.length) return;
     state.detailsBusy = true; render();
     try {
@@ -414,6 +423,76 @@
       setStatus(e.waitMs ? 'deadlock-api is rate-limiting. Try again in a minute.' : 'Couldn’t load match details: ' + e.message);
     } finally {
       state.detailsBusy = false; render();
+    }
+  }
+
+  // ---------------------------------------------------------------- focus loop
+  const entryOf = m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] });
+  function focusEntries() { return detailGames().map(entryOf); }
+  /* The habit catalog over your last ANALYSIS_N games (the baseline any new habit starts from). */
+  function focusCatalog() { return E.habitCatalog(lastGames().map(entryOf), state.items && state.items.map); }
+  function focusNow() {
+    const f = state.focus.active;
+    return f ? E.focusProgress(f, focusEntries(), state.items && state.items.map) : null;
+  }
+  function saveFocus() { S.setData('focus', state.focus); }
+
+  /* Start a habit now. Its baseline is your pass rate over the last ANALYSIS_N games, so the
+     verdict compares the new you with the you who picked it. Only games after this moment count. */
+  function startFocus(habitId, why, how, by) {
+    const c = focusCatalog().find(x => x.id === habitId);
+    if (!c) return;
+    if (state.focus.active) endFocus('switched');
+    state.focus.active = { habit: habitId, start: Math.floor(Date.now() / 1000), baseline: { rate: c.passRate, n: c.n, wrPass: c.wrPass, wrFail: c.wrFail },
+      why: why || null, how: how || null, by: by || 'you' };
+    saveFocus(); render();
+  }
+
+  /* outcome: 'graduated' | 'dropped' | 'switched'. The result is kept in history either way. */
+  function endFocus(outcome) {
+    const f = state.focus.active;
+    if (!f) return;
+    const p = focusNow();
+    state.focus.history.unshift({ habit: f.habit, start: f.start, end: Math.floor(Date.now() / 1000), baseline: f.baseline.rate,
+      rate: p ? p.rate : null, n: p ? p.n : 0, verdict: p ? p.verdict : 'early', outcome });
+    state.focus.history = state.focus.history.slice(0, 30);
+    state.focus.active = null;
+    saveFocus(); render();
+  }
+
+  /* Ask Gemini to choose from the eligible habits (an enum, so it can't invent one). Uses the
+     30-game aggregate as context. Falls back to Climb's own pick if there's no key. */
+  async function coachPickHabit() {
+    if (state.analyzing) return;
+    const setA = msg => { state.analyzing = msg; render(); };
+    try {
+      setA('Reading your last games…');
+      await ensureDetails();
+      const cat = focusCatalog();
+      const eligible = cat.filter(c => c.eligible);
+      if (!eligible.length) throw new Error('No habit splits your wins from your losses clearly enough yet. Play a few more games.');
+      if (!state.coach.key || !state.coach.model) {
+        const s = E.suggestHabit(cat);
+        startFocus(s.id, `Climb’s pick: you win ${Math.round(s.wrPass * 100)}% of games when you pass it vs ${Math.round(s.wrFail * 100)}% when you don’t, and you pass it in ${Math.round(s.passRate * 100)}% of games.`, null, 'climb');
+        return;
+      }
+      const agg = E.aggregateGames(analysisEntries(), state.items && state.items.map, heroName);
+      const pc = v => v == null ? null : Math.round(v * 100) + '%';
+      const brief = {
+        recent_stats: E.analysisBrief(agg, {}),
+        habit_catalog: cat.map(c => ({ id: c.id, habit: c.label, eligible: c.eligible, outcome: c.outcome, you_pass_it: pc(c.passRate),
+          win_rate_when_passed: pc(c.wrPass), win_rate_when_not: pc(c.wrFail), games: c.n })),
+        past_habits: state.focus.history.slice(0, 5).map(h => ({ habit: (E.habitById(h.habit) || {}).label, outcome: h.outcome, pass_rate_before: pc(h.baseline), pass_rate_during: pc(h.rate) })),
+      };
+      setA('Coach is choosing your habit…');
+      const out = await K.json(state.coach.key, state.coach.model, E.FOCUS_SYSTEM, JSON.stringify(brief), E.focusSchema(eligible.map(c => c.id)),
+        K.fallbacks(state.coach.models || [], state.coach.model), setA);
+      const pick = eligible.find(c => c.id === out.data.habit_id) || E.suggestHabit(cat);
+      startFocus(pick.id, out.data.why, out.data.how, 'coach');
+    } catch (e) {
+      state.focusError = e.message;
+    } finally {
+      state.analyzing = null; render();
     }
   }
 
@@ -478,6 +557,8 @@
       await Promise.all([loadProfile(), loadHistory(force), loadPatch()]);
       render();
       await loadLobbies();
+      // A habit is being tracked: read the new games' details so their ✓/✗ shows up.
+      if (state.focus.active) await ensureDetails();
       setStatus('');
     } catch (e) {
       setStatus(e.waitMs ? 'deadlock-api is rate-limiting. Try again in a minute.' : 'Couldn’t reach deadlock-api: ' + e.message);

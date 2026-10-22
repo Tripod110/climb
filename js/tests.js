@@ -309,6 +309,36 @@
     eq('empty sample', E.aggregateGames([], items).n, 0);
   }
 
+  // ---------------------------------------------------------------- focus loop
+  {
+    // A game whose only data is my deaths (times) + duration. early0 passes iff no death < 600.
+    const ME = 9;
+    const g = (i, won, deathTimes) => ({ m: { id: i, t: 1000 + i, won, d: deathTimes.length, dur: 1800 },
+      L: null, D: { v: 1, dur: 1800, players: [{ slot: 1, team: 0, lane: 1, acct: ME, snaps: [], items: [], deaths: deathTimes.map(t => [t, 2, 0, 0, 9]) }] } });
+    // 10 games passing (8 won), 10 failing (2 won): a 60-point split.
+    const es = [];
+    for (let i = 0; i < 10; i++) es.push(g(i, i < 8, [900]));
+    for (let i = 10; i < 20; i++) es.push(g(i, i < 12, [300]));
+    const cat = E.habitCatalog(es, {});
+    const early0 = cat.find(c => c.id === 'early0');
+    eq('catalog: pass rate + split', [early0.passRate, early0.wrPass, early0.wrFail, early0.eligible], [0.5, 0.8, 0.2, true]);
+    eq('catalog: habit with no data is not eligible', cat.find(c => c.id === 'ahead12').eligible, false);
+    eq('suggest picks the biggest real split, non-outcome first', E.suggestHabit(cat).id, 'early0');
+    const flat = [];
+    for (let i = 0; i < 20; i++) flat.push(g(i, i % 2 === 0, i < 10 ? [900] : [300]));
+    eq('no win-rate split -> not offered', E.habitCatalog(flat, {}).find(c => c.id === 'early0').eligible, false);
+
+    const goal = { habit: 'early0', start: 1000 + 20, baseline: { rate: 0.3, n: 30 } };
+    const after = n => Array.from({ length: n }, (_, k) => g(20 + k, true, k % 5 === 0 ? [300] : [900]));  // 80% pass
+    const p8 = E.focusProgress(goal, [...es, ...after(8)], {});
+    eq('progress counts only games since start', [p8.n, p8.passes], [8, 6]);
+    eq('too few games -> early', [p8.verdict, p8.needed], ['early', 7]);
+    const p16 = E.focusProgress(goal, [...es, ...after(16)], {});
+    eq('30% -> 75% over 16 games = improved', p16.verdict, 'improved');
+    eq('7+ of last 10 -> graduated', [p16.recent.length, p16.graduated], [10, true]);
+    eq('unknown habit -> null', E.focusProgress({ habit: 'nope', start: 0 }, es, {}), null);
+  }
+
   // ---------------------------------------------------------------- misc
   eq('badge 42 = Sentinel 2', E.badgeName(42), 'Sentinel 2');
   eq('badge 24 = Seeker 4', E.badgeName(24), 'Seeker 4');
