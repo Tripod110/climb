@@ -50,6 +50,10 @@
     matchDetail: id => polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true&include_player_items=true' +
       '&include_player_death_details=true&include_player_stats=true&match_ids=' + id)).then(r => (r && r[0]) || null),
     upgradeItems: () => polite(() => getJSON('/v1/assets/items/by-type/upgrade')),
+    /* Same as matchDetail for up to 10 matches at once (~5MB per batch raw), plus final stats so
+       a lobby can be built from the same response. */
+    matchDetails: ids => polite(() => getJSON('/v1/matches/metadata?include_info=true&include_player_info=true&include_player_items=true' +
+      '&include_player_death_details=true&include_player_stats=true&include_player_final_stats=true&match_ids=' + ids.join(','))),
     steamProfile: acct => polite(() => getJSON('/v1/players/steam?account_ids=' + acct)).then(r => (r && r[0]) || null),
     steamSearch: q => polite(() => getJSON('/v1/players/steam-search?limit=8&search_query=' + encodeURIComponent(q))),
     rank: acct => polite(() => getJSON('/v1/players/' + acct + '/rank')),

@@ -104,7 +104,7 @@
       </div>
 
       <section class="card">
-        <div class="card-head"><h2>How your games went</h2><a href="#/matches" class="more">All matches →</a></div>
+        <div class="card-head"><h2>How your games went</h2><a href="#/coach" class="more">What’s costing you games →</a></div>
         ${roleBars(c, roles)}
       </section>
 
@@ -183,6 +183,92 @@
     const dir = s.dir == null ? 'na' : s.dir === 1 ? 'up' : s.dir === -1 ? 'down' : 'flat';
     const ic = { 1: '▲', 0: '■', '-1': '▼', null: '·' }[s.dir];
     return `<li class="sig ${dir}"><span class="sig-icon" aria-hidden="true">${ic}</span><span>${text}</span></li>`;
+  }
+
+  // ---------------------------------------------------------------- coach (last 30 games)
+  function coach(host, c) {
+    const E = c.E, st = c.state, N = c.ANALYSIS_N;
+    const games = c.M.all.slice(-N);
+    const have = games.filter(m => st.details[m.id]).length;
+    if (have < games.length && !st.detailsBusy) c.ensureDetails();
+    const A = E.aggregateGames(c.analysisEntries(), st.items && st.items.map, c.heroName);
+    const mmss = s => s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+    const one = v => v == null ? '—' : v.toFixed(1);
+    const sgn = v => v == null ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '±') + c.fmtInt(Math.abs(v));
+    // A wins-vs-losses tile. better: 'lower' | 'higher' decides which side is coloured good.
+    const wl = (label, x, fmt, better, sub) => {
+      const gap = x.win != null && x.loss != null ? x.win - x.loss : null;
+      const cls = side => gap == null || gap === 0 ? '' : ((side === 'win') === ((better === 'lower') === (gap < 0))) ? 'pos' : 'neg';
+      return `<div class="tile wl"><div class="t-label">${label}</div>
+        <div class="wl-row"><span class="wl-k">Wins</span><b class="${cls('win')}">${fmt(x.win)}</b></div>
+        <div class="wl-row"><span class="wl-k">Losses</span><b class="${cls('loss')}">${fmt(x.loss)}</b></div>
+        <div class="t-sub">${sub || ''}</div></div>`;
+    };
+    const head = `<div class="page-head"><div><h1 class="page-title">Coach</h1>
+      <p class="muted small">Your last ${games.length} games read together: ${A.n ? `${A.wins} wins, ${A.losses} losses` : 'loading'}. The numbers are counted exactly from your match data; the analysis below them is Gemini’s read of those numbers.</p></div></div>`;
+    if (!A.n) {
+      host.innerHTML = head + `<section class="card"><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading match details for your last ${games.length} games… ${have}/${games.length}</p></section>`;
+      return;
+    }
+    const econ12 = A.economy.find(e => e.t === 720), econ20 = A.economy.find(e => e.t === 1200);
+    const maxPhase = Math.max(0.1, ...A.deaths.byPhase.flatMap(p => [p.win || 0, p.loss || 0]));
+    const bar = (v, cls) => `<span class="pbar"><span class="${cls}" style="width:${v == null ? 0 : Math.round(100 * v / maxPhase)}%"></span></span>`;
+
+    host.innerHTML = head + `
+      ${aiCard(c, A)}
+      <div class="t-label sec">The numbers · wins vs losses</div>
+      <div class="tiles tiles-6">
+        ${wl('Deaths per game', A.deaths.perGame, one, 'lower')}
+        ${wl('Deaths before 10:00', A.deaths.before10, one, 'lower')}
+        ${wl('Souls vs lane opp. at 12:00', econ12 ? econ12.diff : {}, sgn, 'higher', econ12 && econ12.aheadRate.all != null ? `ahead in ${Math.round(econ12.aheadRate.all * 100)}% of games` : '')}
+        ${wl('Souls vs lane opp. at 20:00', econ20 ? econ20.diff : {}, sgn, 'higher', econ20 && econ20.aheadRate.all != null ? `ahead in ${Math.round(econ20.aheadRate.all * 100)}% of games` : '')}
+        ${wl('Souls gained 20–30 min vs lane opp.', A.lateSwing, sgn, 'higher', A.lateSwing.n ? `${A.lateSwing.n} games reached 30:00` : '')}
+        ${wl('First tier-4 item', A.items.tier4, mmss, 'lower', `first tier-3: ${mmss(A.items.tier3.all)}`)}
+      </div>
+      <div class="grid-2">
+        <section class="card"><h2>When you die</h2><p class="muted small">Deaths per game in each phase. ${A.deaths.fastShare != null ? `${Math.round(A.deaths.fastShare * 100)}% of all deaths came within ${E.FAST_DEATH_S}s of taking damage (caught out).` : ''}</p>
+          <div class="phases">${A.deaths.byPhase.map(p => `<div class="ph"><span class="ph-l">${p.label}</span>
+            <span class="ph-bars">${bar(p.win, 'w')}${bar(p.loss, 'l')}</span><span class="ph-v"><span class="pos">${one(p.win)}</span> / <span class="neg">${one(p.loss)}</span></span></div>`).join('')}</div>
+          <p class="muted small"><span class="key r-carried"></span> wins <span class="key r-dragged"></span> losses</p></section>
+        <section class="card"><h2>Where and to whom</h2>
+          <div class="two-lists"><div><div class="t-label">Zones</div><ol class="plain">${A.deaths.zones.map(z => `<li><span>${c.esc(z.zone)}</span><b>${Math.round(z.share * 100)}%</b></li>`).join('')}</ol></div>
+          <div><div class="t-label">Killed most by</div><ol class="plain">${A.deaths.killers.map(k => `<li><span>${icon(c, k.hero, 20)}${c.esc(k.name)}</span><b>${k.n}</b></li>`).join('')}</ol></div></div>
+          <p class="muted small">Zones are coarse and from your side of the map. ${A.deaths.total} deaths in ${A.n} games.</p></section>
+      </div>
+      <section class="card flush"><div class="pad"><h2>Heroes in these games</h2></div>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>Hero</th><th class="n">Games</th><th class="n">Win rate</th><th class="n">Deaths / game</th><th class="n">Before 10:00</th></tr></thead>
+        <tbody>${A.heroes.map(h => `<tr><td><a class="mh" href="#/heroes/${h.hero}">${icon(c, h.hero, 24)}<span>${c.esc(h.name)}</span></a></td><td class="n">${h.n}</td><td class="n">${Math.round(h.winRate * 100)}%</td><td class="n">${one(h.deathsPerGame)}</td><td class="n">${one(h.before10PerGame)}</td></tr>`).join('')}</tbody></table></div></section>`;
+    const go = host.querySelector('[data-analyze]');
+    if (go) go.addEventListener('click', () => c.runAnalysis(go.dataset.analyze === 'again'));
+  }
+
+  function aiCard(c, A) {
+    const st = c.state, a = st.analysis;
+    const head = '<div class="card-head"><div><div class="t-label">AI coach</div><h2>State of your game</h2></div>';
+    if (!st.coach.key) return `<section class="card coach">${head}</div><p class="muted">Add your Gemini key in <a class="more" href="#/about">Account & about</a> to get the three patterns costing you the most games, and a plan for your next sessions.</p></section>`;
+    if (st.analyzing) return `<section class="card coach">${head}</div><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(st.analyzing)}</p></section>`;
+    const lastId = c.M.all.length ? c.M.all[c.M.all.length - 1].id : null;
+    const stale = a && a.data && a.lastId !== lastId;
+    if (!a || !a.data) {
+      return `<section class="card coach">${head}<button type="button" class="btn" data-analyze="go">Analyze my last ${A.n} games</button></div>
+        <p class="muted small">One Gemini call (${c.esc(st.coach.model)}) with the numbers below: about 3 KB, nothing else.</p>
+        ${a && a.error ? `<p class="neg">${c.esc(a.error)}</p>` : ''}</section>`;
+    }
+    const x = a.data;
+    return `<section class="card coach">${head}<button type="button" class="btn ${stale ? '' : 'ghost-btn'}" data-analyze="again">${stale ? 'Update with new games' : '↻ Redo'}</button></div>
+      <p class="coach-sum">${c.esc(x.headline)}</p>
+      <ol class="coach-pts">${(x.patterns || []).map((p, i) => `<li class="bad">
+        <div class="cp-title">${i + 1}. ${c.esc(p.title)}</div>
+        <div class="cp-ev muted">${c.esc(p.evidence)}</div>
+        <div class="cp-fix muted">${c.esc(p.why_it_costs_games)}</div>
+        <div class="cp-fix"><b>Practice:</b> ${c.esc(p.practice)}</div></li>`).join('')}</ol>
+      <div class="grid-2 coach-foot">
+        <div class="focus good"><div class="t-label">Keep doing</div><ul class="plain-ul">${(x.strengths || []).map(s => `<li><b>${c.esc(s.title)}</b> <span class="muted small">${c.esc(s.evidence)}</span></li>`).join('')}</ul></div>
+        <div class="coach-focus"><span class="t-label">Next few sessions</span><ol class="plan">${(x.next_sessions_plan || []).map(s => `<li>${c.esc(s)}</li>`).join('')}</ol></div>
+      </div>
+      ${a.error ? `<p class="neg small">Last update failed: ${c.esc(a.error)}</p>` : ''}
+      <p class="muted small">Gemini ${c.esc(a.model)} · ${a.n} games · ${c.ago(a.at / 1000)}${a.tokens ? ' · ' + c.fmtInt(a.tokens) + ' tokens' : ''}${stale ? ' · you’ve played since, so this is out of date' : ''}.</p>
+    </section>`;
   }
 
   // ---------------------------------------------------------------- matches list
@@ -526,5 +612,5 @@
     if (clr) clr.addEventListener('click', () => c.clearCoach());
   }
 
-  root.Views = { welcome, overview, matches, match, heroes, play, about };
+  root.Views = { welcome, overview, coach, matches, match, heroes, play, about };
 })(window);

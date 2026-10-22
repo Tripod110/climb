@@ -4,6 +4,23 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v8 (2026-10-21): Coach tab, your last 30 games read together
+- New **Coach** tab. Climb counts patterns across your last 30 games, wins vs losses, using
+  `Engine.aggregateGames`:
+  - deaths per game, deaths before 10:00, deaths per phase, and caught-out deaths (died within 5s);
+  - death zones and the heroes that kill you most;
+  - souls vs your lane opponents at 6, 12 and 20 min, and the 20–30 min swing;
+  - when you finish your first tier-3 and tier-4 items;
+  - per-hero deaths.
+- "Analyze my last 30 games" sends only those counts (~3 KB, `analysisBrief`) to Gemini in one
+  call. It also includes your two most-played heroes' gaps against the next rank. Gemini returns
+  the three patterns costing you the most games, what to keep doing, and a plan for your next
+  sessions. The result is cached until you play a new game.
+- Match details for the last 30 games are fetched 10 at a time (~15 MB once) and kept compact
+  (~6 KB each, last 60 games).
+- Debriefs retry when Gemini is busy (3 tries, 45s limit each), then fall back to another Flash
+  model.
+
 ## v7 (2026-10-21): AI coach, match debriefs
 - Each match page has a "Coach me" button. Gemini gets a ~5 KB brief of that game and returns three
   specific points (strengths and mistakes, each tied to a number) plus one focus for your next game.

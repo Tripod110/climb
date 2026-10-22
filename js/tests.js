@@ -283,6 +283,32 @@
     ok('brief has no ladder unless given', !('hero_vs_ranks' in b));
   }
 
+  // ---------------------------------------------------------------- overall analysis
+  {
+    const ME = 9;
+    const pl = (team, o) => Object.assign([team, 30000, 5, 5, 8, 25000, 0, 1, 1000, 10000, 100, 5, 0, 1, 50, 0], o || {});
+    const lobby = () => ({ v: E.LOBBY_V, me: 0, dur: 2000, win: 0, p: [pl(0, { 15: ME }), ...Array.from({ length: 5 }, () => pl(0)), ...Array.from({ length: 6 }, () => pl(1))] });
+    // D: me (slot 1, lane 1) vs one lane opponent (slot 2). opp souls fixed; mine varies.
+    const det = (myAt720, deaths, itemsList) => ({ v: 1, dur: 2000, players: [
+      { slot: 1, team: 0, hero: 7, lane: 1, acct: ME, snaps: [[720, myAt720, 0, 0, 0, 0, 0, 0, 0], [1200, 15000], [1800, 25000]], items: itemsList, deaths },
+      { slot: 2, team: 1, hero: 8, lane: 1, acct: 2, snaps: [[720, 8000], [1200, 15000], [1800, 26000]], items: null, deaths: null } ] });
+    const items = { 100: ['Big Gun', 'weapon', 3, 3200], 200: ['Huge Gun', 'weapon', 4, 6400] };
+    const win = { m: { id: 1, hero: 7, won: true }, L: lobby(), D: det(9000, [[700, 2, 7000, 500, 8]], [[600, 100, 0], [1300, 200, 0]]) };
+    const loss = { m: { id: 2, hero: 7, won: false }, L: lobby(), D: det(7000, [[100, 2, 7000, 500, 3], [400, 2, 7000, 500, 2], [1500, 2, -7000, -500, 9]], [[900, 100, 0]]) };
+    const A = E.aggregateGames([win, loss], items, id => ({ 7: 'Haze', 8: 'Lash' })[id]);
+    eq('agg counts', [A.n, A.wins, A.losses], [2, 1, 1]);
+    eq('deaths per game win/loss', [A.deaths.perGame.win, A.deaths.perGame.loss], [1, 3]);
+    eq('deaths before 10 min', [A.deaths.before10.win, A.deaths.before10.loss], [0, 2]);
+    eq('caught-out share', A.deaths.fastShare, 0.5);
+    eq('top killer', A.deaths.killers[0], { hero: 8, name: 'Lash', n: 4 });
+    eq('souls vs lane opp at 12 min', [A.economy[1].diff.win, A.economy[1].diff.loss], [1000, -1000]);
+    eq('20→30 swing vs opp', A.lateSwing.all, -1000);
+    eq('first tier-3 / tier-4 timing', [A.items.tier3.win, A.items.tier3.loss, A.items.tier4.win, A.items.tier4.loss], [600, 900, 1300, null]);
+    const b = E.analysisBrief(A, { rankName: 'Sentinel 3' });
+    eq('brief: tier-3 clock', b.first_tier3_item_at, { all: '12:30', in_wins: '10:00', in_losses: '15:00' });
+    eq('empty sample', E.aggregateGames([], items).n, 0);
+  }
+
   // ---------------------------------------------------------------- misc
   eq('badge 42 = Sentinel 2', E.badgeName(42), 'Sentinel 2');
   eq('badge 24 = Seeker 4', E.badgeName(24), 'Seeker 4');

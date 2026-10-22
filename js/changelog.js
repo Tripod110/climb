@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 8, date: '2026-10-21', title: 'Coach tab: your last 30 games, read together',
+      items: [
+        'New Coach tab. Climb counts patterns across your last 30 games, wins vs losses: deaths per game and before 10:00, when and where you die and who kills you, souls vs your lane opponents at 12 and 20 minutes, the 20–30 minute swing, and when you finish your first tier-3 and tier-4 items.',
+        '“Analyze my last 30 games” sends just those numbers to Gemini (one call) and returns the three patterns costing you the most games, what to keep doing, and a plan for your next sessions. It updates when you’ve played new games.',
+        'Debriefs retry automatically when Gemini is busy, and fall back to another Flash model.',
+      ],
+    },
+    {
       v: 7, date: '2026-10-21', title: 'AI coach: match debriefs',
       items: [
         'Every match page has a “Coach me” button. Gemini reads that game (your deaths and where they happened, item timings, souls vs your lane opponents, your gaps against the next rank on that hero) and gives three specific points plus one focus for your next game.',

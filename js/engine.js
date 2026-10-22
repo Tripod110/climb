@@ -882,7 +882,173 @@
     required: ['summary', 'points', 'focus_next_game'],
   };
 
+  // ---------------------------------------------------------------- overall analysis (last N games)
+
+  /* Patterns across many games, counted here (free, exact) so the AI only has to read one
+     summary instead of N match briefs. entries: [{ m, L, D }] (normalized match, v2 lobby,
+     compactMatchDetail). items: compactItems map, for tier lookups. Every number the Coach tab
+     shows comes from this, AI or not. */
+  const PHASES = [[0, 600, '0–10 min'], [600, 1200, '10–20 min'], [1200, 1800, '20–30 min'], [1800, Infinity, '30+ min']];
+  const ECON_TIMES = [360, 720, 1200];
+  const FAST_DEATH_S = 5;
+
+  function aggregateGames(entries, items, heroName) {
+    const hn = heroName || (id => 'Hero ' + id);
+    const rows = entries.filter(e => e.m && e.L && e.L.v === LOBBY_V && e.D);
+    const out = { n: rows.length, wins: 0, losses: 0 };
+    if (!rows.length) return out;
+    const split = () => ({ all: [], win: [], loss: [] });
+    const push = (s, won, v) => { if (v == null || Number.isNaN(v)) return; s.all.push(v); s[won ? 'win' : 'loss'].push(v); };
+    const avg = xs => xs.length ? mean(xs) : null;
+    const fin = s => ({ all: avg(s.all), win: avg(s.win), loss: avg(s.loss), n: s.all.length });
+
+    const deathsPerGame = split(), early = split(), fast = split();
+    const phase = PHASES.map(() => split());
+    const zones = new Map(), killers = new Map();
+    let deathTotal = 0, fastTotal = 0;
+    const econ = ECON_TIMES.map(() => ({ diff: split(), ahead: split() }));
+    const lateSwing = split();
+    const t3 = split(), t4 = split();
+    const roles = Object.fromEntries(Object.keys(ROLE_LABEL).map(k => [k, { n: 0, w: 0 }]));
+    const impact = split();
+    const heroes = new Map();
+
+    for (const { m, L, D } of rows) {
+      const won = m.won;
+      out[won ? 'wins' : 'losses']++;
+      const me = D.players.find(p => p.items) || D.players.find(p => p.acct === L.p[L.me][15]);
+      if (!me) continue;
+      // deaths
+      const ds = me.deaths || [];
+      push(deathsPerGame, won, ds.length);
+      push(early, won, ds.filter(d => d[0] < 600).length);
+      push(fast, won, ds.filter(d => d[4] > 0 && d[4] <= FAST_DEATH_S).length);
+      PHASES.forEach(([a, b], i) => { if (D.dur > a) push(phase[i], won, ds.filter(d => d[0] >= a && d[0] < b).length); });
+      for (const [, slot, x, y, ttk] of ds) {
+        deathTotal++;
+        if (ttk > 0 && ttk <= FAST_DEATH_S) fastTotal++;
+        const z = mapZone(x, y, me.team);
+        zones.set(z, (zones.get(z) || 0) + 1);
+        const k = D.players.find(p => p.slot === slot);
+        if (k) killers.set(k.hero, (killers.get(k.hero) || 0) + 1);
+      }
+      // economy vs lane opponents
+      const at = (p, t) => { let best = null; for (const s of p.snaps) if (s[0] <= t) best = s; return best; };
+      const opps = D.players.filter(p => p.team !== me.team && p.lane === me.lane);
+      ECON_TIMES.forEach((t, i) => {
+        if (D.dur < t || !opps.length) return;
+        const mine = at(me, t), theirs = opps.map(p => at(p, t)).filter(Boolean);
+        if (!mine || !theirs.length) return;
+        const diff = mine[1] - mean(theirs.map(s => s[1]));
+        push(econ[i].diff, won, diff);
+        push(econ[i].ahead, won, diff > 0 ? 1 : 0);
+      });
+      if (D.dur >= 1800 && opps.length) {
+        const g = p => { const a = at(p, 1200), b = at(p, 1800); return a && b ? b[1] - a[1] : null; };
+        const mine = g(me), theirs = opps.map(g).filter(v => v != null);
+        if (mine != null && theirs.length) push(lateSwing, won, mine - mean(theirs));
+      }
+      // item timings
+      const firstTier = tier => { const x = (me.items || []).filter(([, id]) => items && items[id] && items[id][2] >= tier).sort((a, b) => a[0] - b[0])[0]; return x ? x[0] : null; };
+      push(t3, won, firstTier(3));
+      push(t4, won, firstTier(4));
+      // roles
+      const g = gameRole(L, won);
+      if (g) { roles[g.role].n++; if (won) roles[g.role].w++; push(impact, won, g.impact); }
+      // per hero
+      if (!heroes.has(m.hero)) heroes.set(m.hero, { hero: m.hero, n: 0, w: 0, deaths: 0, early: 0 });
+      const h = heroes.get(m.hero);
+      h.n++; if (won) h.w++; h.deaths += ds.length; h.early += ds.filter(d => d[0] < 600).length;
+    }
+
+    const top = (map, k) => [...map].sort((a, b) => b[1] - a[1]).slice(0, k);
+    Object.assign(out, {
+      deaths: {
+        perGame: fin(deathsPerGame), before10: fin(early), fast: fin(fast),
+        fastShare: deathTotal ? fastTotal / deathTotal : null,
+        byPhase: PHASES.map(([, , label], i) => Object.assign({ label }, fin(phase[i]))),
+        zones: top(zones, 4).map(([zone, n]) => ({ zone, n, share: n / deathTotal })),
+        killers: top(killers, 4).map(([hero, n]) => ({ hero, name: hn(hero), n })),
+        total: deathTotal,
+      },
+      economy: ECON_TIMES.map((t, i) => ({ t, diff: fin(econ[i].diff), aheadRate: fin(econ[i].ahead) })),
+      lateSwing: fin(lateSwing),
+      items: { tier3: fin(t3), tier4: fin(t4) },
+      roles: Object.entries(roles).filter(([, r]) => r.n).map(([role, r]) => ({ role, label: ROLE_LABEL[role], n: r.n, winRate: r.w / r.n })),
+      impact: fin(impact),
+      heroes: [...heroes.values()].sort((a, b) => b.n - a.n).map(h => Object.assign(h, { name: hn(h.hero), winRate: h.w / h.n, deathsPerGame: h.deaths / h.n, before10PerGame: h.early / h.n })),
+    });
+    return out;
+  }
+
+  /* The aggregate -> what Gemini reads. Rounded, labelled, nothing it has to compute. */
+  function analysisBrief(agg, opts) {
+    const o = Object.assign({ rankName: null, ladderGaps: [] }, opts);
+    const r1 = v => v == null ? null : Math.round(v * 10) / 10;
+    const r0 = v => v == null ? null : Math.round(v);
+    const pc = v => v == null ? null : Math.round(v * 100) + '%';
+    const mmss = s => s == null ? null : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+    const wl = (f, x) => ({ all: f(x.all), in_wins: f(x.win), in_losses: f(x.loss) });
+    return {
+      sample: { games: agg.n, wins: agg.wins, losses: agg.losses, current_rank: o.rankName },
+      deaths: {
+        per_game: wl(r1, agg.deaths.perGame),
+        before_10_min_per_game: wl(r1, agg.deaths.before10),
+        caught_out_per_game: Object.assign(wl(r1, agg.deaths.fast), { note: `deaths where you died within ${FAST_DEATH_S}s of taking damage` }),
+        share_of_deaths_caught_out: pc(agg.deaths.fastShare),
+        per_game_by_phase: agg.deaths.byPhase.map(p => ({ phase: p.label, all: r1(p.all), in_wins: r1(p.win), in_losses: r1(p.loss) })),
+        most_common_zones: agg.deaths.zones.map(z => ({ zone: z.zone, deaths: z.n, share: pc(z.share) })),
+        most_frequent_killers: agg.deaths.killers.map(k => ({ hero: k.name, kills_on_you: k.n })),
+      },
+      souls_vs_lane_opponents: agg.economy.map(e => ({ at: mmss(e.t), avg_difference: wl(r0, e.diff), games_ahead: wl(pc, e.aheadRate) })),
+      souls_gained_20_to_30_min_vs_lane_opponents: wl(r0, agg.lateSwing),
+      first_tier3_item_at: wl(mmss, agg.items.tier3),
+      first_tier4_item_at: wl(mmss, agg.items.tier4),
+      game_roles: { note: 'Climb roles are assigned within wins (Carried, Key player, Solid win, Passenger) or losses (Couldn’t carry, Key player, Tough loss, Dragged down), so they describe your part in the result, not the result itself.',
+        counts: agg.roles.map(r => ({ role: r.label, games: r.n, of_which_wins: Math.round(r.winRate * r.n) })) },
+      impact_vs_average_teammate: wl(v => v == null ? null : Math.round(v * 100) / 100, agg.impact),
+      heroes: agg.heroes.slice(0, 6).map(h => ({ hero: h.name, games: h.n, win_rate: pc(h.winRate), deaths_per_game: r1(h.deathsPerGame), deaths_before_10_per_game: r1(h.before10PerGame) })),
+      biggest_gaps_vs_next_rank: o.ladderGaps,
+    };
+  }
+
+  const ANALYSIS_SYSTEM = [
+    'You are a blunt, specific Deadlock coach reviewing a player\'s last games as a whole.',
+    'The brief is pre-computed statistics. Every number is exact; do not recompute or estimate others.',
+    'Rules:',
+    '- Use ONLY facts in the brief. Every pattern must cite numbers from it, ideally a wins-vs-losses contrast.',
+    '- Rank patterns by how many games they plausibly cost: the biggest win/loss contrasts first.',
+    '- Never invent hero abilities, item effects, map details or patch facts.',
+    '- Small samples (a hero with 1–3 games) are anecdotes; do not build a pattern on them.',
+    '- "practice" is a concrete drill or habit for the next few sessions, not a platitude.',
+    '- Plain words, no hype, no emojis.',
+  ].join('\n');
+
+  const ANALYSIS_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      headline: { type: 'STRING', description: 'One sentence: the state of this player\'s game right now.' },
+      patterns: {
+        type: 'ARRAY', minItems: 3, maxItems: 3,
+        items: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING' },
+            evidence: { type: 'STRING', description: 'Numbers from the brief, wins vs losses where possible.' },
+            why_it_costs_games: { type: 'STRING' },
+            practice: { type: 'STRING', description: 'A concrete habit or drill.' },
+          },
+          required: ['title', 'evidence', 'why_it_costs_games', 'practice'],
+        },
+      },
+      strengths: { type: 'ARRAY', minItems: 1, maxItems: 2, items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, evidence: { type: 'STRING' } }, required: ['title', 'evidence'] } },
+      next_sessions_plan: { type: 'ARRAY', minItems: 3, maxItems: 3, items: { type: 'STRING' }, description: 'Three short steps for the next few play sessions.' },
+    },
+    required: ['headline', 'patterns', 'strengths', 'next_sessions_plan'],
+  };
+
   const Engine = {
+    aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
     LOBBY_V, ROLE_LABEL, ROLE_GOOD, ROLE_NOTE, TAG2_LABEL, TAG2_GOOD, LADDER_TIERS, LADDER_METRICS,
     parseSteamInput, lobbyImpact, gameRole, roleSummary, compactHeroStats, rankLadder,

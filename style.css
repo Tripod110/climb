@@ -280,6 +280,32 @@ a.mrow.l::before { background: var(--bad); }
 .field { display: grid; gap: 4px; margin: 10px 0; }
 .field select { height: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
 
+/* coach tab */
+.sec { margin: 6px 0 10px; }
+.tiles-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 16px; }
+.tile.wl { display: grid; gap: 2px; }
+.wl-row { display: flex; justify-content: space-between; align-items: baseline; }
+.wl-row b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.wl-k { font-size: 12.5px; color: var(--muted); }
+.phases { display: grid; gap: 10px; margin: 12px 0; }
+.ph { display: grid; grid-template-columns: 76px 1fr 72px; gap: 10px; align-items: center; font-size: 13px; }
+.ph-l { color: var(--ink-2); }
+.ph-bars { display: grid; gap: 3px; }
+.pbar { display: block; height: 7px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+.pbar span { display: block; height: 100%; border-radius: 4px; }
+.pbar .w { background: var(--good); }
+.pbar .l { background: var(--bad); }
+.ph-v { text-align: right; font-variant-numeric: tabular-nums; }
+.two-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 10px 0; }
+ol.plain { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; font-size: 13px; }
+ol.plain li { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+ol.plain li span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+ol.plain .hero-ic { width: 20px; height: 20px; border-radius: 5px; }
+.plain-ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+ol.plan { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; font-weight: 500; }
+.coach-foot { margin-bottom: 8px; }
+.coach-foot > * { margin: 0; }
+
 /* ---------------------------------------------------------------- heroes */
 .hero-pick { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 12px; margin-bottom: 8px; scrollbar-width: thin; }
 .hp {
@@ -384,6 +410,8 @@ a.mrow.l::before { background: var(--bad); }
   .role-legend { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .shares { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .coach-pts { grid-template-columns: minmax(0, 1fr); }
+  .tiles-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .two-lists { grid-template-columns: 1fr; }
   .mrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px; row-gap: 4px; }
   .mrow > :nth-child(2), .mrow > :nth-child(5), .mrow > :nth-child(9) { display: none; }
   .mhead { display: none; }

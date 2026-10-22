@@ -32,6 +32,8 @@
     coach: S.get('coach', { key: '', model: null, models: [] }),   // your Gemini key: this browser only
     items: S.get('items', null),          // { at, map: compactItems }
     coaching: {},                         // matchId -> 'working' while a debrief runs
+    analyzing: null,                      // status text while the overall analysis runs
+    detailsBusy: false,
     settings,
     assets: S.get('assets', null),        // { at, heroes: {id: {name, icon}}, tiers: [names] }
     patch: S.get('patch', null),          // { at, t }: the last big patch day
@@ -48,6 +50,8 @@
     state.curves = S.getData('curves', {});         // { key: { at, c } } curves + hero stats
     state.profile = S.getData('profile', null);     // { at, name, avatar, rank }
     state.debriefs = S.getData('debriefs', {});     // { matchId: { at, model, data } | { error } }
+    state.details = S.getData('details', {});       // { matchId: compactMatchDetail } (last ~60)
+    state.analysis = S.getData('analysis', null);   // { at, lastId, n, model, data } (+ error)
   }
   loadAccountData();
 
@@ -100,13 +104,13 @@
     go: hash => { if (location.hash !== hash) location.hash = hash; else render(); },
     save: () => S.set('settings', settings),
     render: () => render(),
-    benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach,
+    benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
   };
 
   // ---------------------------------------------------------------- routing + render
   function parseRoute() {
     const parts = location.hash.replace(/^#\/?/, '').split('/');
-    const tab = ['overview', 'matches', 'match', 'heroes', 'play', 'about'].includes(parts[0]) ? parts[0] : 'overview';
+    const tab = ['overview', 'coach', 'matches', 'match', 'heroes', 'play', 'about'].includes(parts[0]) ? parts[0] : 'overview';
     return { tab, id: parts[1] ? Number(parts[1]) : null };
   }
 
@@ -121,7 +125,7 @@
     ctx.M = M;
     const tab = state.route.tab === 'match' ? 'matches' : state.route.tab;
     document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === tab ? 'page' : 'false'));
-    const view = { overview: V.overview, matches: V.matches, match: V.match, heroes: V.heroes, play: V.play, about: V.about }[state.route.tab];
+    const view = { overview: V.overview, coach: V.coach, matches: V.matches, match: V.match, heroes: V.heroes, play: V.play, about: V.about }[state.route.tab];
     view(main, ctx);
     $('#status').textContent = state.status;
   }
@@ -368,6 +372,98 @@
     } finally {
       delete state.coaching[matchId];
       S.setData('debriefs', state.debriefs);
+      render();
+    }
+  }
+
+  // ---------------------------------------------------------------- overall analysis (Coach tab)
+  const ANALYSIS_N = 30;
+  const DETAILS_KEEP = 60;
+  const lastGames = () => model().all.slice(-ANALYSIS_N);
+
+  /* Match detail for your last ANALYSIS_N games, 10 per request, cached. Details older than the
+     last DETAILS_KEEP games are dropped so localStorage stays small (~6KB each). */
+  async function ensureDetails() {
+    if (state.detailsBusy || !settings.account) return;
+    const acct = settings.account;
+    const missing = lastGames().filter(m => !state.details[m.id]).map(m => m.id);
+    if (!missing.length) return;
+    state.detailsBusy = true; render();
+    try {
+      await loadItems();
+      for (let i = 0; i < missing.length; i += 10) {
+        const ids = missing.slice(i, i + 10);
+        setStatus(`Reading match details… ${Math.min(i + 10, missing.length)}/${missing.length}`);
+        const metas = await A.matchDetails(ids);
+        if (acct !== settings.account) return;
+        for (const meta of metas || []) {
+          const D = E.compactMatchDetail(meta, acct);
+          if (D) state.details[meta.match_id] = D;
+          const L = E.compactLobby(meta, acct);
+          const have = state.lobbies[meta.match_id];
+          if (L && !(have && have.v === E.LOBBY_V)) state.lobbies[meta.match_id] = L;
+        }
+        render();
+      }
+      const keep = new Set(model().all.slice(-DETAILS_KEEP).map(m => m.id));
+      for (const id of Object.keys(state.details)) if (!keep.has(Number(id))) delete state.details[id];
+      S.setData('details', state.details);
+      S.setData('lobbies', state.lobbies);
+      setStatus('');
+    } catch (e) {
+      setStatus(e.waitMs ? 'deadlock-api is rate-limiting. Try again in a minute.' : 'Couldn’t load match details: ' + e.message);
+    } finally {
+      state.detailsBusy = false; render();
+    }
+  }
+
+  function analysisEntries() {
+    return lastGames().map(m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }));
+  }
+
+  /* Aggregate locally, add the next-rank gaps for your two most-played heroes in the sample,
+     then ONE Gemini call. Cached until you play a new game (keyed on the latest match id). */
+  async function runAnalysis(force) {
+    if (state.analyzing || !state.coach.key || !state.coach.model) return;
+    const games = lastGames();
+    if (!games.length) return;
+    const lastId = games[games.length - 1].id;
+    if (!force && state.analysis && state.analysis.data && state.analysis.lastId === lastId) return;
+    const setA = msg => { state.analyzing = msg; render(); };
+    try {
+      setA('Reading your last ' + games.length + ' games…');
+      await ensureDetails();
+      const agg = E.aggregateGames(analysisEntries(), state.items && state.items.map, heroName);
+      if (agg.n < 5) throw new Error('Not enough games with match detail yet (' + agg.n + '). Try again in a minute.');
+      setA('Comparing your top heroes with the next rank…');
+      const M = model();
+      const yourTier = M.badge ? Math.floor(M.badge / 10) : 0;
+      const gaps = [];
+      for (const h of agg.heroes.slice(0, 2)) {
+        try {
+          await ensureHeroLadder(h.hero);
+          const plan = benchPlan(M, h.hero), k = ladderKeys(h.hero, plan.from, settings.account);
+          const get = key => state.curves[key] ? state.curves[key].c : null;
+          const tiersData = {};
+          for (const t of E.LADDER_TIERS) tiersData[t] = { curve: get(k.tiers[t].curve), stats: get(k.tiers[t].stats) };
+          const mine = { curve: get(k.me), stats: get(k.meStats) };
+          if (!mine.curve || !mine.stats) continue;
+          const lad = E.rankLadder(h.hero, 1200, mine, tiersData, yourTier);
+          for (const r of lad.toNext.slice(0, 2)) {
+            gaps.push({ hero: h.name, stat: r.label, you: Math.round(r.you * 100) / 100, next_rank_avg: Math.round(r.next.v * 100) / 100, at: r.src === 'curve' ? '20:00' : 'whole game' });
+          }
+        } catch (e) { /* the analysis still works without these */ }
+      }
+      const brief = E.analysisBrief(agg, { rankName: M.badge ? E.badgeName(M.badge, ctx.tiers()) : null, ladderGaps: gaps });
+      setA('Coach is reading ' + agg.n + ' games…');
+      const out = await K.json(state.coach.key, state.coach.model, E.ANALYSIS_SYSTEM, JSON.stringify(brief), E.ANALYSIS_SCHEMA,
+        K.fallbacks(state.coach.models || [], state.coach.model), setA);
+      state.analysis = { at: Date.now(), lastId, n: agg.n, model: out.model, data: out.data, tokens: out.usage && out.usage.totalTokenCount };
+    } catch (e) {
+      state.analysis = Object.assign({}, state.analysis || {}, { errorAt: Date.now(), error: e.message });
+    } finally {
+      state.analyzing = null;
+      S.setData('analysis', state.analysis);
       render();
     }
   }
