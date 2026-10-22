@@ -360,8 +360,9 @@
         heroName, items: state.items.map, tierName: ctx.tierName, ladder, yourTier,
       });
       state.coaching[matchId] = 'Coach is thinking…'; render();
-      const out = await K.json(state.coach.key, state.coach.model, E.DEBRIEF_SYSTEM, JSON.stringify(brief), E.DEBRIEF_SCHEMA);
-      state.debriefs[matchId] = { at: Date.now(), model: state.coach.model, data: out.data, tokens: out.usage && out.usage.totalTokenCount };
+      const out = await K.json(state.coach.key, state.coach.model, E.DEBRIEF_SYSTEM, JSON.stringify(brief), E.DEBRIEF_SCHEMA,
+        K.fallbacks(state.coach.models || [], state.coach.model), msg => { state.coaching[matchId] = msg; render(); });
+      state.debriefs[matchId] = { at: Date.now(), model: out.model, data: out.data, tokens: out.usage && out.usage.totalTokenCount };
     } catch (e) {
       state.debriefs[matchId] = { at: Date.now(), error: e.message };
     } finally {
