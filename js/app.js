@@ -53,6 +53,7 @@
     state.details = S.getData('details', {});       // { matchId: compactMatchDetail } (last ~60)
     state.analysis = S.getData('analysis', null);   // { at, lastId, n, model, data } (+ error)
     state.focus = S.getData('focus', { active: null, history: [] });  // the focus loop (see Engine.focusProgress)
+    state.friends = S.getData('friends', null);     // { at, mates: [...mate-stats rows], people: {acct: {name, avatar, badge}} }
   }
   loadAccountData();
 
@@ -107,12 +108,13 @@
     render: () => render(),
     benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureMatchDetail, matchWin, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
     focusEntries, focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
+    ensureFriends, ensureDetailsFor, friendList, entryOf: m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }), dismissRecap,
   };
 
   // ---------------------------------------------------------------- routing + render
   function parseRoute() {
     const parts = location.hash.replace(/^#\/?/, '').split('/');
-    const tab = ['overview', 'coach', 'matches', 'match', 'heroes', 'play', 'about'].includes(parts[0]) ? parts[0] : 'overview';
+    const tab = ['overview', 'coach', 'matches', 'match', 'heroes', 'friends', 'friend', 'play', 'about'].includes(parts[0]) ? parts[0] : 'overview';
     return { tab, id: parts[1] ? Number(parts[1]) : null };
   }
 
@@ -125,9 +127,9 @@
     if (onboarding) { V.welcome(main, ctx); return; }
     const M = model();
     ctx.M = M;
-    const tab = state.route.tab === 'match' ? 'matches' : state.route.tab;
+    const tab = state.route.tab === 'match' ? 'matches' : state.route.tab === 'friend' ? 'friends' : state.route.tab;
     document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === tab ? 'page' : 'false'));
-    const view = { overview: V.overview, coach: V.coach, matches: V.matches, match: V.match, heroes: V.heroes, play: V.play, about: V.about }[state.route.tab];
+    const view = { overview: V.overview, coach: V.coach, matches: V.matches, match: V.match, heroes: V.heroes, friends: V.friends, friend: V.friend, play: V.play, about: V.about }[state.route.tab];
     view(main, ctx);
     $('#status').textContent = state.status;
   }
@@ -441,7 +443,9 @@
         render();
       }
       const keep = new Set(model().all.slice(-DETAILS_KEEP).map(m => m.id));
-      for (const id of Object.keys(state.details)) if (!keep.has(Number(id))) delete state.details[id];
+      // Keep the last DETAILS_KEEP games plus up to 40 shared games with friends (fetched on their page).
+      const shared = new Set(friendList().flatMap(f => f.ids.slice(-10)));
+      for (const id of Object.keys(state.details)) if (!keep.has(Number(id)) && !shared.has(Number(id))) delete state.details[id];
       S.setData('details', state.details);
       S.setData('lobbies', state.lobbies);
       setStatus('');
@@ -521,6 +525,53 @@
       state.analyzing = null; render();
     }
   }
+
+  // ---------------------------------------------------------------- friends
+  const FRIENDS_TTL = 86400 * 1000;
+  let friendsBusy = false;
+  /* Teammate history (who you queue with) + names, avatars and ranks for the repeat ones. */
+  async function ensureFriends(force) {
+    if (friendsBusy || !settings.account) return;
+    if (!force && state.friends && Date.now() - state.friends.at < FRIENDS_TTL) return;
+    friendsBusy = true;
+    const acct = settings.account;
+    try {
+      const mates = (await A.mateStats(acct) || []).filter(x => x.matches_played >= E.FRIEND_MIN);
+      const ids = mates.map(x => x.mate_id).slice(0, 40);
+      const [profiles, ranks] = await Promise.all([A.steamProfiles(ids).catch(() => []), A.playerRanks(ids).catch(() => [])]);
+      if (acct !== settings.account) return;
+      const people = {};
+      for (const p of profiles || []) people[p.account_id] = { name: p.personaname, avatar: p.avatarmedium || p.avatar };
+      for (const k of ranks || []) people[k.account_id] = Object.assign(people[k.account_id] || {}, { badge: k.badge || null });
+      state.friends = { at: Date.now(), mates, people };
+      S.setData('friends', state.friends);
+    } catch (e) {
+      setStatus('Couldn’t load friends: ' + e.message);
+    } finally { friendsBusy = false; render(); }
+  }
+  function friendList() {
+    if (!state.friends) return [];
+    return E.friendStats(state.friends.mates, model().all).map(f => Object.assign(f, state.friends.people[f.acct] || {}));
+  }
+
+  /* Match detail for specific games (a friend's shared games), 10 per request. */
+  const detailsAsked = new Set();
+  async function ensureDetailsFor(ids) {
+    const missing = ids.filter(id => (!state.details[id] || state.details[id].v !== E.DETAIL_V) && !detailsAsked.has(id));
+    if (!missing.length || state.detailsBusy) return;
+    missing.forEach(id => detailsAsked.add(id));
+    state.detailsBusy = true;
+    try {
+      for (let i = 0; i < missing.length; i += 10) {
+        const metas = await A.matchDetails(missing.slice(i, i + 10));
+        for (const meta of metas || []) { const D = E.compactMatchDetail(meta, settings.account); if (D) state.details[meta.match_id] = D; }
+      }
+      S.setData('details', state.details);
+    } catch (e) { /* the view shows what it has */ }
+    finally { state.detailsBusy = false; render(); }
+  }
+
+  function dismissRecap(end) { settings.recapSeen = end; ctx.save(); render(); }
 
   function analysisEntries() {
     return lastGames().map(m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }));

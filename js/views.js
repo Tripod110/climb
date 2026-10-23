@@ -8,8 +8,32 @@
   const WORD = { improving: 'Improving', holding: 'Holding', slipping: 'Slipping', unknown: 'Not enough games' };
   const roleClass = (E, r) => E.ROLE_GOOD[r] > 0 ? 'good' : E.ROLE_GOOD[r] < 0 ? 'bad' : 'flat';
   const firstChip = g => g && g.lobbyFirst ? '<span class="first" title="Valve named you MVP: 1st in the lobby">★ 1st</span>' : '';
-  const roleChip = (c, g, id) => g ? `${firstChip(g)}<span class="role ${roleClass(c.E, g.role)}">${c.E.ROLE_LABEL[g.role]}</span>`
+  /* Team share is neutral on purpose: on the user's 400 games it didn't predict results (see
+     Engine.teamShare). Gold ★ 1st (Valve's MVP) is the only highlight. */
+  const roleChip = (c, g, id) => g ? `${firstChip(g)}<span class="role share" title="Your share of your own team's stats: #${g.teamRank} of ${g.teamSize}. Describes your part, doesn't predict wins.">${g.teamRank <= 2 ? 'Top share' : g.teamRank >= g.teamSize - 1 ? 'Low share' : 'Mid share'}</span>`
     : id != null && c.state.lobbies[id] === null ? '<span class="role pending">No lobby data</span>' : '<span class="role pending">Reading lobby…</span>';
+
+  /* Where a number comes from. Tap a badge to see how it was worked out. Kinds:
+     yours = counted from your own games · model = Climb's trained win model · ranks = averages
+     of other players' games by rank · valve = straight from the game · rule = a Climb rule of
+     thumb, not proven to predict wins · ai = Gemini's wording. */
+  const SRC = { yours: 'Your games', model: 'Trained model', ranks: 'Rank data', valve: 'Valve', rule: 'Climb rule', ai: 'AI' };
+  const src = (kind, note) => `<button type="button" class="src src-${kind}" data-note="${String(note).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" aria-label="${SRC[kind]}: how this was worked out">${SRC[kind]}</button>`;
+  let popover = null;
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('.src');
+    if (popover && (!b || popover.dataset.for !== b.dataset.note)) { popover.remove(); popover = null; }
+    if (!b || popover) return;
+    popover = document.createElement('div');
+    popover.className = 'src-pop'; popover.dataset.for = b.dataset.note;
+    popover.innerHTML = `<b>${b.textContent}</b><p>${b.dataset.note}</p>`;
+    document.body.appendChild(popover);
+    const r = b.getBoundingClientRect(), w = Math.min(320, window.innerWidth - 24);
+    popover.style.width = w + 'px';
+    popover.style.left = Math.max(12, Math.min(window.innerWidth - w - 12, r.left + window.scrollX - 8)) + 'px';
+    popover.style.top = (r.bottom + window.scrollY + 6) + 'px';
+  });
+
   // MVP #1 already shows as the gold ★ 1st chip, so its tag is left out of the tag list.
   const tagChips = (c, g, max) => !g ? '' : g.tags.filter(t => t !== 'mvp1').slice(0, max || 99).map(t => `<span class="tag${c.E.TAG2_GOOD[t] < 0 ? ' warn' : ''}">${c.E.TAG2_LABEL[t]}</span>`).join('');
   const icon = (c, hero, size) => {
@@ -59,12 +83,17 @@
     if (!M.all.length) { host.innerHTML = `<div class="empty-state">${c.state.busy ? 'Loading your matches…' : 'No matches found for this account yet.'}</div>`; return; }
     const v = M.v;
     const roles = E.roleSummary(M.w.cur, c.state.lobbies);
-    const rolesPrev = M.w.prev.length ? E.roleSummary(M.w.prev, c.state.lobbies) : null;
+    const items = c.state.items && c.state.items.map;
+    const early = E.earlyRates(M.w.cur.map(c.entryOf), items);
+    const earlyPrev = M.w.prev.length ? E.earlyRates(M.w.prev.map(c.entryOf), items) : null;
+    const cat = c.focusCatalog();
+    const catOf = id => cat.find(x => x.id === id);
+    const splitNote = id => { const x = catOf(id); return x && x.n ? ` Over your last ${x.n} games you won ${c.pct(x.wrPass)} when you did this and ${c.pct(x.wrFail)} when you didn’t.` : ''; };
     const delta = (a, b, good) => a == null || b == null ? '' : (() => {
       const d = a - b; if (Math.abs(d) < 0.02) return '<span class="muted">same as before</span>';
       const up = d > 0; return `<span class="${up === good ? 'pos' : 'neg'}">${up ? '▲' : '▼'} ${Math.abs(Math.round(d * 100))} pts</span>`;
     })();
-    const tile = (label, value, sub) => `<div class="tile"><div class="t-label">${label}</div><div class="t-val">${value}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
+    const tile = (label, value, sub, badge) => `<div class="tile"><div class="t-label">${label}${badge ? ' ' + badge : ''}</div><div class="t-val">${value}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
     const R = M.curRanked;
     const fresh = c.LOG.filter(e => e.v > S.seenV).slice(0, 2);
     const recent = M.all.slice(-8).reverse();
@@ -73,6 +102,7 @@
     host.innerHTML = `
       ${fresh.length ? `<section class="card whatsnew"><div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="btn ghost-btn" type="button">Got it</button></div>
         ${fresh.map(e => `<h3>v${e.v} · ${c.esc(e.title)}</h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>` : ''}
+      ${recapCard(c)}
       ${focusCard(c, false)}
 
       <div class="page-head">
@@ -97,18 +127,18 @@
           <ul class="signals">${v.signals.map(s => signalLine(c, s)).join('')}</ul>
         </section>
         <div class="tiles">
-          ${tile('Win rate', c.pct(M.cur.winRate), `${M.cur.wins}–${M.cur.losses}`)}
-          ${tile('Rank points', R.hasDelta ? c.signed(R.net) : '—', R.n ? `${R.n} ranked games` : 'no ranked games')}
-          ${tile('Carried', roles.n ? c.pct(roles.carry) : '—', rolesPrev ? delta(roles.carry, rolesPrev.carry, true) : 'your team’s #1 impact')}
-          ${tile('Key player', roles.n ? c.pct(roles.key) : '—', rolesPrev ? delta(roles.key, rolesPrev.key, true) : 'top 2 on your team')}
-          ${tile('Dragged / passenger', roles.n ? c.pct(roles.dragged) : '—', rolesPrev ? delta(roles.dragged, rolesPrev.dragged, false) : 'bottom of your team')}
-          ${tile('MVP awards', roles.n ? String(roles.mvp) : '—', roles.n ? `in ${roles.n} games` : '')}
+          ${tile('Win rate', c.pct(M.cur.winRate), `${M.cur.wins}–${M.cur.losses}`, src('yours', `Wins ÷ games in this window (${M.cur.n} games), from your match history on deadlock-api.`))}
+          ${tile('Rank points', R.hasDelta ? c.signed(R.net) : '—', R.n ? `${R.n} ranked games` : 'no ranked games', src('valve', 'The sum of Valve’s own rank-point change for each ranked game in this window.'))}
+          ${tile('Ahead of lane at 12:00', early.nAhead ? c.pct(early.ahead12) : '—', earlyPrev && earlyPrev.nAhead ? delta(early.ahead12, earlyPrev.ahead12, true) : `${early.nAhead} games with detail`, src('yours', `Games where your souls at 12:00 beat your lane opponents’ average, out of ${early.nAhead} games in this window with match detail.` + splitNote('ahead12')))}
+          ${tile('No deaths before 10:00', early.nClean ? c.pct(early.clean10) : '—', earlyPrev && earlyPrev.nClean ? delta(early.clean10, earlyPrev.clean10, true) : `${early.nClean} games with detail`, src('yours', `Games with zero deaths in the first 10 minutes, out of ${early.nClean} games in this window with match detail.` + splitNote('early0')))}
+          ${tile('Deaths per game', M.cur.n ? (M.w.cur.reduce((s, m) => s + m.d, 0) / M.cur.n).toFixed(1) : '—', M.prev && M.prev.n ? `${(M.w.prev.reduce((s, m) => s + m.d, 0) / M.prev.n).toFixed(1)} before` : '', src('yours', 'Average deaths per game in this window, from your match history.'))}
+          ${tile('MVP awards', roles.n ? String(roles.mvp) : '—', roles.n ? `in ${roles.n} games` : '', src('valve', 'Valve’s post-game MVP (1st to 3rd in the lobby), as recorded in the match data.'))}
         </div>
       </div>
 
       <section class="card">
-        <div class="card-head"><h2>How your games went</h2><a href="#/coach" class="more">What’s costing you games →</a></div>
-        ${roleBars(c, roles)}
+        <div class="card-head"><h2>What separates your wins from your losses</h2><a href="#/coach" class="more">Pick a habit to work on →</a></div>
+        ${splitTable(c, cat)}
       </section>
 
       <div class="grid-2">
@@ -122,7 +152,7 @@
           }).join('')}</ul>
         </section>
         <section class="card">
-          <div class="card-head"><h2>Heroes in this window</h2><a href="#/heroes" class="more">Compare vs ranks →</a></div>
+          <div class="card-head"><h2>Heroes in this window</h2><a href="#/heroes" class="more">Your road to the next rank →</a></div>
           <ul class="mini-list">${heroes.map(h => `<li><a href="#/heroes/${h.hero}">${icon(c, h.hero, 30)}
             <span class="ml-main"><b>${c.esc(c.heroName(h.hero))}</b> <span class="muted small">${h.games} games</span></span>
             <span class="ml-kda">${h.wins}–${h.losses}</span><span class="ml-d">${h.hasDelta ? `<span class="${h.net > 0 ? 'pos' : h.net < 0 ? 'neg' : 'muted'}">${c.signed(h.net)}</span>` : ''}</span>
@@ -148,11 +178,47 @@
     bindSeg(host, '#scope', v2 => { S.games = v2; c.save(); c.render(); });
     const ok = host.querySelector('#wn-ok');
     if (ok) ok.addEventListener('click', () => { S.seenV = c.VERSION; c.save(); c.render(); });
+    const rk = host.querySelector('#recap-ok');
+    if (rk) rk.addEventListener('click', () => { const s0 = E.lastSession(M.all, c.state.helper, Date.now() / 1000, 18); if (s0) c.dismissRecap(s0.end); });
+    if (!c.state.detailsBusy) c.ensureDetails();
   }
 
   function trendTxt(h) {
     if (!h.ready || h.trend == null) return '<span class="muted small">—</span>';
     return h.trend >= 0.2 ? '<span class="pos small">▲ rising</span>' : h.trend <= -0.2 ? '<span class="neg small">▼ dipping</span>' : '<span class="muted small">■ steady</span>';
+  }
+
+  /* The habits that split YOUR wins from losses most, from your last 30 games. Plain counts. */
+  function splitTable(c, cat) {
+    const rows = cat.filter(x => x.eligible).slice(0, 4);
+    if (!rows.length) return '<p class="muted small">Counting once match details for your recent games have loaded…</p>';
+    return `<ul class="splits">${rows.map(x => `<li><span>${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}</span>
+      <span class="sp-bars"><span class="sp-w" style="width:${Math.round(x.wrPass * 100)}%"></span></span>
+      <span class="sp-num"><b class="pos">${c.pct(x.wrPass)}</b> when you do · <span class="neg">${c.pct(x.wrFail)}</span> when you don’t · you do it in ${c.pct(x.passRate)}</span></li>`).join('')}</ul>
+      <p class="muted small">${src('yours', `Win rate in your last ${rows[0].n} games with match detail, split by whether you passed each check. These are measured before the game is decided, unless marked “follows result”.`)} Win rate when you pass each check vs when you don’t, over your last ${rows[0].n} games.</p>`;
+  }
+
+  /* After a session: record, the habit row and the biggest swing, once. */
+  function recapCard(c) {
+    const st = c.state, E = c.E, S = c.settings;
+    const H = st.helperLive ? st.helper : st.helper && Object.assign({}, st.helper, { playing: false });
+    const s0 = E.lastSession(c.M.all, H, Date.now() / 1000, 18);
+    if (!s0 || S.recapSeen === s0.end) return '';
+    const g = s0.games, w = g.filter(m => m.won).length, pts = g.reduce((s, m) => s + (m.delta || 0), 0), ranked = g.some(m => m.delta != null);
+    const f = st.focus.active, fp = f ? c.focusNow() : null;
+    const marks = fp ? g.map(m => { const r = fp.results.find(x => x.m.id === m.id); return r ? (r.pass ? '✓' : '✗') : null; }).filter(Boolean) : [];
+    let swing = null;
+    for (const m of g) { const wv = c.matchWin(m.id); if (!wv) continue; for (const t of wv.turning) if (!swing || Math.abs(t.delta) > Math.abs(swing.t.delta)) swing = { m, t }; }
+    const early = g.reduce((s, m) => { const D = st.details[m.id]; const me = D && D.players.find(p => p.items); return s + (me ? (me.deaths || []).filter(d => d[0] < 600).length : 0); }, 0);
+    const mm = x => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, '0')}`;
+    return `<section class="card recap"><div class="wn-head"><div><div class="t-label">Last session · ${c.ago(s0.end)}</div>
+      <h2>${w}–${g.length - w}${ranked ? ` · <span class="${pts > 0 ? 'pos' : pts < 0 ? 'neg' : ''}">${c.signed(pts)} rank pts</span>` : ''}</h2></div>
+      <button type="button" class="btn ghost-btn" id="recap-ok">Got it</button></div>
+      <ul class="recap-list">
+        ${f && marks.length ? `<li><span class="muted">Your habit</span> <span class="dots">${marks.map(x => `<span class="dot ${x === '✓' ? 'y' : 'n'}">${x}</span>`).join('')}</span> <span class="muted small">${c.esc(E.habitById(f.habit).short)}</span></li>` : ''}
+        <li><span class="muted">Deaths before 10:00</span> <b>${early}</b> <span class="muted small">across ${g.length} game${g.length > 1 ? 's' : ''}</span></li>
+        ${swing ? `<li><span class="muted">Biggest swing</span> <a href="#/match/${swing.m.id}"><b class="${swing.t.delta >= 0 ? 'pos' : 'neg'}">${swing.t.delta > 0 ? '+' : '−'}${Math.abs(Math.round(swing.t.delta * 100))} pts</b> on ${c.esc(c.heroName(swing.m.hero))}, ${mm(swing.t.from)}–${mm(swing.t.to)}${swing.t.myDeaths.length ? `, you died ${swing.t.myDeaths.length === 1 ? 'at ' + mm(swing.t.myDeaths[0]) : swing.t.myDeaths.length + ' times'}` : ''} →</a></li>` : ''}
+      </ul></section>`;
   }
 
   function roleBars(c, roles) {
@@ -211,7 +277,8 @@
     const W = window.WPMODEL;
     if (!W) return '';
     const w = c.matchWin(m.id);
-    const head = `<div class="card-head"><div><div class="t-label">Win chance</div><h2>How this game swung</h2></div></div>`;
+    const q20 = W.quality && W.quality['1200'];
+    const head = `<div class="card-head"><div><div class="t-label">Win chance ${src('model', `Climb’s win model, trained on ${c.fmtInt(W.matches)} Deadlock matches since the ${W.patch} patch (deadlock-api’s public data). It reads the gaps in souls, kills, objectives destroyed and mid-boss at each minute. Checked on matches it never saw: at 20:00 the team it favours wins ${q20 && q20.accuracy ? Math.round(q20.accuracy * 100) + '%' : '~75%'} of the time, and its percentages match real results to within ~1–2 points between 9 and 30 minutes. The Coach tab shows how it does on your own games.`)}</div><h2>How this game swung</h2></div></div>`;
     if (!w) return `<section class="card wp-card">${head}<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading the match timeline…</p></section>`;
     const pts = v => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(Math.round(v * 100))}`;
     const hero = id => id != null ? c.esc(c.heroName(id)) : 'unknown';
@@ -234,7 +301,7 @@
       <p class="muted small"><span class="key wp-key-swing"></span> biggest swings · <span class="key wp-key-death"></span> your deaths</p>
       <div class="grid-2 wp-cols">
         <div><div class="t-label">Turning points</div><ul class="wp-list">${w.turning.map(swingLine).join('')}</ul></div>
-        <div><div class="t-label">Your deaths${w.deaths.length ? ` · about ${Math.round(total * 100)} pts in total` : ''}</div>
+        <div><div class="t-label">Your deaths${w.deaths.length ? ` · about ${Math.round(total * 100)} pts in total` : ''} ${src('model', 'What a death like this USUALLY costs: the median souls swing for the dead player’s team, measured around deaths where nobody else in the lobby died, by game minute and by how rich the victim was. That swing is then turned into win chance with the model. It isn’t a measurement of that exact death: snapshots are 3–5 minutes apart, so most deaths (teamfights) can’t be isolated.')}</div>
           ${w.deaths.length ? `<ul class="wp-list">${w.deaths.map(d => `<li><span class="wp-when">${mmss(d.t)}</span>
             <span>Died to <b>${hero(d.killerHero)}</b>${d.ttk > 0 && d.ttk <= c.E.FAST_DEATH_S ? ' <span class="tag warn">caught out</span>' : ''}</span>
             <span class="muted small">${Math.round(d.total * 100) >= 1 ? `about <b class="neg">${pts(-d.total)} pts</b> win chance` : `under 1 pt of win chance${d.p < 0.05 || d.p > 0.95 ? ' (the game was already decided)' : ''}`} · a death like this usually swings ~${c.fmtInt(d.souls)} souls${d.share >= 1.2 ? ' (you were rich, so it cost more)' : ''}${d.objPts >= 0.005 ? ` · +${Math.round(d.objLift * 100)}% chance your team loses an objective in the next 90s` : ''}</span></li>`).join('')}</ul>`
@@ -358,6 +425,7 @@
 
     host.innerHTML = head + `
       ${c.state.focus.active ? focusCard(c, true) : habitPicker(c)}
+      ${calibrationCard(c)}
       ${aiCard(c, A)}
       <div class="t-label sec">The numbers · wins vs losses</div>
       <div class="tiles tiles-6">
@@ -388,9 +456,75 @@
     if (go) go.addEventListener('click', () => c.runAnalysis(go.dataset.analyze === 'again'));
   }
 
+  /* Does the win model hold up on YOUR games? The one check a skeptic can verify themselves. */
+  function calibrationCard(c) {
+    const W = window.WPMODEL;
+    if (!W) return '';
+    const cal = c.E.calibration(c.analysisEntries(), W, 1200);
+    if (cal.n < 5) return '';
+    const b = cal.bins;
+    const row = (x, label) => x.n ? `<li><span>${label}</span><b>${x.wins} of ${x.n}</b><span class="muted small">won (${Math.round(100 * x.wins / x.n)}%)</span></li>` : '';
+    return `<section class="card"><div class="card-head"><div><div class="t-label">Can you trust the win chance? ${src('yours', 'For each of your last games that reached 20:00, Climb’s model gave your team a win chance at 20:00. This compares that with what actually happened. A well-behaved model should be right about 3 games in 4 at 20:00, and its high-chance games should mostly be wins.')}</div>
+      <h2>On your own games, the side it favoured at 20:00 won ${cal.right} of ${cal.n}</h2></div></div>
+      <ul class="cal">${row(b[2], 'When it gave you 65%+')}${row(b[1], 'When it was close (35–65%)')}${row(b[0], 'When it gave you under 35%')}</ul>
+      <p class="muted small">Your last ${cal.n} games that reached 20:00, with match detail. Small samples swing. On the held-out fifth of the ${c.fmtInt(W.matches)} training matches, the favourite at 20:00 won ${W.quality && W.quality['1200'] && W.quality['1200'].accuracy ? Math.round(W.quality['1200'].accuracy * 100) : 75}%.</p></section>`;
+  }
+
+  // ---------------------------------------------------------------- friends
+  function friends(host, c) {
+    const E = c.E, st = c.state;
+    c.ensureFriends();
+    const list = c.friendList();
+    const head = `<div class="page-head"><div><h1 class="page-title">Friends</h1><p class="muted small">People you’ve played ${E.FRIEND_MIN}+ games with, found from your match history. ${src('yours', 'Steam’s own friends list isn’t reachable from a website (Steam’s API refuses browser requests, and deadlock-api doesn’t store it), so Climb finds friends from deadlock-api’s teammate history instead: anyone you’ve been on a team with 10+ times. Random teammates almost never repeat that often.')}</p></div></div>`;
+    if (!st.friends) { host.innerHTML = head + '<section class="card"><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Finding the people you queue with…</p></section>'; return; }
+    if (!list.length) { host.innerHTML = head + `<section class="card"><p class="muted">No one with ${E.FRIEND_MIN}+ games together yet.</p></section>`; return; }
+    host.innerHTML = head + `<section class="card flush"><ul class="friends">${list.map(f => `<li><a href="#/friend/${f.acct}">
+      ${f.avatar ? `<img src="${c.esc(f.avatar)}" alt="" width="36" height="36">` : '<span class="av-ph"></span>'}
+      <span class="fr-main"><b>${c.esc(f.name || 'Player ' + f.acct)}</b><span class="muted small">${f.badge ? c.esc(E.badgeName(f.badge, c.tiers())) : 'Unranked'} · ${c.fmtInt(f.games)} games together${f.last ? ' · last ' + c.ago(f.last) : ''}</span></span>
+      <span class="fr-wr"><b class="${f.wrTogether != null && f.wrApart != null ? (f.wrTogether - f.wrApart >= 0.03 ? 'pos' : f.wrTogether - f.wrApart <= -0.03 ? 'neg' : '') : ''}">${c.pct(f.wrTogether)}</b><span class="muted small">together</span></span>
+      <span class="fr-wr hide-s"><b>${c.pct(f.wrApart)}</b><span class="muted small">without</span></span></a></li>`).join('')}</ul></section>`;
+  }
+
+  function friend(host, c) {
+    const E = c.E, st = c.state, acct = st.route.id;
+    c.ensureFriends();
+    const f = c.friendList().find(x => x.acct === acct);
+    if (!f) { host.innerHTML = '<div class="empty-state">' + (st.friends ? 'Not one of your friends here. <a href="#/friends">Back to friends</a>' : 'Loading…') + '</div>'; return; }
+    const shared = c.M.all.filter(m => f.ids.includes(m.id)).slice(-10);
+    c.ensureDetailsFor(shared.map(m => m.id));
+    const entries = shared.map(c.entryOf);
+    const focus = st.focus.active && st.focus.active.habit;
+    const habitId = focus && !['tier3', 'tier4', 'rate', 'late2'].includes(focus) ? focus : 'early0';
+    const du = E.duo(entries, st.settings.account, acct, habitId, st.items && st.items.map);
+    const name = c.esc(f.name || 'Player ' + acct), me = c.esc((st.profile && st.profile.name) || 'You');
+    host.innerHTML = `<a href="#/friends" class="back">← Friends</a>
+      <div class="page-head"><div class="ident">${f.avatar ? `<img class="fr-av" src="${c.esc(f.avatar)}" alt="" width="56" height="56">` : ''}
+        <div><div class="rank-name">${name}</div><div class="muted">${f.badge ? c.esc(E.badgeName(f.badge, c.tiers())) : 'Unranked'} · ${c.fmtInt(f.games)} games together</div></div></div></div>
+      <div class="tiles">
+        <div class="tile"><div class="t-label">Win rate together</div><div class="t-val">${c.pct(f.wrTogether)}</div><div class="t-sub">${f.seen} of your games</div></div>
+        <div class="tile"><div class="t-label">You without ${name}</div><div class="t-val">${c.pct(f.wrApart)}</div><div class="t-sub">your other games</div></div>
+        <div class="tile"><div class="t-label">Last played together</div><div class="t-val">${f.last ? c.ago(f.last) : '—'}</div><div class="t-sub">&nbsp;</div></div>
+      </div>
+      <section class="card"><div class="card-head"><div><div class="t-label">Head to head ${src('yours', 'From the match details of your last shared games: both of you are in the same match data, so the same check is run for each seat.')}</div>
+        <h2>${c.esc(E.habitById(du.habit).label)}</h2>
+        <p class="muted small">${du.n ? `Your last ${du.n} shared games with match detail.` : 'Reading your shared games…'}${focus && habitId !== focus ? ' (Your focus habit can’t be checked for a friend, so this uses early deaths.)' : ''}</p></div></div>
+        ${du.n ? `<div class="h2h">
+          <div><span class="muted small">${me}</span><b>${du.mePass} of ${du.meN}</b><span class="muted small">${du.meEarly != null ? du.meEarly.toFixed(1) + ' deaths before 10:00 a game' : ''}</span></div>
+          <div><span class="muted small">${name}</span><b>${du.themPass} of ${du.themN}</b><span class="muted small">${du.themEarly != null ? du.themEarly.toFixed(1) + ' deaths before 10:00 a game' : ''}</span></div>
+        </div>
+        ${du.firstMe + du.firstThem ? `<p>In the losses, the first of you two to die was <b>${du.firstMe > du.firstThem ? 'you' : du.firstMe < du.firstThem ? name : 'split evenly'}</b> (${me} ${du.firstMe}, ${name} ${du.firstThem}).</p>` : ''}` : ''}
+      </section>
+      <section class="card flush"><div class="pad"><h2>Recent games together</h2></div>
+        ${shared.length ? shared.slice().reverse().map(m => `<a class="mrow ${m.won ? 'w' : 'l'}" href="#/match/${m.id}">
+          <span class="mh">${icon(c, m.hero, 28)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${mins(m.dur)}</span></span></span>
+          <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span><span></span><span class="n">${kda(m)}</span><span class="hide-s"></span><span class="hide-s"></span><span class="hide-s"></span>
+          <span class="n">${deltaHtml(c, m)}</span><span class="n muted small">${c.ago(m.t)}</span></a>`).join('') : '<p class="muted pad">No shared games in your loaded history.</p>'}
+      </section>`;
+  }
+
   function aiCard(c, A) {
     const st = c.state, a = st.analysis;
-    const head = '<div class="card-head"><div><div class="t-label">AI coach</div><h2>State of your game</h2></div>';
+    const head = `<div class="card-head"><div><div class="t-label">AI coach ${src('ai', 'Gemini reads only the counted numbers shown on this tab (your last 30 games, wins vs losses) plus your gaps vs the next rank, and writes the patterns and plan. The numbers are Climb’s; the wording and advice are Gemini’s.')}</div><h2>State of your game</h2></div>`;
     if (!st.coach.key) return `<section class="card coach">${head}</div><p class="muted">Add your Gemini key in <a class="more" href="#/about">Account & about</a> to get the three patterns costing you the most games, and a plan for your next sessions.</p></section>`;
     if (st.analyzing) return `<section class="card coach">${head}</div><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(st.analyzing)}</p></section>`;
     const lastId = c.M.all.length ? c.M.all[c.M.all.length - 1].id : null;
@@ -426,7 +560,8 @@
       .filter(({ m, g }) => (matchFilter.hero === 'all' || m.hero === Number(matchFilter.hero))
         && (matchFilter.result === 'all' || (matchFilter.result === 'win') === m.won)
         && (matchFilter.mode === 'all' || m.mode === matchFilter.mode)
-        && (matchFilter.role === 'all' || (g && g.role === matchFilter.role)));
+        && (matchFilter.role === 'all' || (g && (matchFilter.role === 'first' ? g.lobbyFirst
+          : matchFilter.role === (g.teamRank <= 2 ? 'top' : g.teamRank >= g.teamSize - 1 ? 'low' : 'mid')))));
     const shown = rows.slice(0, 150);
     const fp = c.state.focus.active ? c.focusNow() : null;
     const fpass = new Map(fp ? fp.results.map(r => [r.m.id, r.pass]) : []);
@@ -438,11 +573,11 @@
         <div class="filters">
           <select id="f-hero" aria-label="Hero">${opt('all', 'All heroes', matchFilter.hero)}${heroes.map(h => opt(h, c.heroName(h), matchFilter.hero)).join('')}</select>
           <select id="f-result" aria-label="Result">${opt('all', 'Wins and losses', matchFilter.result)}${opt('win', 'Wins', matchFilter.result)}${opt('loss', 'Losses', matchFilter.result)}</select>
-          <select id="f-role" aria-label="Role">${opt('all', 'Any role', matchFilter.role)}${Object.keys(E.ROLE_LABEL).map(k => opt(k, E.ROLE_LABEL[k], matchFilter.role)).join('')}</select>
+          <select id="f-role" aria-label="Team share">${opt('all', 'Any team share', matchFilter.role)}${opt('first', '★ 1st in the lobby', matchFilter.role)}${opt('top', 'Top share', matchFilter.role)}${opt('mid', 'Mid share', matchFilter.role)}${opt('low', 'Low share', matchFilter.role)}</select>
           <select id="f-mode" aria-label="Mode">${opt('all', 'Ranked + unranked', matchFilter.mode)}${opt('ranked', 'Ranked', matchFilter.mode)}${opt('unranked', 'Unranked', matchFilter.mode)}</select>
         </div></div>
       <section class="card flush">
-        <div class="mrow mhead"><span>Hero</span><span>Result</span><span>Role</span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="hide-s">Impact</span><span class="n">Rank</span><span class="n">When</span></div>
+        <div class="mrow mhead"><span>Hero</span><span>Result</span><span>Team share</span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="hide-s">Impact</span><span class="n">Rank</span><span class="n">When</span></div>
         ${shown.length ? shown.map(({ m, g, L }) => {
           const me = L && L.p[L.me];
           return `<a class="mrow ${m.won ? 'w' : 'l'}${g && g.lobbyFirst ? ' gold' : ''}" href="#/match/${m.id}">
@@ -491,9 +626,6 @@
       const v = g.r[k], good = inv ? v <= 1 : v >= 1;
       return `<div class="share"><span class="muted small">${lab}</span><b class="${Math.abs(v - 1) < 0.1 ? '' : good ? 'pos' : 'neg'}">${Math.round(v * 100)}%</b></div>`;
     };
-    const roleNote = g.role === 'key' && g.teamRank > 2 && g.mvp >= 1 && g.mvp <= 3
-      ? `Valve named you ${g.mvp === 1 ? 'MVP' : g.mvp === 2 ? '2nd MVP' : '3rd MVP'} for this game, though by Climb’s impact score you were #${g.teamRank} on your team.`
-      : E.ROLE_NOTE[g.role];
     const team = t => {
       const idx = L.p.map((x, i) => i).filter(i => L.p[i][0] === t).sort((a, b) => L.p[b][1] - L.p[a][1]);
       const won = L.win == null ? null : L.win === t;
@@ -509,12 +641,11 @@
     const myTeam = L.p[L.me][0];
     host.innerHTML = head + `
       <div class="grid-2">
-        <section class="card role-card ${roleClass(E, g.role)}${g.lobbyFirst ? ' gold' : ''}">
-          <div class="t-label">Your role</div>
-          ${g.lobbyFirst ? '<div class="first-line">★ 1st in the lobby · Valve’s MVP</div>' : ''}
-          <div class="role-big">${E.ROLE_LABEL[g.role]}</div>
-          <p class="muted">${roleNote}</p>
-          <p>#${g.teamRank} of ${g.teamSize} on your team by impact · impact <b>${g.impact.toFixed(2)}</b> <span class="muted small">(1.00 = an average teammate)</span></p>
+        <section class="card role-card${g.lobbyFirst ? ' gold' : ''}">
+          <div class="t-label">Your share of your team ${src('rule', 'Your share of your own team’s souls, damage (or healing), kills + assists and objectives, minus extra deaths: 1.00 = an average teammate. Tested on your last 400 games, it does NOT predict whether you win (being your team’s #1 won 49% of the time), because the whole team wins or loses together. It describes your part; the win-chance card below measures what moved the game.')}</div>
+          ${g.lobbyFirst ? '<div class="first-line">★ 1st in the lobby · Valve’s MVP</div>' : g.mvp >= 2 && g.mvp <= 3 ? `<div class="muted small">Valve’s ${g.mvp === 2 ? '2nd' : '3rd'} MVP</div>` : ''}
+          <div class="role-big">#${g.teamRank} of ${g.teamSize}</div>
+          <p class="muted">${g.teamRank <= 2 ? 'Top share' : g.teamRank >= g.teamSize - 1 ? 'Low share' : 'Mid share'} of your team’s stats · impact <b>${g.impact.toFixed(2)}</b> <span class="small">(1.00 = an average teammate)</span></p>
           <div class="tags">${tagChips(c, g)}</div>
         </section>
         <section class="card">
@@ -534,7 +665,7 @@
 
   function coachCard(c, m) {
     const st = c.state, d = st.debriefs[m.id], busy = st.coaching[m.id];
-    const head = '<div class="card-head"><div><div class="t-label">AI coach</div><h2>Debrief</h2></div>';
+    const head = `<div class="card-head"><div><div class="t-label">AI coach ${src('ai', 'Gemini writes this from a ~5 KB summary of the match that Climb builds: your deaths, items, souls vs lane opponents, scoreboards, the win-chance timeline and your gaps vs the next rank. It is told to use only those numbers, and they are checkable on this page, but the wording and the advice are Gemini’s.')}</div><h2>Debrief</h2></div>`;
     if (!st.coach.key) {
       return `<section class="card coach">${head}</div><p class="muted">Get three specific points on this match: what decided it, what you did well, and one thing to change next game. It reads your deaths, item timings, souls vs your lane opponents and your gaps against the next rank.</p>
         <p><a class="more" href="#/about">Add your Gemini API key in Account & about →</a></p></section>`;
@@ -573,6 +704,7 @@
     const games = M.all.filter(m => m.hero === hero);
     const sum = E.summarize(games, M.perf, c.state.lobbies);
     const roles = E.roleSummary(games, c.state.lobbies);
+    const heroEarly = E.earlyRates(games.map(c.entryOf), c.state.items && c.state.items.map);
     const plan = c.benchPlan(M, hero);
     const yourTier = M.badge ? Math.floor(M.badge / 10) : 0;
     const k = c.ladderKeys(hero, plan.from, S.account);
@@ -591,32 +723,55 @@
       : `the last ${E.BENCH_WIDE_DAYS} days` + (plan.spansPatch ? ' (spans a patch)' : '');
 
     host.innerHTML = `
-      <div class="page-head"><div><h1 class="page-title">Heroes</h1><p class="muted small">Pick a hero to see how you compare with players at every rank on it.</p></div></div>
+      <div class="page-head"><div><h1 class="page-title">Heroes</h1><p class="muted small">Pick a hero to see what stands between you and the next rank on it.</p></div></div>
       <div class="hero-pick" role="tablist" aria-label="Hero">${list.map(h => `<a href="#/heroes/${h}" class="hp${h === hero ? ' on' : ''}" role="tab" aria-selected="${h === hero}" title="${c.esc(c.heroName(h))}">${icon(c, h, 36)}<span>${c.esc(c.heroName(h))}</span><span class="muted small">${counts.get(h)}</span></a>`).join('')}</div>
 
       <section class="card hero-sum">
         <div class="ident">${icon(c, hero, 56)}<div><div class="rank-name">${c.esc(c.heroName(hero))}</div>
           <div class="muted">${games.length} games tracked · ${sum.wins}–${sum.losses} (${c.pct(sum.winRate)})${sum.hasDelta ? ' · ' + c.signed(sum.net) + ' rank pts' : ''}</div></div></div>
         <div class="tiles tiles-5">
-          <div class="tile"><div class="t-label">Carried</div><div class="t-val">${roles.n ? c.pct(roles.carry) : '—'}</div><div class="t-sub">team’s #1 impact</div></div>
-          <div class="tile"><div class="t-label">Key player</div><div class="t-val">${roles.n ? c.pct(roles.key) : '—'}</div><div class="t-sub">top 2 on team</div></div>
-          <div class="tile"><div class="t-label">Dragged / passenger</div><div class="t-val">${roles.n ? c.pct(roles.dragged) : '—'}</div><div class="t-sub">bottom of team</div></div>
-          <div class="tile"><div class="t-label">Avg impact</div><div class="t-val">${roles.impact == null ? '—' : roles.impact.toFixed(2)}</div><div class="t-sub">1.00 = avg teammate</div></div>
+          <div class="tile"><div class="t-label">Win rate</div><div class="t-val">${c.pct(sum.winRate)}</div><div class="t-sub">${sum.wins}–${sum.losses}</div></div>
+          <div class="tile"><div class="t-label">Rank points</div><div class="t-val">${sum.hasDelta ? c.signed(sum.net) : '—'}</div><div class="t-sub">on this hero</div></div>
+          <div class="tile"><div class="t-label">Ahead at 12:00</div><div class="t-val">${heroEarly.nAhead ? c.pct(heroEarly.ahead12) : '—'}</div><div class="t-sub">${heroEarly.nAhead} recent games</div></div>
+          <div class="tile"><div class="t-label">No early deaths</div><div class="t-val">${heroEarly.nClean ? c.pct(heroEarly.clean10) : '—'}</div><div class="t-sub">before 10:00</div></div>
           <div class="tile"><div class="t-label">MVP awards</div><div class="t-val">${roles.n ? roles.mvp : '—'}</div><div class="t-sub">${roles.n} games read</div></div>
         </div>
       </section>
 
-      <section class="card">
-        <div class="card-head"><div><h2>You vs every rank on ${c.esc(c.heroName(hero))}</h2>
-          <p class="muted small">Your average game against the average ${c.esc(c.heroName(hero))} game in each rank’s lobbies, over ${window} (${plan.n} of your games${plan.thin ? ', fewer than ' + E.MIN_HERO_GAMES + ', so treat it as a rough read' : ''}). Win rate and accuracy are whole-game; the rest are at the minute you pick.</p></div>
+      <section class="card road">
+        <div class="card-head"><div><div class="t-label">Your road to ${c.esc(tn(nextTier))}</div><h2>What ${c.esc(tn(nextTier))} players do on ${c.esc(c.heroName(hero))} that you don’t, yet</h2>
+          <p class="muted small">Your average ${c.esc(c.heroName(hero))} game vs the average one in ${c.esc(tn(nextTier))} lobbies, at ${T / 60}:00, over ${window} (${plan.n} of your games${plan.thin ? ', fewer than ' + E.MIN_HERO_GAMES + ', so treat it as a rough read' : ''}).</p></div>
           ${seg('Game time', [[900, '15 min'], [1200, '20 min'], [1800, '30 min']], T).replace('class="seg-ctl"', 'class="seg-ctl" id="bt"')}</div>
-        ${!ready ? `<p class="muted">Loading the comparison… ${loaded}/${E.LADDER_TIERS.length} ranks</p>` : ladderHtml(c, lad, yourTier, nextTier, fmt, tn)}
+        ${!ready ? `<p class="muted">Loading the comparison… ${loaded}/${E.LADDER_TIERS.length} ranks</p>` : roadHtml(c, lad, yourTier, nextTier, fmt, tn, T, tiersData, hero)}
       </section>`;
     bindSeg(host, '#bt', v2 => { S.benchT = Number(v2); c.save(); c.render(); });
+    host.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => { c.startFocus(b.dataset.pick, null, null, 'you'); c.go('#/coach'); }));
     if (!ready) c.ensureHeroLadder(hero);
   }
 
-  function ladderHtml(c, lad, yourTier, nextTier, fmt, tn) {
+  /* The next-rank plan: up to three training targets, what's already there, and the full ladder
+     folded away. */
+  function roadHtml(c, lad, yourTier, nextTier, fmt, tn, T, tiersData, hero) {
+    const E = c.E, plan = E.nextRankPlan(lad), nextName = tn(nextTier);
+    const nNext = tiersData[nextTier] && tiersData[nextTier].curve && tiersData[nextTier].curve[T] ? tiersData[nextTier].curve[T].n : null;
+    const active = c.state.focus.active && c.state.focus.active.habit;
+    const why = `Averages of ${nNext ? c.fmtInt(nNext) + ' ' : ''}${c.heroName(hero)} games in ${nextName} lobbies (lobby average badge in that rank) since the last big patch, from deadlock-api. A gap is only listed when it’s bigger than your own game-to-game swing.`;
+    const targets = plan.gaps.slice(0, 3);
+    return `${targets.length ? `<ol class="targets">${targets.map(g => {
+        const h = g.habit && E.habitById(g.habit);
+        const habitBtn = !h ? '' : active === g.habit ? `<span class="tag">your current focus</span>` : `<button type="button" class="btn ghost-btn sm" data-pick="${g.habit}">Train it: ${c.esc(h.short)}</button>`;
+        return `<li><div class="tg-head"><b>${c.esc(g.label)}</b> ${src('ranks', why)}</div>
+          <div class="tg-num"><span class="tg-you">${fmt(g, g.you)}</span> → <span class="tg-target">${fmt(g, g.target)}</span> <span class="neg small">${g.rel > 0 ? '+' : '−'}${Math.abs(Math.round(g.rel * 100))}% vs ${c.esc(nextName)}</span></div>
+          <div class="muted small">${h ? `Climb checks this every game through the “${c.esc(h.label)}” habit.` : 'No per-game check for this yet. Watch it here after your next few games.'}</div>
+          ${habitBtn}</li>`;
+      }).join('')}</ol>`
+      : `<p class="road-none">Nothing here is clearly below the ${c.esc(nextName)} average at ${T / 60}:00. On this hero the gap is in what these numbers can’t see (decisions, timing, positioning), so use the win-chance card on your matches to find the moments that cost you.</p>`}
+      ${plan.strengths.length ? `<p class="muted small">Already at ${c.esc(nextName)} level or above: ${plan.strengths.map(x => `<b class="pos">${c.esc(x.label)}</b>`).join(', ')}.</p>` : ''}
+      ${ladderHtml(c, lad, yourTier, nextTier, fmt, tn, T)}`;
+  }
+
+  const SHADE_OK = new Set(['acc', 'souls', 'lane', 'jungle', 'dmg', 'obj']);   // stats where beating a rank's average means playing like them
+  function ladderHtml(c, lad, yourTier, nextTier, fmt, tn, T) {
     const E = c.E;
     const yours = yourTier ? tn(yourTier) : 'your rank';
     const nextName = tn(nextTier);
@@ -624,41 +779,30 @@
     const verdict = cmp => !cmp || !cmp.status ? '<span class="muted">—</span>'
       : cmp.status === 'par' ? '<span class="muted" title="Within your normal game-to-game swing">≈ on par</span>'
       : `<span class="${cmp.status === 'ahead' ? 'pos' : 'neg'}">${cmp.status === 'ahead' ? '▲' : '▼'} ${gapTxt(null, cmp)}</span>`;
-    const toNext = lad.toNext.slice(0, 3);
-    const strengths = lad.ahead.slice(0, 3);
-    const summary = `
-      <div class="grid-2 ladder-sum">
-        <div class="focus bad"><div class="t-label">Holding you back from ${c.esc(nextName)}</div>
-          ${toNext.length ? `<ol>${toNext.map(r => `<li><b>${r.label}</b> <span class="neg">${gapTxt(r, r.next)}</span> <span class="muted small">(${fmt(r, r.you)} vs ${fmt(r, r.next.v)})</span></li>`).join('')}</ol>`
-            : `<p class="muted small">Nothing clearly below ${c.esc(nextName)} average here. The gap is in what these numbers don’t measure: decisions, timing, positioning.</p>`}</div>
-        <div class="focus good"><div class="t-label">Already above ${c.esc(yours)}</div>
-          ${strengths.length ? `<ol>${strengths.map(r => `<li><b>${r.label}</b> <span class="pos">${gapTxt(r, r.own)}</span> <span class="muted small">(${fmt(r, r.you)} vs ${fmt(r, r.own.v)})</span></li>`).join('')}</ol>`
-            : `<p class="muted small">No stat clearly above your rank’s average yet.</p>`}</div>
-      </div>`;
     const levelCell = r => r.noLevel || r.level == null ? '<span class="muted">—</span>'
       : r.level === 'flat' ? '<span class="muted" title="Varies less than 8% between Initiate and Eternus">same at every rank</span>'
       : `<span class="${r.level > yourTier ? 'pos' : r.level < yourTier ? 'neg' : ''}">${c.esc(tn(r.level))}</span>`;
-    const table = `
+    const table = `<details class="full-ladder"><summary>Compare with your rank and the next</summary>
       <div class="table-wrap"><table class="tbl ladder">
         <thead><tr><th>Stat</th><th class="n">You</th><th class="n">${c.esc(yours)}</th><th class="n">${c.esc(nextName)}</th><th>vs ${c.esc(yours)}</th><th>vs ${c.esc(nextName)}</th><th>Plays like</th></tr></thead>
         <tbody>${lad.rows.map(r => `<tr>
           <td>${r.label}</td><td class="n"><b>${fmt(r, r.you)}</b></td>
           <td class="n muted">${fmt(r, r.own && r.own.v)}</td><td class="n muted">${fmt(r, r.next && r.next.v)}</td>
           <td>${verdict(r.own)}</td><td>${verdict(r.next)}</td><td>${levelCell(r)}</td></tr>`).join('')}</tbody>
-      </table></div>`;
+      </table></div></details>`;
     const tiers = E.LADDER_TIERS;
     const full = `
-      <details class="full-ladder"><summary>Every rank, Initiate to Eternus</summary>
+      <details class="full-ladder"><summary>Every rank, Initiate to Eternus (lobby averages at ${T / 60}:00)</summary>
         <div class="table-wrap"><table class="tbl ladder-full">
           <thead><tr><th>Stat</th><th class="n you-col">You</th>${tiers.map(t => `<th class="n${t === yourTier ? ' cur' : ''}">${c.esc(tn(t))}</th>`).join('')}</tr></thead>
           <tbody>${lad.rows.map(r => `<tr><td>${r.label}</td><td class="n you-col"><b>${fmt(r, r.you)}</b></td>${r.ladder.map(L => {
-            const beat = r.you != null && L.v != null && (r.higher ? r.you >= L.v : r.you <= L.v);
+            const beat = SHADE_OK.has(r.key) && r.you != null && L.v != null && r.you >= L.v;
             return `<td class="n${L.tier === yourTier ? ' cur' : ''}${beat ? ' beat' : ''}">${fmt(r, L.v)}</td>`;
           }).join('')}</tr>`).join('')}</tbody>
         </table></div>
-        <p class="muted small">Shaded cells are ranks whose average you match or beat. “Plays like” is the rank whose average is closest to yours; “same at every rank” means the stat moves less than 8% from Initiate to Eternus, so it doesn’t separate ranks on this hero. A gap is only called when it’s bigger than your normal game-to-game swing.</p>
+        <p class="muted small">Each column is the average game in that rank’s lobbies; win rate and accuracy are whole-game, the rest are at ${T / 60}:00. Shaded cells are ranks whose average you match or beat, only for farm, damage, objectives and accuracy. Deaths, kills and assists aren’t shaded: higher ranks fight more, so those rise with rank for reasons that aren’t “better”. Win rate sits near 50% at every rank by design of matchmaking.</p>
       </details>`;
-    return summary + table + full;
+    return table + full;
   }
 
   // ---------------------------------------------------------------- play time
@@ -727,7 +871,8 @@
       <section class="card how"><h2>How Climb reads your games</h2><ul>
         <li><b>Improving / Holding / Slipping</b> combines rank points, form and consistency, each compared with the window before. If your lobbies got 3+ subranks tougher, placing lower there isn’t held against you.</li>
         <li><b>Impact</b> is your share of your team’s souls, damage (or healing, for supports), kills + assists and objective damage, each relative to an average teammate, minus a penalty for dying more than them. 1.00 = an average teammate.</li>
-        <li><b>Roles</b>. Won: <i>Carried</i> (your team’s #1 by a clear margin), <i>Key player</i> (top 2, or a Valve MVP), <i>Solid win</i>, <i>Passenger</i> (bottom two). Lost: <i>Couldn’t carry</i> (#1 by a clear margin), <i>Key player</i>, <i>Tough loss</i>, <i>Dragged down</i> (last on your team, or far below an average teammate).</li>
+        <li><b>Team share</b> (Top / Mid / Low share) is your rank on your own team by impact. It describes your part and is kept neutral: tested on 400 games, it doesn’t predict whether you win, because a whole team wins or loses together. What does predict wins is early-game play, measured before the result is decided, which is what the habits and the Overview tiles use.</li>
+        <li><b>Where numbers come from</b>: every key number has a small badge. <i>Your games</i> = counted from your matches. <i>Rank data</i> = averages of other players’ games by rank. <i>Trained model</i> = Climb’s win model. <i>Valve</i> = straight from the game. <i>Climb rule</i> = a rule of thumb, not proven. <i>AI</i> = Gemini’s wording. Tap one to see how it was worked out.</li>
         <li><b>Tags</b>: Valve’s MVP awards, then lobby bests (top farmer, top damage, most kills, playmaker, objectives, healer, frontline, survivor), plus Fed (10+ deaths), Stomp / Stomped (under 20 min) and Marathon (45+ min).</li>
         <li><b>Form</b> scores a game against your other games on the same hero, using your share of the lobby’s souls, damage, kills + assists and deaths.</li>
         <li><b>Rank comparison</b> (Heroes tab): for the hero you pick, your average against the average game in each rank’s lobbies, over the same dates: games since the last big patch, or the last 60 days if you have fewer than 8. A gap is only called when it’s bigger than your normal game-to-game swing.</li>
@@ -765,5 +910,5 @@
     if (clr) clr.addEventListener('click', () => c.clearCoach());
   }
 
-  root.Views = { welcome, overview, coach, matches, match, heroes, play, about };
+  root.Views = { welcome, overview, coach, matches, match, heroes, friends, friend, play, about };
 })(window);

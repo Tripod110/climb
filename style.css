@@ -211,6 +211,7 @@ p .more { white-space: normal; }
 .role.good { color: var(--good-text); background: color-mix(in oklab, var(--good) 14%, transparent); border-color: color-mix(in oklab, var(--good) 30%, transparent); }
 .role.bad { color: var(--bad-text); background: color-mix(in oklab, var(--bad) 13%, transparent); border-color: color-mix(in oklab, var(--bad) 30%, transparent); }
 .role.pending { color: var(--muted); }
+.role.share { color: var(--ink-2); background: transparent; }
 .tag { font-size: 11px; color: var(--ink-2); padding: 1px 7px; border-radius: 6px; border: 1px solid var(--border); white-space: nowrap; }
 .tag.warn { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 35%, transparent); }
 .tags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
@@ -319,6 +320,62 @@ ol.plain .hero-ic { width: 20px; height: 20px; border-radius: 5px; }
 ol.plan { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; font-weight: 500; }
 .coach-foot { margin-bottom: 8px; }
 .coach-foot > * { margin: 0; }
+
+/* source badges: where a number comes from */
+.src {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; margin-left: 4px; border-radius: 5px; vertical-align: middle;
+  font: 600 10px/1 inherit; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; border: 1px solid var(--border-2);
+  background: transparent; color: var(--muted);
+}
+.src:hover { color: var(--ink); border-color: var(--ink-2); }
+.src-yours { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 40%, transparent); }
+.src-model, .src-ranks { color: var(--good-text); border-color: color-mix(in oklab, var(--good) 40%, transparent); }
+.src-valve { color: var(--gold-text); border-color: color-mix(in oklab, var(--gold) 45%, transparent); }
+.src-rule { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 45%, transparent); }
+.src-ai { color: var(--ink-2); border-style: dashed; }
+.src-pop {
+  position: absolute; z-index: 50; background: var(--raised); color: var(--ink); border: 1px solid var(--border-2); border-radius: 10px;
+  padding: 10px 12px; font-size: 13px; line-height: 1.45; box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+}
+.src-pop p { margin: 4px 0 0; color: var(--ink-2); }
+.t-label .src { text-transform: uppercase; }
+
+/* overview: what separates wins */
+.splits { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 10px; }
+.splits li { display: grid; grid-template-columns: minmax(0, 1.2fr) 120px minmax(0, 1.4fr); gap: 12px; align-items: center; font-size: 13.5px; }
+.sp-bars { height: 8px; background: color-mix(in oklab, var(--bad) 25%, var(--grid)); border-radius: 4px; overflow: hidden; }
+.sp-w { display: block; height: 100%; background: var(--good); }
+.sp-num { color: var(--ink-2); font-size: 12.5px; }
+.recap { border-left: 3px solid var(--good); }
+.recap-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+.recap-list li { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.recap-list a:hover b { text-decoration: underline; }
+
+/* heroes: road to the next rank */
+.road { border-left: 3px solid var(--accent); }
+.targets { list-style: none; padding: 0; margin: 4px 0 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.targets li { background: var(--raised); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+.tg-num { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.tg-you { color: var(--ink-2); }
+.tg-target { color: var(--good-text); }
+.targets .btn { justify-self: start; margin-top: 4px; }
+.road-none { background: var(--raised); border-radius: 12px; padding: 14px 16px; margin: 4px 0 12px; }
+.cal { list-style: none; padding: 0; margin: 4px 0 8px; display: grid; gap: 8px; }
+.cal li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; }
+
+/* friends */
+.friends { list-style: none; margin: 0; padding: 0; }
+.friends a { display: grid; grid-template-columns: 36px minmax(0, 1fr) 80px 80px; gap: 12px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--border); }
+.friends li:first-child a { border-top: 0; }
+.friends a:hover { background: var(--hover); }
+.friends img { border-radius: 50%; }
+.fr-main, .fr-wr { display: grid; min-width: 0; }
+.fr-wr { text-align: right; }
+.fr-main b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-av { border-radius: 50%; }
+.h2h { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+.h2h > div { background: var(--raised); border-radius: 12px; padding: 12px 16px; display: grid; gap: 2px; }
+.h2h b { font-size: 24px; font-variant-numeric: tabular-nums; }
 
 /* win chance */
 .wp-chart svg { max-height: 240px; }
@@ -466,6 +523,9 @@ ol.plan { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; font-wei
   .role-legend { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .shares { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .coach-pts { grid-template-columns: minmax(0, 1fr); }
+  .targets { grid-template-columns: minmax(0, 1fr); }
+  .splits li { grid-template-columns: 1fr; gap: 4px; }
+  .friends a { grid-template-columns: 36px minmax(0, 1fr) 70px; }
   .wp-chart .tick { font-size: 22px; }
   .wp-chart .wp-death { r: 8px; stroke-width: 3; }
   .wp-chart .line { stroke-width: 4; }

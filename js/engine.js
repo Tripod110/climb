@@ -750,7 +750,7 @@
     return out;
   }
 
-  const DETAIL_V = 2;   // 2 = + objectives and mid-boss; older cached details get re-fetched
+  const DETAIL_V = 3;   // 2 = + objectives and mid-boss; 3 = every player's deaths. Older cached details get re-fetched
   /* Full metadata for one match (items, death details, stat snapshots) -> what the brief needs.
      Snapshots: [t, souls, kills, deaths, assists, heroDamage, laneSouls, jungleSouls, lastHits]. */
   function compactMatchDetail(meta, accountId) {
@@ -760,8 +760,8 @@
       snaps: (p.stats || []).map(s => [s.time_stamp_s, s.net_worth || 0, s.kills || 0, s.deaths || 0, s.assists || 0, s.player_damage || 0,
         (s.gold_lane_creep || 0) + (s.gold_lane_creep_orbs || 0), (s.gold_neutral_creep || 0) + (s.gold_neutral_creep_orbs || 0), s.creep_kills || 0]),
       items: p.account_id === accountId ? (p.items || []).map(x => [x.game_time_s, x.item_id, x.sold_time_s || 0]) : null,
-      deaths: p.account_id === accountId ? (p.death_details || []).map(d => [d.game_time_s, d.killer_player_slot,
-        Math.round((d.death_pos || [])[0] || 0), Math.round((d.death_pos || [])[1] || 0), Math.round((d.time_to_kill_s || 0) * 10) / 10]) : null,
+      deaths: (p.death_details || []).map(d => [d.game_time_s, d.killer_player_slot,
+        Math.round((d.death_pos || [])[0] || 0), Math.round((d.death_pos || [])[1] || 0), Math.round((d.time_to_kill_s || 0) * 10) / 10]),
     }));
     const me = players.find(p => p.acct === accountId);
     if (!me) return null;
@@ -898,6 +898,122 @@
     },
     required: ['summary', 'points', 'focus_next_game'],
   };
+
+  // ---------------------------------------------------------------- v13: grounded reads
+
+  /* Team share (replaces Carried/Dragged as a verdict). Checked 2026-10-23 on the user's last
+     400 games: a share of your OWN team's stats cannot predict the result (impact AUC 0.49; team
+     #1 by impact won 49%, #5 won 59%), because the whole team wins or loses together. So it's
+     shown as a neutral description, never good/bad. What does predict results is early-game
+     play, measured before the outcome is decided (the focus habits). */
+  function teamShare(L, won) {
+    const g = gameRole(L, won);
+    if (!g) return null;
+    const label = g.teamRank <= 2 ? 'Top share' : g.teamRank >= g.teamSize - 1 ? 'Low share' : 'Mid share';
+    return { label, teamRank: g.teamRank, teamSize: g.teamSize, impact: g.impact, lobbyFirst: g.lobbyFirst, tags: g.tags };
+  }
+
+  /* Early-game rates over a set of games (needs match detail): the two habits that split the
+     user's wins from losses most cleanly. -> { n, ahead12, clean10, nAhead, nClean } */
+  function earlyRates(entries, items) {
+    const rate = id => {
+      const r = habitResults(habitById(id), entries, items).filter(x => x.pass != null);
+      return { n: r.length, rate: r.length ? r.filter(x => x.pass).length / r.length : null };
+    };
+    const a = rate('ahead12'), c = rate('early0');
+    return { ahead12: a.rate, nAhead: a.n, clean10: c.rate, nClean: c.n };
+  }
+
+  /* Which ladder stats move you toward the next rank, turned into training targets. Uses the
+     rankLadder result for one hero. Each target says the number to hit and, where Climb can
+     check it game by game, the focus habit that trains it. */
+  const LADDER_HABIT = { lane: 'ahead12', souls: 'ahead12', deaths: 'early0', jungle: null, dmg: null, obj: null, kills: null, assists: null, acc: null, wr: null };
+  function nextRankPlan(lad) {
+    const gaps = lad.rows.filter(r => r.key !== 'wr' && r.you != null && r.next && r.next.v != null && r.next.status === 'behind')
+      .sort((a, b) => Math.abs(b.next.rel) - Math.abs(a.next.rel))
+      .map(r => ({ key: r.key, label: r.label, you: r.you, target: r.next.v, gap: r.next.v - r.you, rel: r.next.rel, fmt: r.fmt, higher: r.higher, habit: LADDER_HABIT[r.key] || null }));
+    const strengths = lad.rows.filter(r => r.key !== 'wr' && r.next && r.next.status === 'ahead').map(r => ({ label: r.label, you: r.you, target: r.next.v, fmt: r.fmt }));
+    const onPar = lad.rows.filter(r => r.key !== 'wr' && r.next && r.next.status === 'par').map(r => r.label);
+    return { gaps, strengths, onPar };
+  }
+
+  /* Does the win model hold up on YOUR games? For each of your games with detail that lasted to
+     `t`, the model's win chance for your team at t vs whether you won. */
+  function calibration(entries, W, t) {
+    t = t || 1200;
+    const rows = [];
+    for (const e of entries) {
+      const D = e.D, me = D && D.players.find(p => p.items);
+      if (!me || !e.m || D.dur < t) continue;
+      rows.push({ p: wpAt(W, t, gapsAt(D, me.team, t)), won: e.m.won });
+    }
+    const bin = (lo, hi) => { const r = rows.filter(x => x.p >= lo && x.p < hi); return { lo, hi, n: r.length, wins: r.filter(x => x.won).length, avgP: r.length ? mean(r.map(x => x.p)) : null }; };
+    const fav = rows.filter(x => x.p >= 0.5), dog = rows.filter(x => x.p < 0.5);
+    return { t, n: rows.length, bins: [bin(0, 0.35), bin(0.35, 0.65), bin(0.65, 1.01)],
+      right: fav.filter(x => x.won).length + dog.filter(x => !x.won).length, avgP: rows.length ? mean(rows.map(x => x.p)) : null,
+      winRate: rows.length ? rows.filter(x => x.won).length / rows.length : null };
+  }
+
+  /* The latest finished play session: from the helper's sessions when it runs, else a 2h gap
+     between matches. -> { start, end, games } or null if it ended more than `maxAgeH` ago. */
+  function lastSession(matches, helper, now, maxAgeH) {
+    const maxAge = (maxAgeH || 18) * 3600;
+    let start, end;
+    const done = helper && helper.sessions ? helper.sessions.filter(x => x.end != null) : [];
+    if (done.length && !(helper.playing)) {
+      const s0 = done[done.length - 1];
+      start = s0.start; end = s0.end;
+    } else {
+      const ss = sessionOf(matches);
+      if (!ss.length) return null;
+      start = ss[0].t; const last = ss[ss.length - 1]; end = last.t + last.dur;
+      if (helper && helper.playing) return null;
+    }
+    if (now - end > maxAge) return null;
+    const games = matches.filter(m => m.t >= start - 120 && m.t <= end + 60);
+    return games.length ? { start, end, games } : null;
+  }
+
+  /* Friends = people you've played 10+ games with (random teammates almost never repeat that
+     often). mates: /v1/players/{id}/mate-stats rows. history: your normalized matches. */
+  const FRIEND_MIN = 10;
+  function friendStats(mates, history) {
+    const mine = new Map(history.map(m => [m.id, m]));
+    return (mates || []).filter(x => x.matches_played >= FRIEND_MIN).map(x => {
+      const ids = new Set(x.matches || []);
+      const together = history.filter(m => ids.has(m.id));
+      const apart = history.filter(m => !ids.has(m.id));
+      const wr = ms => ms.length ? ms.filter(m => m.won).length / ms.length : null;
+      const last = together.length ? together[together.length - 1].t : null;
+      return { acct: x.mate_id, games: x.matches_played, wins: x.wins, wr: x.wins / x.matches_played,
+        seen: together.length, wrTogether: wr(together), wrApart: wr(apart), last, ids: [...ids].filter(id => mine.has(id)) };
+    }).sort((a, b) => (b.last || 0) - (a.last || 0) || b.games - a.games);
+  }
+
+  /* A match detail seen from another player's seat (so the habit tests run for a friend). */
+  function asPlayer(D, acct) {
+    if (!D || !D.players.some(p => p.acct === acct)) return null;
+    return Object.assign({}, D, { players: D.players.map(p => Object.assign({}, p, { items: p.acct === acct ? (p.items || []) : null })) });
+  }
+
+  /* You vs a friend in your shared games that have detail: each one's habit passes, early deaths,
+     and who died first in your losses. */
+  function duo(entries, myAcct, friendAcct, habitId, items) {
+    const h = habitById(habitId || 'early0');
+    const rows = entries.filter(e => e.D && e.D.players.some(p => p.acct === friendAcct));
+    const pass = acct => rows.map(e => { const D = asPlayer(e.D, acct); return D ? h.test(e.m, e.L, D, items) : null; }).filter(x => x != null);
+    const early = acct => mean(rows.map(e => { const p = e.D.players.find(x => x.acct === acct); return p ? (p.deaths || []).filter(d => d[0] < 600).length : 0; }));
+    let firstMe = 0, firstThem = 0;
+    for (const e of rows.filter(r => !r.m.won)) {
+      const a = e.D.players.find(x => x.acct === myAcct), b = e.D.players.find(x => x.acct === friendAcct);
+      const fa = a && a.deaths && a.deaths.length ? a.deaths[0][0] : Infinity, fb = b && b.deaths && b.deaths.length ? b.deaths[0][0] : Infinity;
+      if (fa < fb) firstMe++; else if (fb < fa) firstThem++;
+    }
+    const pm = pass(myAcct), pf = pass(friendAcct);
+    return { n: rows.length, habit: h.id, habitLabel: h.label, mePass: pm.filter(Boolean).length, meN: pm.length, themPass: pf.filter(Boolean).length, themN: pf.length,
+      meEarly: rows.length ? early(myAcct) : null, themEarly: rows.length ? early(friendAcct) : null, firstMe, firstThem,
+      wins: rows.filter(r => r.m.won).length };
+  }
 
   // ---------------------------------------------------------------- win chance (trained model)
 
@@ -1260,6 +1376,7 @@
   });
 
   const Engine = {
+    teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,

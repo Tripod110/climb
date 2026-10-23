@@ -378,6 +378,61 @@
     eq('detail v2 keeps destroyed objectives + mid-boss', [cd.v, cd.objs, cd.mbs], [E.DETAIL_V, [[700, 0]], [[1500, 1]]]);
   }
 
+  // ---------------------------------------------------------------- v13
+  {
+    // team share is neutral and mirrors the team rank
+    const pl = (team, souls, o) => Object.assign([team, souls, 5, 5, 8, 25000, 0, 1, 1000, 10000, 100, 5, 0, 1, 50, 0], o || {});
+    const L = { v: E.LOBBY_V, me: 0, dur: 1800, win: 0, p: [pl(0, 60000), ...[30000, 30000, 30000, 30000, 30000].map(x => pl(0, x)), ...Array.from({ length: 6 }, () => pl(1, 30000))] };
+    eq('team share: top', E.teamShare(L, true).label, 'Top share');
+    L.p[0] = pl(0, 9000, { 5: 5000, 2: 0, 4: 1, 3: 12, 8: 0 });
+    eq('team share: low', E.teamShare(L, false).label, 'Low share');
+
+    // next-rank plan from a ladder
+    const lad = { rows: [
+      { key: 'lane', label: 'Lane souls', you: 8000, fmt: null, higher: true, next: { status: 'behind', rel: -0.1, v: 8900 } },
+      { key: 'jungle', label: 'Jungle souls', you: 2000, fmt: null, higher: true, next: { status: 'behind', rel: -0.3, v: 2850 } },
+      { key: 'deaths', label: 'Deaths', you: 2.4, fmt: 'dec', higher: false, next: { status: 'ahead', rel: -0.1, v: 2.7 } },
+      { key: 'wr', label: 'Win rate', you: 0.5, next: { status: 'behind', rel: -0.2, v: 0.6 } },
+      { key: 'kills', label: 'Kills', you: 3, next: { status: 'par', rel: 0, v: 3 } } ] };
+    const plan = E.nextRankPlan(lad);
+    eq('plan: biggest gap first, win rate never a target', plan.gaps.map(g => [g.key, g.gap]), [['jungle', 850], ['lane', 900]]);
+    eq('plan: lane maps to a habit', plan.gaps[1].habit, 'ahead12');
+    eq('plan: strengths + on par', [plan.strengths.map(x => x.label), plan.onPar], [['Deaths'], ['Kills']]);
+
+    // calibration on your own games
+    const W = { scale: [10000, 10, 1, 1], win: { 180: [1, 0, 0, 0], 1200: [1, 0, 0, 0] } };
+    const mk = (id, gap, won) => ({ m: { id, won }, D: { dur: 1800, objs: [], mbs: [], players: [
+      { slot: 1, team: 0, acct: 9, items: [], snaps: [[1200, 30000 + gap, 0]], deaths: [] },
+      { slot: 2, team: 1, acct: 2, items: null, snaps: [[1200, 30000, 0]], deaths: [] }] } });
+    const cal = E.calibration([mk(1, 15000, true), mk(2, 12000, true), mk(3, -15000, false), mk(4, 0, true), mk(5, -12000, true)], W, 1200);
+    eq('calibration: games + favourite right', [cal.n, cal.right], [5, 4]);
+    eq('calibration: bins', cal.bins.map(b => [b.n, b.wins]), [[2, 1], [1, 1], [2, 2]]);
+
+    // last session: helper sessions win over match gaps; old sessions are ignored
+    const H = 3600;
+    const ms = [{ id: 1, t: 1000, dur: 1800 }, { id: 2, t: 3000, dur: 1800 }, { id: 3, t: 30000, dur: 1800 }, { id: 4, t: 32000, dur: 1800 }];
+    eq('session from match gaps', E.lastSession(ms, null, 34000, 18).games.map(m => m.id), [3, 4]);
+    eq('session from the helper', E.lastSession(ms, { playing: false, sessions: [{ start: 500, end: 5000 }] }, 6000, 18).games.map(m => m.id), [1, 2]);
+    eq('still playing: no recap', E.lastSession(ms, { playing: true, sessions: [{ start: 500, end: 5000 }, { start: 29000, end: null }] }, 33000, 18), null);
+    eq('too old: no recap', E.lastSession(ms, null, 34000 + 30 * H, 18), null);
+
+    // friends
+    const hist = [1, 2, 3, 4, 5, 6].map(i => ({ id: i, t: i, won: i <= 3 }));
+    const fs = E.friendStats([{ mate_id: 7, matches_played: 12, wins: 8, matches: [1, 2, 4] }, { mate_id: 8, matches_played: 3, wins: 1, matches: [5] }], hist);
+    eq('friends: only 10+ games together', fs.map(f => f.acct), [7]);
+    eq('friends: win rate together vs apart', [fs[0].wrTogether, fs[0].wrApart], [2 / 3, 1 / 3]);
+
+    // duo: habit + who died first, from the same match detail
+    const D = { dur: 1800, objs: [], mbs: [], players: [
+      { slot: 1, team: 0, acct: 9, items: [], snaps: [], deaths: [[900, 3, 0, 0, 9]] },
+      { slot: 2, team: 0, acct: 7, items: null, snaps: [], deaths: [[300, 3, 0, 0, 9]] },
+      { slot: 3, team: 1, acct: 5, items: null, snaps: [], deaths: [] }] };
+    const du = E.duo([{ m: { id: 1, won: false }, L: null, D }], 9, 7, 'early0', {});
+    eq('duo: habit passes each', [du.mePass, du.meN, du.themPass, du.themN], [1, 1, 0, 1]);
+    eq('duo: who died first in losses', [du.firstMe, du.firstThem], [0, 1]);
+    eq('asPlayer moves the seat', E.asPlayer(D, 7).players.find(p => p.items).acct, 7);
+  }
+
   // ---------------------------------------------------------------- misc
   eq('badge 42 = Sentinel 2', E.badgeName(42), 'Sentinel 2');
   eq('badge 24 = Seeker 4', E.badgeName(24), 'Seeker 4');

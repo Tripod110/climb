@@ -4,6 +4,30 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v13 (2026-10-23): Road to the next rank, friends, receipts
+- **Roles retired as verdicts.** On the user's last 400 games, Climb's impact score had AUC
+  0.49 against winning, and being team #1 won only 49%. A share of your own team's stats can't
+  predict a result the whole team shares. Games now show a neutral **team share** (Top / Mid /
+  Low). The Overview tiles use early-game numbers that do predict wins: ahead of lane opponents
+  at 12:00, no deaths before 10:00, deaths per game. The Overview also shows "what separates
+  your wins from your losses".
+- **Road to the next rank** (Heroes tab): `nextRankPlan` turns ladder gaps vs the next rank
+  into up to three targets. Each shows the number to hit and, where it can be checked game by
+  game, a one-click focus habit.
+  - The full ladder is folded away, names the minute it shows, and no longer shades deaths,
+    kills, assists or win rate (higher ranks fight more, and win rate is ~50% everywhere).
+- **Friends tab.** Steam's friends list isn't reachable from a browser, so friends come from
+  deadlock-api's teammate history: anyone with 10+ games together. For each friend: win rate
+  together vs without them, rank, last played. A friend page adds a head-to-head on your habit
+  and who died first in losses, using the same match detail.
+  - Match details now keep every player's deaths (`DETAIL_V` 3). This also fixes the
+    turning-point death counts, which only ever counted yours.
+- **Session recap** on the Overview after you play: record, rank points, habit ticks, deaths
+  before 10:00 and the biggest swing.
+- **Receipts.** Source badges on key numbers (your games / rank data / trained model / Valve /
+  Climb rule / AI) open a short explanation. The Coach tab checks the win model on your own
+  games: when the side it favoured at 20:00 won.
+
 ## v12 (2026-10-23): Win chance, how each game swung
 - `model/train.py` reads recent matches from deadlock-api's public data lake (DuckDB over HTTPS,
   only the needed Parquet columns) and writes `js/wpmodel.js`. It contains:

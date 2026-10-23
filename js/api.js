@@ -65,6 +65,11 @@
       '&include_player_death_details=true&include_player_stats=true&include_player_final_stats=true&include_objectives=true&include_mid_boss=true&match_ids=' + ids.join(',')))),
     steamProfile: acct => polite(() => getJSON('/v1/players/steam?account_ids=' + acct)).then(r => (r && r[0]) || null),
     steamSearch: q => polite(() => getJSON('/v1/players/steam-search?limit=8&search_query=' + encodeURIComponent(q))),
+    /* Everyone you've played on a team with, with the shared match ids. (Steam's own friends list
+       isn't reachable: deadlock-api's copy is empty and Steam's API refuses browser requests.) */
+    mateStats: acct => polite(() => getJSON('/v1/players/' + acct + '/mate-stats')),
+    steamProfiles: ids => ids.length ? polite(() => getJSON('/v1/players/steam?account_ids=' + ids.join(','))) : Promise.resolve([]),
+    playerRanks: ids => ids.length ? polite(() => getJSON('/v1/players/rank?account_ids=' + ids.join(','))) : Promise.resolve([]),
     rank: acct => polite(() => getJSON('/v1/players/' + acct + '/rank')),
     /* Whole-game totals per hero (win rate, accuracy) for one account or one lobby-badge range. */
     heroStats: (from, who) => polite(() => getJSON('/v1/analytics/hero-stats?game_mode=normal&min_unix_timestamp=' + Math.floor(from) +

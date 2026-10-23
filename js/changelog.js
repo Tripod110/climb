@@ -6,6 +6,16 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 13, date: '2026-10-23', title: 'Road to the next rank, friends, and where every number comes from',
+      items: [
+        'Heroes tab: “Your road to the next rank” lists up to three targets on that hero, the number to hit and the habit that trains it. The every-rank table is folded away, says which minute it shows, and no longer shades deaths, kills or win rate.',
+        'New Friends tab: everyone you’ve played 10+ games with (found from your match history), your win rate with and without them, and a head-to-head on your habit in shared games.',
+        'After a session, the Overview shows a recap: your record, your habit ticks and the biggest swing.',
+        'Every key number has a small badge (your games, rank data, trained model, Valve, Climb rule, AI). Tap it to see how it was worked out. The Coach tab also shows how the win chance did on your own games.',
+        'Carried / Dragged down are retired. Tested on 400 of your games, they didn’t predict wins, so games now show a neutral team share, and the Overview tiles use early-game numbers that do.',
+      ],
+    },
+    {
       v: 12, date: '2026-10-23', title: 'Win chance: how each game swung',
       items: [
         'Every match page now shows your team’s win chance minute by minute, from a model Climb trained on hundreds of thousands of recent Deadlock matches (souls, kills, objectives and mid-boss).',
