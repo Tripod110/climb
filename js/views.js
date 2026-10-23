@@ -188,6 +188,62 @@
     return `<li class="sig ${dir}"><span class="sig-icon" aria-hidden="true">${ic}</span><span>${text}</span></li>`;
   }
 
+  // ---------------------------------------------------------------- win chance (match page)
+  const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+  function wpChart(c, w) {
+    const W = 720, H = 220, m = { l: 64, r: 14, t: 14, b: 30 };   // wide left margin: phones enlarge the tick labels
+    const tl = w.timeline, dur = tl[tl.length - 1].t || 1;
+    const x = t => m.l + (W - m.l - m.r) * t / dur, y = p => m.t + (H - m.t - m.b) * (1 - p);
+    const line = tl.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.p).toFixed(1)}`).join('');
+    const pAt = t => { for (let i = 1; i < tl.length; i++) if (tl[i].t >= t) { const a = tl[i - 1], b = tl[i]; return a.p + (b.p - a.p) * (t - a.t) / Math.max(1, b.t - a.t); } return tl[tl.length - 1].p; };
+    const ticks = [];
+    for (let t = 0; t <= dur; t += 300) ticks.push(t);
+    const swings = w.turning.map(s => `<rect class="swing" x="${x(s.from).toFixed(1)}" y="${m.t}" width="${(x(s.to) - x(s.from)).toFixed(1)}" height="${H - m.t - m.b}"/>`).join('');
+    const deaths = w.deaths.map(d => `<circle class="wp-death" cx="${x(d.t).toFixed(1)}" cy="${y(pAt(d.t)).toFixed(1)}" r="4"><title>You died at ${mmss(d.t)}</title></circle>`).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Your team's win chance over the match">
+      ${[0, 0.25, 0.5, 0.75, 1].map(p => `<line class="${p === 0.5 ? 'axis' : 'grid'}" x1="${m.l}" x2="${W - m.r}" y1="${y(p)}" y2="${y(p)}"/><text class="tick" x="${m.l - 6}" y="${y(p) + 4}" text-anchor="end">${p * 100}%</text>`).join('')}
+      ${ticks.map(t => `<text class="tick" x="${x(t)}" y="${H - 6}" text-anchor="middle">${t / 60}m</text>`).join('')}
+      ${swings}<path class="line" d="${line}"/>${deaths}</svg>`;
+  }
+
+  function wpCard(c, m) {
+    const W = window.WPMODEL;
+    if (!W) return '';
+    const w = c.matchWin(m.id);
+    const head = `<div class="card-head"><div><div class="t-label">Win chance</div><h2>How this game swung</h2></div></div>`;
+    if (!w) return `<section class="card wp-card">${head}<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading the match timeline…</p></section>`;
+    const pts = v => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(Math.round(v * 100))}`;
+    const hero = id => id != null ? c.esc(c.heroName(id)) : 'unknown';
+    const q = W.quality && (W.quality['1200'] || Object.values(W.quality)[0]);
+    const swingLine = s => {
+      const bits = [];
+      if (s.myDeaths.length) bits.push(`you died ${s.myDeaths.length === 1 ? 'at ' + mmss(s.myDeaths[0]) : s.myDeaths.length + ' times'}`);
+      if (s.teamDeaths || s.enemyDeaths) bits.push(`deaths ${s.teamDeaths}–${s.enemyDeaths} (your team–theirs)`);
+      if (s.objLost) bits.push(`lost ${s.objLost} objective${s.objLost > 1 ? 's' : ''}`);
+      if (s.objTaken) bits.push(`took ${s.objTaken} objective${s.objTaken > 1 ? 's' : ''}`);
+      if (s.midboss.length) bits.push(`mid-boss: ${s.midboss.join(', ')}`);
+      bits.push(`souls gap ${s.soulsSwing >= 0 ? '+' : '−'}${c.fmtInt(Math.abs(s.soulsSwing))}`);
+      return `<li><span class="wp-when">${mmss(s.from)}–${mmss(s.to)}</span>
+        <b class="${s.delta >= 0 ? 'pos' : 'neg'}">${Math.round(s.p0 * 100)}% → ${Math.round(s.p1 * 100)}% (${pts(s.delta)})</b>
+        <span class="muted small">${bits.join(' · ')}</span></li>`;
+    };
+    const total = w.deaths.reduce((s, d) => s + d.total, 0);
+    return `<section class="card wp-card">${head}
+      <div class="chart wp-chart">${wpChart(c, w)}</div>
+      <p class="muted small"><span class="key wp-key-swing"></span> biggest swings · <span class="key wp-key-death"></span> your deaths</p>
+      <div class="grid-2 wp-cols">
+        <div><div class="t-label">Turning points</div><ul class="wp-list">${w.turning.map(swingLine).join('')}</ul></div>
+        <div><div class="t-label">Your deaths${w.deaths.length ? ` · about ${Math.round(total * 100)} pts in total` : ''}</div>
+          ${w.deaths.length ? `<ul class="wp-list">${w.deaths.map(d => `<li><span class="wp-when">${mmss(d.t)}</span>
+            <span>Died to <b>${hero(d.killerHero)}</b>${d.ttk > 0 && d.ttk <= c.E.FAST_DEATH_S ? ' <span class="tag warn">caught out</span>' : ''}</span>
+            <span class="muted small">${Math.round(d.total * 100) >= 1 ? `about <b class="neg">${pts(-d.total)} pts</b> win chance` : `under 1 pt of win chance${d.p < 0.05 || d.p > 0.95 ? ' (the game was already decided)' : ''}`} · a death like this usually swings ~${c.fmtInt(d.souls)} souls${d.share >= 1.2 ? ' (you were rich, so it cost more)' : ''}${d.objPts >= 0.005 ? ` · +${Math.round(d.objLift * 100)}% chance your team loses an objective in the next 90s` : ''}</span></li>`).join('')}</ul>`
+            : '<p class="muted small">No deaths this game.</p>'}</div>
+      </div>
+      <p class="muted small">Model trained ${c.esc(W.trained_at.slice(0, 10))} on ${c.fmtInt(W.matches)} matches since the ${c.esc(W.patch)} patch${q && q.accuracy ? `. At 20:00 the team it favours goes on to win ${Math.round(q.accuracy * 100)}% of the time` : ''}. Death costs are what a death like that usually costs at that minute, measured around deaths where nobody else died, not a measurement of that exact death.</p>
+    </section>`;
+  }
+
   // ---------------------------------------------------------------- focus loop
   const pc0 = v => v == null ? '—' : Math.round(v * 100) + '%';
   const dots = recent => `<span class="dots" aria-label="${recent.filter(Boolean).length} of last ${recent.length} passed">${recent.map(x => `<span class="dot ${x ? 'y' : 'n'}">${x ? '✓' : '✗'}</span>`).join('')}${'<span class="dot e"></span>'.repeat(Math.max(0, 10 - recent.length))}</span>`;
@@ -468,8 +524,10 @@
               : `<p class="muted small">Form vs your usual appears once you have ${E.MIN_HERO_GAMES}+ games on this hero.</p>`}
         </section>
       </div>
+      ${wpCard(c, m)}
       ${coachCard(c, m)}
       <section class="card flush scoreboard">${team(myTeam)}${team(1 - myTeam)}</section>`;
+    if (window.WPMODEL && !c.matchWin(m.id)) c.ensureMatchDetail(m.id);
     const cb = host.querySelector('[data-coach]');
     if (cb) cb.addEventListener('click', () => c.runDebrief(m.id, cb.dataset.coach === 'again'));
   }

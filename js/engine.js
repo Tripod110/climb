@@ -750,6 +750,7 @@
     return out;
   }
 
+  const DETAIL_V = 2;   // 2 = + objectives and mid-boss; older cached details get re-fetched
   /* Full metadata for one match (items, death details, stat snapshots) -> what the brief needs.
      Snapshots: [t, souls, kills, deaths, assists, heroDamage, laneSouls, jungleSouls, lastHits]. */
   function compactMatchDetail(meta, accountId) {
@@ -764,7 +765,10 @@
     }));
     const me = players.find(p => p.acct === accountId);
     if (!me) return null;
-    return { v: 1, dur: meta.duration_s || 0, win: meta.winning_team == null ? null : teamNum(meta.winning_team), players };
+    // objs: [time destroyed, owning team] (the owner LOST it); mbs: [time, team that claimed the mid-boss].
+    const objs = (meta.objectives || []).filter(o => o.destroyed_time_s).map(o => [o.destroyed_time_s, teamNum(o.team)]);
+    const mbs = (meta.mid_boss || []).filter(b => b.destroyed_time_s).map(b => [b.destroyed_time_s, teamNum(b.team_claimed)]);
+    return { v: DETAIL_V, dur: meta.duration_s || 0, win: meta.winning_team == null ? null : teamNum(meta.winning_team), players, objs, mbs };
   }
 
   /* World position -> a coarse zone a player can picture, from that player's side. The map is a
@@ -836,6 +840,17 @@
       your_team: team(L.p[L.me][0]),
       enemy_team: team(1 - L.p[L.me][0]),
     };
+    if (o.win) {
+      const pc = v => Math.round(v * 100) + '%';
+      brief.win_chance = {
+        note: 'Your team\'s win chance from Climb\'s model trained on deadlock-api matches (souls, kills, objectives and mid-boss gaps at each minute). Death costs are what a death like that USUALLY costs at that minute, not a measurement of that death.',
+        timeline: o.win.timeline.filter(x => !x.end).map(x => ({ at: clock(x.t), your_team: pc(x.p) })),
+        biggest_swings: o.win.turning.map(w => ({ from: clock(w.from), to: clock(w.to), change: (w.delta > 0 ? '+' : '') + Math.round(w.delta * 100) + ' pts',
+          your_deaths: w.myDeaths.map(clock), team_deaths: w.teamDeaths, enemy_deaths: w.enemyDeaths, objectives_lost: w.objLost, objectives_taken: w.objTaken, souls_gap_change: w.soulsSwing })),
+        your_deaths: o.win.deaths.map(d => ({ at: clock(d.t), killed_by: d.killerHero != null ? nm(d.killerHero) : 'unknown',
+          typical_cost: `about ${Math.round(d.total * 100)} pts of win chance (~${d.souls} souls swing)` })),
+      };
+    }
     if (o.ladder) {
       brief.hero_vs_ranks = {
         note: `Your recent average on ${nm(m.hero)} vs the average ${nm(m.hero)} game in each rank's lobbies, at 20 min (win rate and accuracy whole-game). Your rank: ${o.yourTier ? o.tierName(o.yourTier) : 'unranked'}.`,
@@ -883,6 +898,99 @@
     },
     required: ['summary', 'points', 'focus_next_game'],
   };
+
+  // ---------------------------------------------------------------- win chance (trained model)
+
+  /* W is window.WPMODEL from js/wpmodel.js, written by model/train.py from deadlock-api's data
+     lake. win[t] holds logistic weights for the gaps [souls, kills, objectives destroyed,
+     mid-bosses claimed] (my team minus enemy, divided by `scale`) at snapshot minute t. Between
+     trained minutes the weights are interpolated linearly. A death's cost comes from `death.cost`:
+     the median team-souls swing measured around deaths where nobody else in the lobby died, by
+     minute and by how rich the victim was. It's what a death like that USUALLY costs, not a
+     measurement of that particular death. */
+  function wpWeights(W, t) {
+    const ts = Object.keys(W.win).map(Number).sort((a, b) => a - b);
+    if (t <= ts[0]) return W.win[ts[0]].map(w => w * Math.max(0, t) / ts[0]);   // fades to 50/50 at 0:00
+    if (t >= ts[ts.length - 1]) return W.win[ts[ts.length - 1]];
+    const hi = ts.findIndex(x => x >= t), a = ts[hi - 1], b = ts[hi];
+    const f = (t - a) / (b - a);
+    return W.win[a].map((w, i) => w + f * (W.win[b][i] - w));
+  }
+  function wpAt(W, t, gaps) {
+    const w = wpWeights(W, t);
+    const z = gaps.reduce((s, g, i) => s + (g / W.scale[i]) * w[i], 0);
+    return 1 / (1 + Math.exp(-z));
+  }
+
+  /* Team gaps at time t from a compact match detail, from `team`'s side. */
+  function gapsAt(D, team, t) {
+    const sum = (tm, col) => D.players.filter(p => p.team === tm).reduce((s, p) => { const x = snapAtT(p, t); return s + (x ? x[col] : 0); }, 0);
+    const souls = sum(team, 1) - sum(1 - team, 1);
+    const kills = sum(team, 2) - sum(1 - team, 2);
+    const objs = (D.objs || []).filter(o => o[0] <= t);
+    const obj = objs.filter(o => o[1] !== team).length - objs.filter(o => o[1] === team).length;
+    const mbs = (D.mbs || []).filter(b => b[0] <= t);
+    const mb = mbs.filter(b => b[1] === team).length - mbs.filter(b => b[1] !== team).length;
+    return [souls, kills, obj, mb];
+  }
+
+  /* -> [{ t, p, gaps }] for your team at 0:00, every snapshot, and the end. */
+  function winTimeline(D, W, team) {
+    const me = D.players.find(p => p.items) || D.players[0];
+    if (team == null) team = me.team;
+    const times = [0, ...me.snaps.map(s => s[0]).filter(t => t > 0 && t < D.dur)];
+    const pts = times.map(t => { const g = gapsAt(D, team, t); return { t, p: t === 0 ? 0.5 : wpAt(W, t, g), gaps: g }; });
+    if (D.win != null) pts.push({ t: D.dur, p: D.win === team ? 1 : 0, gaps: gapsAt(D, team, D.dur), end: true });
+    return pts;
+  }
+
+  const bucketOf = (buckets, x) => { const i = buckets.findIndex(([lo, hi]) => x >= lo && (hi == null || x < hi)); return i < 0 ? buckets.length - 1 : i; };
+
+  /* Each of your deaths with what a death like it usually costs: souls (the measured swing) and
+     win-chance points at that moment, plus the extra objective risk in the next 90s. */
+  function deathCosts(D, W) {
+    const me = D.players.find(p => p.items);
+    if (!me || !W.death) return [];
+    const bySlot = new Map(D.players.map(p => [p.slot, p]));
+    return (me.deaths || []).map(([t, slot, x, y, ttk]) => {
+      const before = Math.max(0, ...me.snaps.map(s => s[0]).filter(s => s <= t));
+      const lobbyAvg = mean(D.players.map(p => { const s = snapAtT(p, before); return s ? s[1] : 0; }));
+      const mine = snapAtT(me, before);
+      const share = lobbyAvg > 0 && mine ? mine[1] / lobbyAvg : 1;
+      const mb = bucketOf(W.death.minute_buckets, t), sb = bucketOf(W.death.share_buckets, share);
+      const souls = W.death.cost[mb][sb];
+      const g = gapsAt(D, me.team, t);
+      const p0 = wpAt(W, t, g);
+      const pts = p0 - wpAt(W, t, [g[0] - souls, g[1] - 1, g[2], g[3]]);
+      const objLift = W.death.objective_lift_90s[mb] || 0;
+      const objPts = Math.max(0, objLift) * (p0 - wpAt(W, t, [g[0], g[1], g[2] - 1, g[3]]));
+      const k = bySlot.get(slot);
+      return { t, killerHero: k ? k.hero : null, x, y, ttk, share, souls, pts, objPts, objLift, total: pts + objPts, p: p0 };
+    });
+  }
+
+  /* The windows where your team's win chance moved most, with what happened in each. */
+  function turningPoints(D, W, n) {
+    const me = D.players.find(p => p.items);
+    const tl = winTimeline(D, W, me.team).filter(x => !x.end);
+    const deaths = D.players.flatMap(p => (p.deaths || []).map(d => ({ t: d[0], team: p.team, slot: p.slot, hero: p.hero, me: p === me, killer: d[1] })));
+    const out = [];
+    for (let i = 1; i < tl.length; i++) {
+      const a = tl[i - 1], b = tl[i];
+      const inW = x => x > a.t && x <= b.t;
+      const ds = deaths.filter(d => inW(d.t));
+      out.push({
+        from: a.t, to: b.t, p0: a.p, p1: b.p, delta: b.p - a.p,
+        soulsSwing: (b.gaps[0] - a.gaps[0]),
+        myDeaths: ds.filter(d => d.me).map(d => d.t),
+        teamDeaths: ds.filter(d => d.team === me.team).length, enemyDeaths: ds.filter(d => d.team !== me.team).length,
+        objLost: (D.objs || []).filter(o => inW(o[0]) && o[1] === me.team).length,
+        objTaken: (D.objs || []).filter(o => inW(o[0]) && o[1] !== me.team).length,
+        midboss: (D.mbs || []).filter(m => inW(m[0])).map(m => m[1] === me.team ? 'yours' : 'theirs'),
+      });
+    }
+    return out.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta)).slice(0, n || 3).sort((x, y) => x.from - y.from);
+  }
 
   // ---------------------------------------------------------------- overall analysis (last N games)
 
@@ -1152,6 +1260,7 @@
   });
 
   const Engine = {
+    DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

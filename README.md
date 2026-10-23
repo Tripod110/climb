@@ -70,6 +70,28 @@ The model is documented at the top of [`js/engine.js`](js/engine.js). Two non-ob
 - **Climbing biases form downward**, because better lobbies mean lower placement. If the average
   lobby got ≥3 subranks tougher, a form or consistency dip is shown but not counted against you.
 
+## Win-chance model (`model/`)
+
+`model/train.py` trains the win-chance model and death-cost table from deadlock-api's public data
+lake (`data.deadlock-api.com`, hourly Parquet files, read with DuckDB over HTTPS; only the needed
+columns are fetched). The old `/v1/sql` endpoint is deprecated and limited to 20 queries/hour, so
+don't use it. Output is `js/wpmodel.js` (`window.WPMODEL`, a few KB). It's a script rather than
+JSON because the CSP allows scripts from `'self'` but no fetches.
+
+```bash
+python -m venv model/.venv
+model/.venv/Scripts/python -m pip install -r model/requirements.txt
+model/.venv/Scripts/python -I model/train.py
+```
+
+Re-run after each big patch (it only uses matches since the last one), check the printed
+accuracy/calibration table, bump `?v=N` and commit `js/wpmodel.js`. What it found
+(2026-10-23):
+- Souls gap does almost all the predicting; kills, objectives and mid-boss add a little.
+- A death's cost is the team-souls swing around it: about the kill bounty early, and roughly
+  twice the bounty after 20 min, when long respawns cost farm too.
+- Your team is ~10 points more likely to lose an objective in the 90s after a death.
+
 ## Play time (the helper)
 
 The **Play time** card tracks how long Deadlock is open each day. It exists to make the habit

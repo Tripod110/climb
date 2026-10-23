@@ -341,6 +341,43 @@
     eq('unknown habit -> null', E.focusProgress({ habit: 'nope', start: 0 }, es, {}), null);
   }
 
+  // ---------------------------------------------------------------- win chance
+  {
+    // A toy model: only souls matter, 1 logit per 10k souls, same at every minute.
+    const W = { scale: [10000, 10, 1, 1], win: { 180: [1, 0, 0.2, 0], 900: [1, 0, 0.2, 0], 1800: [2, 0, 0.2, 0] },
+      death: { minute_buckets: [[0, 600], [600, null]], share_buckets: [[0, 1.2], [1.2, null]], cost: [[1000, 1500], [2000, 3000]], objective_lift_90s: [0.1, 0.2] } };
+    near('even gaps = 50%', E.wpAt(W, 900, [0, 0, 0, 0]), 0.5, 1e-9);
+    near('10k souls ahead = logistic(1)', E.wpAt(W, 900, [10000, 0, 0, 0]), 1 / (1 + Math.exp(-1)), 1e-9);
+    near('one objective = logistic(0.2)', E.wpAt(W, 900, [0, 0, 1, 0]), 1 / (1 + Math.exp(-0.2)), 1e-9);
+    near('weights interpolate between minutes', E.wpWeights(W, 1350)[0], 1.5, 1e-9);
+    near('weights fade to 0 at 0:00', E.wpWeights(W, 90)[0], 0.5, 1e-9);
+    near('symmetric: my 60% is their 40%', E.wpAt(W, 900, [4000, 0, 0, 0]) + E.wpAt(W, 900, [-4000, 0, 0, 0]), 1, 1e-9);
+
+    const snaps = (k) => [[180, 2000 * k, 0], [360, 4000 * k, 1], [540, 6000 * k, 1], [720, 8000 * k, 2]];
+    const D = { v: 2, dur: 800, win: 1, objs: [[700, 0]], mbs: [],
+      players: [
+        { slot: 1, team: 0, hero: 7, lane: 1, acct: 9, items: [], deaths: [[400, 2, 0, -2000, 3], [650, 2, 0, 0, 9]], snaps: snaps(1).map(s => [s[0], s[0] === 540 ? 3000 : s[1], s[2], 0, 0, 0, 0, 0, 0]) },  // falls well behind 6:00→9:00
+        { slot: 2, team: 1, hero: 8, lane: 1, acct: 2, items: null, deaths: null, snaps: snaps(1.5).map(s => [s[0], s[1], s[2], 0, 0, 0, 0, 0, 0]) },
+      ] };
+    const tl = E.winTimeline(D, W, 0);
+    eq('timeline: 0:00, snapshots, end', tl.map(x => x.t), [0, 180, 360, 540, 720, 800]);
+    eq('timeline ends at the result', tl[tl.length - 1].p, 0);
+    ok('falling behind lowers win chance', tl[4].p < tl[1].p && tl[1].p < 0.5, tl.map(x => x.p));
+    eq('objective lost counts against you', E.gapsAt(D, 0, 720)[2], -1);
+    const dc = E.deathCosts(D, W);
+    eq('death costs: one per death, killer known', dc.map(d => [d.t, d.killerHero, d.souls]), [[400, 8, 1000], [650, 8, 2000]]);
+    ok('a later, pricier death costs more win chance', dc[1].pts > dc[0].pts && dc[0].pts > 0, dc.map(d => d.pts));
+    ok('objective risk adds a little', dc[1].objPts > 0 && dc[1].objPts < dc[1].pts, dc[1]);
+    const tp = E.turningPoints(D, W, 2);
+    eq('turning points: biggest moves, in time order', tp.length, 2);
+    ok('biggest drop (6:00→9:00) is a turning point with my 6:40 death', tp.some(x => x.from === 360 && x.to === 540 && x.myDeaths[0] === 400), tp);
+
+    const meta = { duration_s: 800, winning_team: 'Team1', objectives: [{ destroyed_time_s: 700, team: 'Team0' }, { destroyed_time_s: 0, team: 'Team1' }],
+      mid_boss: [{ destroyed_time_s: 1500, team_claimed: 'Team1' }], players: [{ player_slot: 1, team: 'Team0', hero_id: 7, account_id: 9, stats: [] }] };
+    const cd = E.compactMatchDetail(meta, 9);
+    eq('detail v2 keeps destroyed objectives + mid-boss', [cd.v, cd.objs, cd.mbs], [E.DETAIL_V, [[700, 0]], [[1500, 1]]]);
+  }
+
   // ---------------------------------------------------------------- misc
   eq('badge 42 = Sentinel 2', E.badgeName(42), 'Sentinel 2');
   eq('badge 24 = Seeker 4', E.badgeName(24), 'Seeker 4');

@@ -105,7 +105,7 @@
     go: hash => { if (location.hash !== hash) location.hash = hash; else render(); },
     save: () => S.set('settings', settings),
     render: () => render(),
-    benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
+    benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureMatchDetail, matchWin, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
     focusEntries, focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
   };
 
@@ -337,6 +337,31 @@
 
   /* Debrief one match: full match detail + item names + (if loadable) your rank ladder on that
      hero -> a compact brief -> Gemini -> cached per match. `force` re-asks. */
+  /* One match's detail for the match page (win chance needs it). Cached with the others; an
+     older or missing detail is fetched once per visit. */
+  const detailTried = new Set();
+  async function ensureMatchDetail(matchId) {
+    const have = state.details[matchId];
+    if ((have && have.v === E.DETAIL_V) || detailTried.has(matchId)) return;
+    detailTried.add(matchId);
+    try {
+      const meta = await A.matchDetail(matchId);
+      const D = meta && E.compactMatchDetail(meta, settings.account);
+      if (D) { state.details[matchId] = D; S.setData('details', state.details); }
+    } catch (e) { /* the card says it couldn't load */ }
+    render();
+  }
+
+  /* Win chance for a match: timeline, turning points and death costs, or null without a model
+     or detail. window.WPMODEL comes from js/wpmodel.js (model/train.py). */
+  function matchWin(matchId) {
+    const W = window.WPMODEL, D = state.details[matchId];
+    if (!W || !D || D.v !== E.DETAIL_V) return null;
+    const me = D.players.find(p => p.items);
+    if (!me) return null;
+    return { W, D, timeline: E.winTimeline(D, W, me.team), turning: E.turningPoints(D, W, 3), deaths: E.deathCosts(D, W) };
+  }
+
   async function runDebrief(matchId, force) {
     if (state.coaching[matchId]) return;
     if (!state.coach.key || !state.coach.model) return;
@@ -350,6 +375,7 @@
       const [meta] = await Promise.all([A.matchDetail(matchId), loadItems()]);
       const D = meta && E.compactMatchDetail(meta, settings.account);
       if (!D) throw new Error('deadlock-api has no detailed data for this match yet.');
+      state.details[matchId] = D;
       state.coaching[matchId] = 'Comparing with your rank…'; render();
       let ladder = null;
       const yourTier = M.badge ? Math.floor(M.badge / 10) : 0;
@@ -363,7 +389,7 @@
         if (mine.curve && mine.stats) ladder = E.rankLadder(m.hero, 1200, mine, tiersData, yourTier);
       } catch (e) { /* the debrief still works without the ladder */ }
       const brief = E.debriefBrief(m, L, D, E.gameRole(L, m.won), M.perf.get(m.id), {
-        heroName, items: state.items.map, tierName: ctx.tierName, ladder, yourTier,
+        heroName, items: state.items.map, tierName: ctx.tierName, ladder, yourTier, win: matchWin(matchId),
       });
       state.coaching[matchId] = 'Coach is thinking…'; render();
       const out = await K.json(state.coach.key, state.coach.model, E.DEBRIEF_SYSTEM, JSON.stringify(brief), E.DEBRIEF_SCHEMA,
@@ -395,7 +421,7 @@
   async function ensureDetails() {
     if (state.detailsBusy || !settings.account) return;
     const acct = settings.account;
-    const missing = detailGames().filter(m => !state.details[m.id]).map(m => m.id);
+    const missing = detailGames().filter(m => !state.details[m.id] || state.details[m.id].v !== E.DETAIL_V).map(m => m.id);
     if (!missing.length) return;
     state.detailsBusy = true; render();
     try {

@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 12, date: '2026-10-23', title: 'Win chance: how each game swung',
+      items: [
+        'Every match page now shows your team’s win chance minute by minute, from a model Climb trained on hundreds of thousands of recent Deadlock matches (souls, kills, objectives and mid-boss).',
+        'The three biggest swings are listed with what happened in each, and every death of yours shows what a death like it usually costs in win chance: more later in the game, and more when you were rich.',
+        'The AI coach now gets this timeline too, so its debrief starts from measured turning points instead of guesses.',
+      ],
+    },
+    {
       v: 11, date: '2026-10-22', title: 'Gold for 1st in the lobby',
       items: [
         'Games where Valve named you MVP (1st in the whole lobby) now stand out in gold: a ★ 1st badge and a gold edge in the Matches list and recent matches, and a gold role card on the match page.',

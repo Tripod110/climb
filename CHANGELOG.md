@@ -4,6 +4,21 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v12 (2026-10-23): Win chance, how each game swung
+- `model/train.py` reads recent matches from deadlock-api's public data lake (DuckDB over HTTPS,
+  only the needed Parquet columns) and writes `js/wpmodel.js`. It contains:
+  - a per-minute logistic win model on the souls, kills, objectives-destroyed and mid-boss gaps;
+  - a death-cost table: the median team-souls swing around deaths where nobody else in the lobby
+    died, by minute and by how rich the victim was;
+  - the extra chance of losing an objective in the 90s after a death.
+  Re-run it after big patches.
+- Match page: a win-chance chart (your deaths marked, biggest swings shaded), the three turning
+  points with what happened in each window, and each death's typical cost in win-chance points.
+  Costs are described as typical, not measured for that exact death: snapshots are 3–5 minutes
+  apart, so one death can't be isolated in most games.
+- Match details now keep objectives and mid-boss (`DETAIL_V` 2), and older cached details are
+  re-fetched. The coach's debrief brief gets the timeline, swings and death costs.
+
 ## v11 (2026-10-22): Gold for 1st in the lobby
 - Valve's post-game MVP #1 (`mvp_rank` 1, i.e. 1st of all 12) is marked gold everywhere a game
   appears: a ★ 1st chip, a gold left edge in the Matches list, a gold match-page role card, and
