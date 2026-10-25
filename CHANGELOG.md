@@ -4,6 +4,21 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v14 (2026-10-25): Missing games, explained
+- A freshness line under your rank: when your newest match on deadlock-api ended
+  (`Engine.freshness`).
+- With the Climb helper, Climb knows if you played after that (it allows a 10-minute grace
+  window). If you did for 20+ minutes, a "Missing games?" card says how long, and lists the fixes,
+  safest first:
+  1. a one-time upload of Steam's `httpcache` at deadlock-api.com/ingest-cache;
+  2. deadlock-api-ingest started from Deadlock's launch options with `--no-memory`. Started that
+     way it never uses the Steam login, and with the flag it only watches the cache.
+  3. Deadlock Mod Manager's match sync (uses the saved Steam login);
+  4. deadlock-api's supporter tier.
+  The guide is also under Account & about.
+- Climb will not read Steam login tokens or game memory itself. Those were the "gold standard"
+  ideas in a friend's write-up; checked against the ingest tool's README 2026-10-25.
+
 ## v13 (2026-10-23): Road to the next rank, friends, receipts
 - **Roles retired as verdicts.** On the user's last 400 games, Climb's impact score had AUC
   0.49 against winning, and being team #1 won only 49%. A share of your own team's stats can't

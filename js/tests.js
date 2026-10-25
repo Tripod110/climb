@@ -433,6 +433,17 @@
     eq('asPlayer moves the seat', E.asPlayer(D, 7).players.find(p => p.items).acct, 7);
   }
 
+  // ---------------------------------------------------------------- freshness
+  {
+    const ms = [{ id: 1, t: 1000, dur: 1800 }, { id: 2, t: 5000, dur: 2000 }];   // newest ends at 7000
+    const f0 = E.freshness(ms, null, 10000);
+    eq('freshness: newest match + age', [f0.newestId, f0.newestEnd, f0.sinceS, f0.unseenS], [2, 7000, 3000, 0]);
+    const H = { sessions: [{ start: 4800, end: 7300 }, { start: 9000, end: 12000 }, { start: 13000, end: null }] };
+    // first session ends inside the 10-min grace after the match; later ones are unseen play
+    eq('freshness: finished play after the newest match; the open session doesn’t count', E.freshness(ms, H, 14000).unseenS, 12000 - 9000);
+    eq('freshness: no matches', E.freshness([], H, 14000).newestId, null);
+  }
+
   // ---------------------------------------------------------------- misc
   eq('badge 42 = Sentinel 2', E.badgeName(42), 'Sentinel 2');
   eq('badge 24 = Seeker 4', E.badgeName(24), 'Seeker 4');

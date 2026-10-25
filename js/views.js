@@ -102,6 +102,7 @@
     host.innerHTML = `
       ${fresh.length ? `<section class="card whatsnew"><div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="btn ghost-btn" type="button">Got it</button></div>
         ${fresh.map(e => `<h3>v${e.v} · ${c.esc(e.title)}</h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>` : ''}
+      ${missingCard(c)}
       ${recapCard(c)}
       ${focusCard(c, false)}
 
@@ -111,6 +112,7 @@
           <div>
             <div class="rank-name">${c.esc(E.badgeName(M.badge, c.tiers()))}</div>
             <div class="muted">Season ${M.seasonSum.wins}–${M.seasonSum.losses}${M.seasonSum.hasDelta ? ' · ' + c.signed(M.seasonSum.net) + ' rank pts' : ''} · ${M.all.length} matches tracked</div>
+            ${freshLine(c)}
           </div>
         </div>
         <div class="ctl-row">
@@ -178,6 +180,8 @@
     bindSeg(host, '#scope', v2 => { S.games = v2; c.save(); c.render(); });
     const ok = host.querySelector('#wn-ok');
     if (ok) ok.addEventListener('click', () => { S.seenV = c.VERSION; c.save(); c.render(); });
+    const mk = host.querySelector('#missing-ok');
+    if (mk) mk.addEventListener('click', () => c.dismissMissing(c.freshnessNow().newestId));
     const rk = host.querySelector('#recap-ok');
     if (rk) rk.addEventListener('click', () => { const s0 = E.lastSession(M.all, c.state.helper, Date.now() / 1000, 18); if (s0) c.dismissRecap(s0.end); });
     if (!c.state.detailsBusy) c.ensureDetails();
@@ -309,6 +313,42 @@
       </div>
       <p class="muted small">Model trained ${c.esc(W.trained_at.slice(0, 10))} on ${c.fmtInt(W.matches)} matches since the ${c.esc(W.patch)} patch${q && q.accuracy ? `. At 20:00 the team it favours goes on to win ${Math.round(q.accuracy * 100)}% of the time` : ''}. Death costs are what a death like that usually costs at that minute, measured around deaths where nobody else died, not a measurement of that exact death.</p>
     </section>`;
+  }
+
+  // ---------------------------------------------------------------- missing games (data freshness)
+  /* Why games are missing and the ways to get them to deadlock-api faster, safest first. Only
+     options that never give anything your Steam login or touch the game's memory are offered as
+     steps; the rest are mentioned with what they do. Checked against deadlock-api-ingest's README
+     on 2026-10-25. */
+  function missingGuide(c) {
+    return `<ol class="fix-steps">
+      <li><b>Upload your Steam cache now</b> (one time, nothing to install). Open <a class="more" href="https://deadlock-api.com/ingest-cache" target="_blank" rel="noopener">deadlock-api.com/ingest-cache</a> and drop in this folder:
+        <code class="path">C:\\Program Files (x86)\\Steam\\appcache\\httpcache</code>
+        <span class="muted small">It reads the match links Steam saved when you looked at the post-game screen, so it catches games you checked the scoreboard for.</span></li>
+      <li><b>Let it happen automatically while you play</b> with deadlock-api’s open-source <a class="more" href="https://github.com/deadlock-api/deadlock-api-ingest" target="_blank" rel="noopener">ingest tool</a>, run from Deadlock’s launch options so it only runs while the game is open:
+        <span class="muted small">Download it to <code>%LOCALAPPDATA%\\deadlock-api-ingest\\</code>, then in Steam: Deadlock → Properties → General → Launch Options:</span>
+        <code class="path">"C:\\Users\\YOUR_USER\\AppData\\Local\\deadlock-api-ingest\\deadlock-api-ingest.exe" --no-memory -- %command%</code>
+        <span class="muted small">Started this way it never uses your Steam login, and <code>--no-memory</code> stops it reading the game’s memory, so it only watches Steam’s cache folder. Keep any launch options you already have after <code>%command%</code>. Avoid the default installer if you don’t want that: it also logs in with your saved Steam session to fetch your friends’ matches.</span></li>
+      <li><b>Already use Deadlock Mod Manager?</b> Its match-sync setting does the same job. Note it works by using your saved Steam login.</li>
+      <li><b>Or support deadlock-api</b> ($1.50/month on their Patreon), which gives your account prioritized fetching.</li>
+    </ol>`;
+  }
+
+  function freshLine(c) {
+    const f = c.freshnessNow();
+    if (!f.newestEnd) return '';
+    const behind = f.unseenS >= 20 * 60;
+    return `<div class="fresh small${behind ? ' behind' : ''}">Newest match on deadlock-api: ${c.ago(f.newestEnd)}${behind ? ` · <a href="#/about">you’ve played since, why is it missing?</a>` : ''}</div>`;
+  }
+
+  function missingCard(c) {
+    const f = c.freshnessNow(), S = c.settings, P = c.P;
+    if (!f.newestId || f.unseenS < 20 * 60 || S.missingSeen === f.newestId) return '';
+    return `<section class="card missing"><div class="wn-head"><div><div class="t-label">Missing games? ${src('yours', 'The Climb helper on your PC logged Deadlock being open after your newest match on deadlock-api ended. Games from that time aren’t on deadlock-api yet, so Climb can’t show them. Climb itself refreshes every few minutes; the delay is deadlock-api collecting the match from Valve.')}</div>
+      <h2>You’ve played about ${P.dur(f.unseenS)} since your newest match on deadlock-api</h2></div>
+      <button type="button" class="btn ghost-btn" id="missing-ok">Got it</button></div>
+      <p class="muted">deadlock-api only has a game once someone sends it the game’s key from Valve, which can take hours for accounts it doesn’t watch. Any of these gets your games there within minutes:</p>
+      ${missingGuide(c)}</section>`;
   }
 
   // ---------------------------------------------------------------- focus loop
@@ -861,6 +901,11 @@
               <input id="coach-key" type="password" placeholder="Gemini API key" spellcheck="false" autocomplete="off">
               <button type="submit" class="btn">Save</button>
             </form><p id="coach-msg" class="small"></p>`}
+        </section>
+        <section class="card"><h2>Missing games?</h2>
+          <p class="muted small">${freshLine(c)}</p>
+          <p class="muted small">Climb shows what deadlock-api has. A game reaches deadlock-api once someone sends it the game’s key from Valve, which can take hours. To get yours there within minutes:</p>
+          ${missingGuide(c)}
         </section>
         <section class="card"><h2>Data</h2>
           <p class="muted small">${c.M.all.length} matches on record · ${lob.filter(L => L && L.v === E.LOBBY_V).length} lobbies read${st.history ? ` · history updated ${c.ago(st.history.at / 1000)}` : ''}</p>

@@ -108,7 +108,7 @@
     render: () => render(),
     benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureMatchDetail, matchWin, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
     focusEntries, focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
-    ensureFriends, ensureDetailsFor, friendList, entryOf: m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }), dismissRecap,
+    ensureFriends, ensureDetailsFor, friendList, entryOf: m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }), dismissRecap, dismissMissing, freshnessNow,
   };
 
   // ---------------------------------------------------------------- routing + render
@@ -572,6 +572,9 @@
   }
 
   function dismissRecap(end) { settings.recapSeen = end; ctx.save(); render(); }
+  function dismissMissing(id) { settings.missingSeen = id; ctx.save(); render(); }
+  /* How current deadlock-api is for this account (Engine.freshness), using the helper's sessions. */
+  function freshnessNow() { return E.freshness(model().all, state.helper, Date.now() / 1000); }
 
   function analysisEntries() {
     return lastGames().map(m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }));

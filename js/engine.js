@@ -1015,6 +1015,28 @@
       wins: rows.filter(r => r.m.won).length };
   }
 
+  // ---------------------------------------------------------------- data freshness
+
+  /* How far behind deadlock-api is for this account. deadlock-api only has a match once it has
+     collected it (Valve hands out match keys sparingly), so recent games can be missing for hours.
+     With the Climb helper we can tell: play time recorded after the newest match ended is play
+     deadlock-api hasn't seen yet. Only finished sessions count. -> { newestT, newestEnd, sinceS, unseenS, sessions } */
+  const UNSEEN_GRACE_S = 10 * 60;     // a match can end a few minutes before Deadlock is closed
+  function freshness(matches, helper, now) {
+    const last = matches.length ? matches.reduce((a, b) => (b.t > a.t ? b : a)) : null;
+    const newestEnd = last ? last.t + (last.dur || 0) : null;
+    let unseenS = 0, sessions = 0;
+    if (helper && helper.sessions && newestEnd != null) {
+      for (const x of helper.sessions) {
+        if (x.end == null) continue;   // still playing: that game isn't "missing" yet
+        const end = x.end;
+        const from = Math.max(x.start, newestEnd + UNSEEN_GRACE_S);
+        if (end > from) { unseenS += end - from; sessions++; }
+      }
+    }
+    return { newestT: last ? last.t : null, newestEnd, newestId: last ? last.id : null, sinceS: newestEnd != null ? now - newestEnd : null, unseenS, sessions };
+  }
+
   // ---------------------------------------------------------------- win chance (trained model)
 
   /* W is window.WPMODEL from js/wpmodel.js, written by model/train.py from deadlock-api's data
@@ -1376,6 +1398,7 @@
   });
 
   const Engine = {
+    freshness,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,

@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 14, date: '2026-10-25', title: 'Missing games, explained',
+      items: [
+        'Under your rank: how recent your newest match on deadlock-api is. Climb refreshes every few minutes; when a game is missing, it’s deadlock-api that hasn’t collected it from Valve yet.',
+        'If the Climb helper saw you play after that, a card says so and lists the ways to get your games there within minutes, safest first: a one-time cache upload, or deadlock-api’s ingest tool run from Deadlock’s launch options in cache-only mode. The same guide is under Account & about.',
+      ],
+    },
+    {
       v: 13, date: '2026-10-23', title: 'Road to the next rank, friends, and where every number comes from',
       items: [
         'Heroes tab: “Your road to the next rank” lists up to three targets on that hero, the number to hit and the habit that trains it. The every-rank table is folded away, says which minute it shows, and no longer shades deaths, kills or win rate.',
