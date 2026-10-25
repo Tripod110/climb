@@ -395,9 +395,10 @@ ol.plan { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; font-wei
 .fresh a { color: inherit; text-decoration: underline; }
 .missing { border-left: 3px solid var(--warn); }
 .fix-steps { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 12px; font-size: 14px; }
+.fix-steps li { min-width: 0; }   /* grid items otherwise stretch to the long paths below */
 .fix-steps li > span { display: block; margin-top: 4px; }
 .fix-steps a { white-space: normal; }
-code.path { display: block; margin: 6px 0 2px; padding: 8px 10px; background: var(--raised); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; overflow-x: auto; white-space: pre; user-select: all; }
+code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10px; background: var(--raised); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; overflow-x: auto; white-space: pre; user-select: all; }
 
 /* focus loop */
 .focus-card { border-left: 3px solid var(--accent); }
