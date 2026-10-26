@@ -2,11 +2,11 @@
    - Navigations are NETWORK-FIRST, so index.html (which carries the ?v=N references) is never stale.
    - Versioned assets are CACHE-FIRST, matched exactly including the query (never ignoreSearch).
    - deadlock-api.com and helper (127.0.0.1) requests are not touched. Freshness lives in the app's own localStorage cache. */
-const CACHE = 'climb-v19';
+const CACHE = 'climb-v20';
 const SHELL = [
-  './', 'index.html', 'style.css?v=19',
-  'js/changelog.js?v=19', 'js/engine.js?v=19', 'js/store.js?v=19', 'js/api.js?v=19', 'js/play.js?v=19', 'js/charts.js?v=19', 'js/wpmodel.js?v=19', 'js/coach.js?v=19', 'js/views.js?v=19', 'js/app.js?v=19',
-  'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png',
+  './', 'index.html', 'style.css?v=20',
+  'js/changelog.js?v=20', 'js/engine.js?v=20', 'js/store.js?v=20', 'js/api.js?v=20', 'js/play.js?v=20', 'js/charts.js?v=20', 'js/wpmodel.js?v=20', 'js/coach.js?v=20', 'js/views.js?v=20', 'js/app.js?v=20',
+  'ingest.html', 'js/guide.js?v=20', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
 self.addEventListener('install', e => {
@@ -21,9 +21,14 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (url.origin !== location.origin || e.request.method !== 'GET') return;
   if (e.request.mode === 'navigate') {
+    // Only the app itself is saved as the offline index.html; other pages (ingest.html) are
+    // cached under their own path, or opening the guide would replace the offline app with it.
+    const isApp = /\/(index\.html)?$/.test(url.pathname);
+    const key = isApp ? 'index.html' : e.request;
     e.respondWith(fetch(e.request).then(r => {
-      const copy = r.clone(); caches.open(CACHE).then(c => c.put('index.html', copy)); return r;
-    }).catch(() => caches.match('index.html')));
+      if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(key, copy)); }
+      return r;
+    }).catch(() => caches.match(key)));
     return;
   }
   e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request).then(r => {

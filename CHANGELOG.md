@@ -4,6 +4,19 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v20 (2026-10-26): Setup guide for faster match updates
+- New static page `ingest.html` (+ `js/guide.js` for its Copy buttons). It's a deadlock-api-ingest
+  setup guide built from the tool's README on 2026-10-26: the installer and the PowerShell
+  install, the launch-option setup (with the "cannot find the path specified" failure seen on
+  Windows), `--gui` to check it, the Steam login (GC) and memory-reading trade-offs, and
+  uninstall. It has its own stricter CSP (no network at all).
+- `missingGuide` (the "Missing games?" card and Account & about) is now a short summary that
+  links to the page; the launch-options-only steps are gone. Matches gets a "Make new games show
+  up faster" link.
+- Service worker fix: a navigation was always cached as `index.html`, so opening any other page
+  would have replaced the offline app with it. Only `/` and `/index.html` are cached as the app
+  now; `ingest.html` is in the shell.
+
 ## v19 (2026-10-26): Rolled back v18
 - Reverted the Today redesign and hero pool (v18, d1e0dcf). The code is still in git history; v18's notes on why there is no stop-loss line are in that commit's CHANGELOG.md.
 

@@ -422,6 +422,8 @@ table.score td.best { color: var(--good-text); font-weight: 700; }
 .fix-steps li { min-width: 0; }   /* grid items otherwise stretch to the long paths below */
 .fix-steps li > span { display: block; margin-top: 4px; }
 .fix-steps a { white-space: normal; }
+.fix-steps a.btn { display: inline-flex; align-items: center; margin-top: 8px; text-decoration: none; }
+.add-bar .add-faster { flex: none; }
 .add-h { font-size: 15px; margin: 18px 0 4px; }
 .add-match { max-width: 440px; margin-top: 10px; }
 .add-msg { margin-top: 6px; min-height: 1em; }

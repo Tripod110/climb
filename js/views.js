@@ -317,20 +317,16 @@
   }
 
   // ---------------------------------------------------------------- missing games (data freshness)
-  /* Why games are missing and the ways to get them to deadlock-api faster, safest first. Only
-     options that never give anything your Steam login or touch the game's memory are offered as
-     steps; the rest are mentioned with what they do. Checked against deadlock-api-ingest's README
-     on 2026-10-25. */
+  /* Why games are missing and the ways to get them to deadlock-api faster. The full setup (both
+     ingest setups, privacy, uninstall) lives on ingest.html; this is the short version. The old
+     launch-options-only advice failed on Windows ("cannot find the path specified", 2026-10-26),
+     so the installer is now the main route. */
   function missingGuide(c) {
     return `<ol class="fix-steps">
-      <li><b>Upload your Steam cache now</b> (one time, nothing to install). Open <a class="more" href="https://deadlock-api.com/ingest-cache" target="_blank" rel="noopener">deadlock-api.com/ingest-cache</a> and drop in this folder:
-        <code class="path">C:\\Program Files (x86)\\Steam\\appcache\\httpcache</code>
-        <span class="muted small">It reads the match links Steam saved when you looked at the post-game screen, so it catches games you checked the scoreboard for.</span></li>
-      <li><b>Let it happen automatically while you play</b> with deadlock-api’s open-source <a class="more" href="https://github.com/deadlock-api/deadlock-api-ingest" target="_blank" rel="noopener">ingest tool</a>, run from Deadlock’s launch options so it only runs while the game is open:
-        <span class="muted small">Download it to <code>%LOCALAPPDATA%\\deadlock-api-ingest\\</code>, then in Steam: Deadlock → Properties → General → Launch Options:</span>
-        <code class="path">"C:\\Users\\YOUR_USER\\AppData\\Local\\deadlock-api-ingest\\deadlock-api-ingest.exe" --no-memory -- %command%</code>
-        <span class="muted small">Started this way it never uses your Steam login, and <code>--no-memory</code> stops it reading the game’s memory, so it only watches Steam’s cache folder. Keep any launch options you already have after <code>%command%</code>. Avoid the default installer if you don’t want that: it also logs in with your saved Steam session to fetch your friends’ matches.</span></li>
-      <li><b>Already use Deadlock Mod Manager?</b> Its match-sync setting does the same job. Note it works by using your saved Steam login.</li>
+      <li><b>Install deadlock-api’s ingest tool</b> (free, open source, two minutes). It sends each game to deadlock-api as soon as it ends, so it shows up here within minutes.
+        <a class="btn" href="ingest.html">Open the setup guide</a>
+        <span class="muted small">The guide covers the normal install, a more private setup that only runs while Deadlock is open, and what the tool does with your Steam login.</span></li>
+      <li><b>Already use Deadlock Mod Manager or the Statlocker companion app?</b> They send your games to deadlock-api too. Both work by using your saved Steam login.</li>
       <li><b>Or support deadlock-api</b> ($1.50/month on their Patreon), which gives your account prioritized fetching.</li>
     </ol>`;
   }
@@ -779,7 +775,8 @@
           <select id="f-mode" aria-label="Mode">${opt('all', 'Ranked + unranked', matchFilter.mode)}${opt('ranked', 'Ranked', matchFilter.mode)}${opt('unranked', 'Unranked', matchFilter.mode)}</select>
         </div></div>
       <div class="add-bar"><span class="add-lab">Missing a game? ${src('rule', 'Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here and Climb adds it.')}</span>
-        ${addMatchForm(c)}</div>
+        ${addMatchForm(c)}
+        <a class="more small add-faster" href="ingest.html">Make new games show up faster →</a></div>
       <section class="card flush">
         <div class="mrow mhead"><span>Hero</span><span>Result</span><span>Team share</span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="hide-s">Impact</span><span class="n">Rank</span><span class="n">When</span></div>
         ${shown.length ? shown.map(({ m, g, L }) => {

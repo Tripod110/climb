@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- A static guide: no network calls at all, so the policy is stricter than the app's. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>Faster match updates · Climb</title>
+<meta name="description" content="Set up deadlock-api-ingest so new Deadlock matches show up in Climb within minutes.">
+<meta name="theme-color" content="#0e0e10">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+/* Same tokens as Climb's style.css: dark first, neutral greys, accent only for links and steps. */
+:root {
+  color-scheme: dark;
+  --page: #0c0c0d; --surface: #141416; --raised: #1b1b1f; --ink: #f2f2f0; --ink-2: #b9b8b2; --muted: #85847e;
+  --border: rgba(255, 255, 255, .08); --border-2: rgba(255, 255, 255, .14);
+  --accent: #4a90e8; --wash: rgba(74, 144, 232, .14); --warn: #d79b2c; --warn-wash: rgba(215, 155, 44, .10);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --page: #f4f4f1; --surface: #ffffff; --raised: #f6f6f3; --ink: #111110; --ink-2: #4f4e4a; --muted: #77756f;
+    --border: rgba(0, 0, 0, .09); --border-2: rgba(0, 0, 0, .16);
+    --accent: #2a72d0; --wash: rgba(42, 114, 208, .10); --warn: #9a6400; --warn-wash: rgba(181, 122, 10, .10);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--page); color: var(--ink); }
+body { font: 16.5px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+.wrap { max-width: 740px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.back { font-size: 14px; text-decoration: none; }
+h1 { font-size: clamp(26px, 5vw, 34px); line-height: 1.2; margin: 6px 0 0; letter-spacing: -.02em; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0; text-wrap: balance; }
+h3 { font-size: 16px; margin: 0; }
+p { margin: 0; }
+.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.lede { color: var(--ink-2); font-size: 17px; margin-top: 10px; max-width: 62ch; }
+section { display: grid; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; display: grid; gap: 10px; min-width: 0; }
+.pick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pick .card { align-content: start; }
+.tag { justify-self: start; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--wash); color: var(--accent); }
+.muted { color: var(--muted); }
+.small { font-size: 14.5px; }
+ol.steps { list-style: none; counter-reset: s; margin: 0; padding: 0; display: grid; gap: 16px; }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 14px; }
+ol.steps > li::before { content: counter(s); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--wash); color: var(--accent); font-weight: 700; font-size: 14px; }
+ol.steps > li > div { display: grid; gap: 8px; min-width: 0; padding-top: 2px; }
+.cmd { display: flex; align-items: stretch; background: var(--raised); border: 1px solid var(--border-2); border-radius: 10px; min-width: 0; }
+.cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: pre; padding: 11px 14px; font: 13px/1.5 ui-monospace, Consolas, monospace; }
+.cmd button { flex: none; border: 0; border-left: 1px solid var(--border-2); background: none; color: var(--accent); font: 600 14px system-ui, sans-serif; padding: 0 14px; cursor: pointer; border-radius: 0 10px 10px 0; min-height: 44px; }
+.cmd button:hover { background: var(--wash); }
+code.in { font: 13.5px ui-monospace, Consolas, monospace; background: var(--raised); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+.note { border: 1px solid var(--border); border-left: 3px solid var(--warn); background: var(--warn-wash); padding: 14px 18px; display: grid; gap: 6px; }
+.note h3 { color: var(--warn); }
+ul.facts { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.btn { justify-self: start; display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; }
+footer { color: var(--muted); font-size: 13.5px; border-top: 1px solid var(--border); padding-top: 16px; }
+@media (max-width: 560px) { .pick { grid-template-columns: 1fr; } body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <a class="back" href="./">← Back to Climb</a>
+    <div class="eyebrow" style="margin-top:18px">Setup guide</div>
+    <h1>Get your Deadlock matches into Climb within minutes</h1>
+    <p class="lede">Climb gets match data from deadlock-api.com. It only has a game once someone sends it that game’s match key from Valve, which can take hours. deadlock-api’s free, open-source ingest tool sends yours as soon as each game ends.</p>
+  </header>
+
+  <section aria-labelledby="pick-h">
+    <h2 id="pick-h">Pick a setup</h2>
+    <div class="pick">
+      <div class="card">
+        <span class="tag">Most people</span>
+        <h3>Install it and forget it</h3>
+        <p class="small muted">Runs in the background from sign-in. Takes two minutes. Also uses your saved Steam login while the game is closed (see “Your Steam login and data”).</p>
+        <a class="small" href="#install">Steps below</a>
+      </div>
+      <div class="card">
+        <span class="tag">More private</span>
+        <h3>Only while Deadlock is open</h3>
+        <p class="small muted">Started by Steam with the game and stopped when it closes. Never uses your Steam login. A little more setup.</p>
+        <a class="small" href="#launch">Steps below</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" aria-labelledby="inst-h">
+    <h2 id="inst-h">Install it (Windows)</h2>
+    <ol class="steps">
+      <li><div>
+        <p>Download <b>deadlock-api-ingest-setup.exe</b> from the latest release.</p>
+        <a class="btn" href="https://github.com/deadlock-api/deadlock-api-ingest/releases/latest" target="_blank" rel="noopener">Open the releases page</a>
+      </div></li>
+      <li><div><p>Run it. No admin rights needed. If Windows SmartScreen appears, choose <b>More info</b>, then <b>Run anyway</b>.</p></div></li>
+      <li><div><p>That’s it. It installs to <code class="in">%LOCALAPPDATA%\deadlock-api-ingest</code>, starts now and every time you sign in, and adds Start menu and desktop shortcuts.</p></div></li>
+    </ol>
+    <div class="card">
+      <h3>Prefer PowerShell?</h3>
+      <p class="small muted">This one line does the same install. Run PowerShell as Administrator and it starts from a scheduled task; otherwise it adds a startup entry for your user.</p>
+      <div class="cmd"><code id="c1">irm https://raw.githubusercontent.com/deadlock-api/deadlock-api-ingest/master/install-windows.ps1 | iex</code><button type="button" data-copy="c1">Copy</button></div>
+    </div>
+  </section>
+
+  <section id="launch" aria-labelledby="launch-h">
+    <h2 id="launch-h">Only while Deadlock is open</h2>
+    <ol class="steps">
+      <li><div><p>Install it as above. Then turn off the background copy so two don’t run at once: uninstall it, or remove its startup entry in Task Manager → Startup apps.</p></div></li>
+      <li><div><p>In Steam, right-click Deadlock → <b>Properties</b> → <b>General</b> → <b>Launch Options</b>, and paste this, with <b>YOUR_USER</b> replaced by your Windows user name:</p>
+        <div class="cmd"><code id="c2">"C:\Users\YOUR_USER\AppData\Local\deadlock-api-ingest\deadlock-api-ingest.exe" -- %command%</code><button type="button" data-copy="c2">Copy</button></div>
+        <p class="small muted">Keep any launch options you already use after <code class="in">%command%</code>.</p></div></li>
+      <li><div><p>Launch Deadlock from Steam. If Steam says <b>“cannot find the path specified”</b>, the launch option doesn’t work on your PC. Clear the box and use the normal install instead; this has happened on some Windows setups.</p></div></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="check-h">
+    <h2 id="check-h">Check it’s working</h2>
+    <div class="card">
+      <p>Open the tool’s status window. It shows whether it’s running, how many matches it has sent, and your recent ones. It never uploads anything itself.</p>
+      <div class="cmd"><code id="c3">&amp; "$env:LOCALAPPDATA\deadlock-api-ingest\deadlock-api-ingest.exe" --gui</code><button type="button" data-copy="c3">Copy</button></div>
+      <p class="small muted">Paste it into PowerShell. Play a game, get back to the hideout, and the match should appear in the list within a few minutes.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="climb-h">
+    <h2 id="climb-h">See your games in Climb</h2>
+    <ol class="steps">
+      <li><div><p><a href="./">Open Climb</a> and paste your Steam profile link, or search your Steam name.</p></div></li>
+      <li><div><p>After a game, wait a few minutes in the hideout, then press Climb’s refresh button (↻).</p></div></li>
+      <li><div><p>Missing an older game? With the tool running, open that game in Deadlock’s match history so its scoreboard loads. Then paste its match id into <b>Missing a game?</b> at the top of Climb’s Matches tab.</p></div></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="priv-h">
+    <h2 id="priv-h">Your Steam login and data</h2>
+    <div class="card">
+      <ul class="facts small">
+        <li><b>Steam login:</b> while Deadlock is closed, every 30 minutes the installed version signs in to Steam with the saved session of any account that has “Remember me” on, and asks Valve for missing match keys, your friends’ first. It caps itself at 40 match and 20 friend-history requests per account per day. Your Steam session only ever goes to Steam, never to deadlock-api.</li>
+        <li><b>Turning that off:</b> the tool skips it when started with <code class="in">--no-gc</code>. The launch-option setup above never does it.</li>
+        <li><b>What it sends:</b> match ids, match keys and your Steam account id to deadlock-api. When it asks Valve about friends’ matches, it also sends their account ids.</li>
+        <li><b>On your PC:</b> it keeps a local log of what it sent in <code class="in">fetched-salts.jsonl</code>, never changes game files, and is open source (MIT licence).</li>
+      </ul>
+    </div>
+    <div class="note" role="note">
+      <h3>About reading the game’s memory</h3>
+      <p class="small">While Deadlock is open, the tool reads match keys from the game’s memory. It only reads and never writes to or injects into the game, but reading another program’s memory is the kind of thing anti-cheat systems watch. The risk is small and the tool is widely used, but it’s your call. Starting it with <code class="in">--no-memory</code> turns that part off, at the cost of catching fewer games.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="un-h">
+    <h2 id="un-h">Uninstall</h2>
+    <div class="card">
+      <p class="small">Settings → Apps → Installed apps → deadlock-api-ingest → Uninstall. Or in PowerShell:</p>
+      <div class="cmd"><code id="c4">&amp; "$env:LOCALAPPDATA\deadlock-api-ingest\uninstall-windows.ps1"</code><button type="button" data-copy="c4">Copy</button></div>
+      <p class="small muted">On Linux, install with <code class="in">curl -fsSL https://raw.githubusercontent.com/deadlock-api/deadlock-api-ingest/master/install-linux.sh | bash</code> and remove with <code class="in">~/.local/share/deadlock-api-ingest/uninstall-linux.sh</code>.</p>
+    </div>
+  </section>
+
+  <footer>Based on the <a href="https://github.com/deadlock-api/deadlock-api-ingest" target="_blank" rel="noopener">deadlock-api-ingest README</a> as of 26 Oct 2026. Climb and this guide aren’t made by deadlock-api or Valve.</footer>
+</main>
+<script src="js/guide.js?v=20"></script>
+</body>
+</html>

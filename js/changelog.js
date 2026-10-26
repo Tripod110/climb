@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 20, date: '2026-10-26', title: 'Setup guide for faster match updates',
+      items: [
+        'A new page walks you through installing deadlock-api’s ingest tool, so new games show up in Climb within minutes. It covers a normal install, a more private one that only runs while Deadlock is open, and what the tool does with your Steam login.',
+        'Find it from “Make new games show up faster” at the top of Matches, the “Missing games?” card, or Account & about. It replaces the old launch-options steps, which didn’t work on some Windows PCs.',
+      ],
+    },
+    {
       v: 19, date: '2026-10-26', title: 'Back to the old Overview',
       items: ['The Today redesign and hero pool are rolled back; Overview and Heroes look as they did in v17.'],
     },
