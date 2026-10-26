@@ -4,6 +4,15 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v17 (2026-10-26): Smoother Heroes tab
+- The hero picker is sorted A–Z: a wrapping grid on wide screens, and a sideways strip on phones
+  (≤640px) that scrolls the picked hero into view. With no hero in the URL, it still opens your
+  most-played hero of the last 60 days.
+- `render()` now keeps open `<details>` (matched by summary text) and `[data-keep-x]` sideways
+  scroll when redrawing the same page. Pages redraw as data arrives, which used to close them.
+- Resize only redraws when the width changes. Phones fire resize whenever the address bar slides
+  in or out, so scrolling used to close sections.
+
 ## v16 (2026-10-26): Squads
 - Scoped with proper-plan against 266 games (90 days). What the data said:
   - A friend's early deaths and caught-outs barely move your result, but yours do. So there are

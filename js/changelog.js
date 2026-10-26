@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 17, date: '2026-10-26', title: 'Smoother Heroes tab',
+      items: [
+        'Heroes are listed A–Z, all visible at once on a wide screen. On a phone they stay a sideways strip that opens on the hero you picked.',
+        'Sections you open (like “Compare with your rank and the next”) no longer snap shut while data loads, or when your phone’s address bar slides in and out as you scroll.',
+      ],
+    },
+    {
       v: 16, date: '2026-10-26', title: 'Squads',
       items: [
         'Friends tab: a leaderboard of who costs your squad least, ranked by the win chance each person loses to their own deaths per game in games with you. Against you it says “better”, “worse”, or “too close to call” when the gap isn’t steady.',

@@ -122,6 +122,7 @@
     return { tab, id: parts[1] ? Number(parts[1]) : null };
   }
 
+  let lastDrawn = null;
   function render() {
     state.route = parseRoute();
     const onboarding = !settings.account;
@@ -134,7 +135,15 @@
     const tab = state.route.tab === 'match' ? 'matches' : state.route.tab === 'friend' ? 'friends' : state.route.tab;
     document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === tab ? 'page' : 'false'));
     const view = { overview: V.overview, coach: V.coach, matches: V.matches, match: V.match, heroes: V.heroes, friends: V.friends, friend: V.friend, play: V.play, about: V.about }[state.route.tab];
+    // Views redraw the whole page as data arrives, so on the same page keep what you opened
+    // (<details>) and where you scrolled sideways ([data-keep-x] strips).
+    const here = location.hash, same = here === lastDrawn;
+    const opened = same ? new Set([...main.querySelectorAll('details[open] > summary')].map(s => s.textContent)) : null;
+    const scrolled = same ? [...main.querySelectorAll('[data-keep-x]')].map(el => [el.dataset.keepX, el.scrollLeft]) : [];
     view(main, ctx);
+    lastDrawn = here;
+    if (opened && opened.size) main.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
+    for (const [k, x] of scrolled) { const el = main.querySelector(`[data-keep-x="${k}"]`); if (el) el.scrollLeft = x; }
     $('#status').textContent = state.status;
   }
 
@@ -746,7 +755,14 @@
   $('#refresh').addEventListener('click', () => refresh(true));
   $('#who').addEventListener('click', () => ctx.go('#/about'));
   let rt;
-  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 150); });
+  // Only a width change needs a redraw (charts). Phones fire resize whenever the address bar
+  // slides in or out while scrolling; redrawing then closed open sections mid-scroll.
+  let lastW = window.innerWidth;
+  window.addEventListener('resize', () => {
+    if (window.innerWidth === lastW) return;
+    lastW = window.innerWidth;
+    clearTimeout(rt); rt = setTimeout(render, 150);
+  });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
   // The helper is local and cheap, so poll it once a minute while the page is visible.
   setInterval(() => { if (!document.hidden && settings.account) loadHelper().then(() => { if (state.route.tab === 'play') render(); }); }, 60 * 1000);

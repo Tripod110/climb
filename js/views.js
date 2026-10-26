@@ -911,9 +911,11 @@
     for (const m of M.all) counts.set(m.hero, (counts.get(m.hero) || 0) + 1);
     const recentCount = new Map();
     for (const m of M.all) if (now - m.t < 60 * 86400) recentCount.set(m.hero, (recentCount.get(m.hero) || 0) + 1);
-    const list = [...counts.keys()].sort((a, b) => (recentCount.get(b) || 0) - (recentCount.get(a) || 0) || counts.get(b) - counts.get(a));
+    // Shown A–Z; with no hero picked, open the one you've played most in the last 60 days.
+    const busiest = [...counts.keys()].sort((a, b) => (recentCount.get(b) || 0) - (recentCount.get(a) || 0) || counts.get(b) - counts.get(a));
+    const list = busiest.slice().sort((a, b) => c.heroName(a).localeCompare(c.heroName(b)));
     if (!list.length) { host.innerHTML = '<div class="empty-state">No matches yet.</div>'; return; }
-    const hero = c.state.route.id && counts.has(c.state.route.id) ? c.state.route.id : list[0];
+    const hero = c.state.route.id && counts.has(c.state.route.id) ? c.state.route.id : busiest[0];
     const games = M.all.filter(m => m.hero === hero);
     const sum = E.summarize(games, M.perf, c.state.lobbies);
     const roles = E.roleSummary(games, c.state.lobbies);
@@ -937,7 +939,7 @@
 
     host.innerHTML = `
       <div class="page-head"><div><h1 class="page-title">Heroes</h1><p class="muted small">Pick a hero to see what stands between you and the next rank on it.</p></div></div>
-      <div class="hero-pick" role="tablist" aria-label="Hero">${list.map(h => `<a href="#/heroes/${h}" class="hp${h === hero ? ' on' : ''}" role="tab" aria-selected="${h === hero}" title="${c.esc(c.heroName(h))}">${icon(c, h, 36)}<span>${c.esc(c.heroName(h))}</span><span class="muted small">${counts.get(h)}</span></a>`).join('')}</div>
+      <div class="hero-pick" role="tablist" aria-label="Hero" data-keep-x="heroes">${list.map(h => `<a href="#/heroes/${h}" class="hp${h === hero ? ' on' : ''}" role="tab" aria-selected="${h === hero}" title="${c.esc(c.heroName(h))}">${icon(c, h, 36)}<span>${c.esc(c.heroName(h))}</span><span class="muted small">${counts.get(h)}</span></a>`).join('')}</div>
 
       <section class="card hero-sum">
         <div class="ident">${icon(c, hero, 56)}<div><div class="rank-name">${c.esc(c.heroName(hero))}</div>
@@ -957,6 +959,9 @@
           ${seg('Game time', [[900, '15 min'], [1200, '20 min'], [1800, '30 min']], T).replace('class="seg-ctl"', 'class="seg-ctl" id="bt"')}</div>
         ${!ready ? `<p class="muted">Loading the comparison… ${loaded}/${E.LADDER_TIERS.length} ranks</p>` : roadHtml(c, lad, yourTier, nextTier, fmt, tn, T, tiersData, hero)}
       </section>`;
+    // Phone strip: bring the picked hero into view (render() restores the scroll on redraws of the same hero).
+    const strip = host.querySelector('.hero-pick'), on = strip.querySelector('.hp.on');
+    if (on && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = on.offsetLeft - strip.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2;
     bindSeg(host, '#bt', v2 => { S.benchT = Number(v2); c.save(); c.render(); });
     host.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => { c.startFocus(b.dataset.pick, null, null, 'you'); c.go('#/coach'); }));
     if (!ready) c.ensureHeroLadder(hero);
