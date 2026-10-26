@@ -47,8 +47,9 @@ DIR = os.path.join(os.environ.get('LOCALAPPDATA') or os.path.expanduser('~'), 'c
 LOG = os.path.join(DIR, 'sessions.json')
 ERR = os.path.join(DIR, 'helper.log')
 
-INGEST_EXE = os.path.join(os.environ.get('LOCALAPPDATA') or os.path.expanduser('~'),
-                          'deadlock-api-ingest', 'deadlock-api-ingest.exe')
+# In the user profile, not AppData: the Claude desktop app is MSIX-packaged, so anything it
+# installs under AppData is silently redirected into its own package folder and this task can't see it.
+INGEST_EXE = os.path.join(os.path.expanduser('~'), 'deadlock-api-ingest', 'deadlock-api-ingest.exe')
 INGEST_ARGS = ['--no-gc']                  # no Steam login; reads match salts from game memory (read-only)
 INGEST_LINGER_S = 180                       # Steam may still write the last match's files at exit
 ingest = {'proc': None, 'stop_at': None}
@@ -129,9 +130,17 @@ def manage_ingest(running, now):
     """Keep deadlock-api's ingest tool running while Deadlock is, plus a short linger after."""
     proc = ingest['proc']
     alive = proc is not None and proc.poll() is None
+    if proc is not None and not alive:
+        note('ingest exited (code %s)' % proc.returncode)
+        ingest['proc'] = proc = None
     if running:
         ingest['stop_at'] = None
-        if not alive and os.path.isfile(INGEST_EXE):
+        if not alive and not os.path.isfile(INGEST_EXE):
+            if not ingest.get('missing'):
+                note('ingest not started: %s not found' % INGEST_EXE)
+                ingest['missing'] = True
+        elif not alive:
+            ingest['missing'] = False
             ingest['proc'] = subprocess.Popen(
                 [INGEST_EXE, *INGEST_ARGS], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
