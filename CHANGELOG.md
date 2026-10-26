@@ -4,6 +4,16 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v15 (2026-10-26): Add a match by id
+- Valve's match history (`/v1/players/{id}/match-history`, even with `force_refetch`) can leave
+  out a game that deadlock-api has full metadata for. Found with match 125201309.
+- An "Add a match by id" form at the bottom of Matches and in the "Missing games?" card. It
+  fetches the bulk metadata, builds the match with `Engine.matchFromMeta`, and stores it per
+  account under `added`. The rank change is `player_rank_final_flat_progress −
+  player_rank_initial_flat_progress`.
+- `Engine.mergeAdded` merges these into the history everywhere. Once Valve's history lists a game,
+  its row wins. Added games are marked "added by id" on the match page.
+
 ## v14 (2026-10-25): Missing games, explained
 - A freshness line under your rank: when your newest match on deadlock-api ended
   (`Engine.freshness`).

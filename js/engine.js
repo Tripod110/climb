@@ -56,6 +56,37 @@
     return (rows || []).map(normalizeMatch).filter(m => m.mode !== 'other').sort((x, y) => x.t - y.t || x.id - y.id);
   }
 
+  /* A bulk /v1/matches/metadata item (include_info + include_player_info) -> our match, for a game
+     Valve's match history leaves out (added by id). Same shape as normalizeMatch plus added: true;
+     null if the account isn't in it. Here start_time is "YYYY-MM-DD HH:MM:SS" UTC, match_mode and
+     teams are names ("Ranked", "Team1"), and the rank change is the flat-progress difference. */
+  function matchFromMeta(meta, acct) {
+    const p = meta && (meta.players || []).find(x => x.account_id === acct);
+    if (!p) return null;
+    const t = typeof meta.start_time === 'number' ? meta.start_time
+      : Math.floor(Date.parse(String(meta.start_time).replace(' ', 'T') + 'Z') / 1000);
+    const mm = String(meta.match_mode).toLowerCase();
+    const mode = mm === 'ranked' || mm === '4' ? 'ranked' : mm === 'unranked' || mm === '1' ? 'unranked' : 'other';
+    const a = p.player_rank_initial_flat_progress, b = p.player_rank_final_flat_progress;
+    return {
+      id: meta.match_id, t, mode, hero: p.hero_id,
+      won: String(meta.winning_team) === String(p.team),
+      delta: mode === 'ranked' && a != null && b != null ? b - a : null,
+      badge: p.player_rank_initial_display_rank || null,
+      calib: false,
+      dur: meta.duration_s || 0,
+      k: p.kills || 0, d: p.deaths || 0, a: p.assists || 0,
+      souls: p.net_worth || 0, lh: p.last_hits || 0,
+      added: true,
+    };
+  }
+  /* History plus the games added by id ({ id: match }). Once Valve's history has a game, its row wins. */
+  function mergeAdded(matches, added) {
+    const have = new Set(matches.map(m => m.id));
+    const extra = Object.values(added || {}).filter(m => m && m.mode !== 'other' && !have.has(m.id));
+    return extra.length ? matches.concat(extra).sort((x, y) => x.t - y.t || x.id - y.id) : matches;
+  }
+
   /* /v1/matches/metadata (bulk) item -> a compact lobby: ~1KB instead of ~80KB.
      players: [team, souls, kills, deaths, assists, playerDamage, healing,          (0–6, v1)
                hero, objectiveDamage, damageTaken, lastHits, denies, mvpRank, lane,  (7–13, v2)
@@ -1409,7 +1440,7 @@
     BENCH_TIMES, BENCH_STATS, BENCH_MIN_PATCH, BENCH_WIDE_DAYS,
     lastBigPatch, benchWindow, benchHeroes, benchBrackets, compactCurve, benchCompare,
     ACCOUNT_ID, MIN_HERO_GAMES, COMPARE_N, QUADS, QUAD_LABEL, TAG_LABEL, TIER_NAMES,
-    ladder, normalizeMatch, normalizeHistory, compactLobby, lobbyStats, perfScores, classify,
+    ladder, normalizeMatch, normalizeHistory, matchFromMeta, mergeAdded, compactLobby, lobbyStats, perfScores, classify,
     seasonOf, sessionOf, windowsFor, summarize, rankUnit, verdict, rankSeries, heroBreakdown, badgeName,
     heroStatShift, briefing,
   };

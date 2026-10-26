@@ -46,6 +46,7 @@
   function loadAccountData() {
     S.useAccount(settings.account);
     state.history = S.getData('history', null);     // { at, matches: [...normalized] }
+    state.added = S.getData('added', {});           // { matchId: match } games Valve's history left out, added by id
     state.lobbies = S.getData('lobbies', {});       // { matchId: compactLobby | null }
     state.curves = S.getData('curves', {});         // { key: { at, c } } curves + hero stats
     state.profile = S.getData('profile', null);     // { at, name, avatar, rank }
@@ -59,7 +60,7 @@
 
   // ---------------------------------------------------------------- model
   function model() {
-    const all = (state.history && state.history.matches) || [];
+    const all = E.mergeAdded((state.history && state.history.matches) || [], state.added);
     const ranked = all.filter(m => m.mode === 'ranked');
     const season = E.seasonOf(ranked);
     const since = season.length ? season[0].t : 0;
@@ -109,6 +110,7 @@
     benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureMatchDetail, matchWin, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
     focusEntries, focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
     ensureFriends, ensureDetailsFor, friendList, entryOf: m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }), dismissRecap, dismissMissing, freshnessNow,
+    addMatch,
   };
 
   // ---------------------------------------------------------------- routing + render
@@ -572,6 +574,28 @@
   }
 
   function dismissRecap(end) { settings.recapSeen = end; ctx.save(); render(); }
+  /* A game Valve's match history leaves out, added by its match id. deadlock-api must already have
+     it (someone sent it the match key, e.g. the ingest tool while you opened it in-game). Resolves
+     to { ok, msg, id }; the game and its lobby are cached so it's never fetched again. */
+  async function addMatch(input) {
+    const id = Number(String(input || '').replace(/\D/g, ''));
+    if (!id) return { ok: false, msg: 'That doesn’t look like a match id. It’s the long number on the match in Deadlock’s match history.' };
+    if (model().all.some(m => m.id === id)) return { ok: true, id, msg: 'That game is already in your matches.' };
+    const acct = settings.account;
+    let meta;
+    try { meta = (await A.metadata([id]))[0]; } catch (e) { return { ok: false, msg: 'Couldn’t reach deadlock-api: ' + e.message }; }
+    if (acct !== settings.account) return { ok: false, msg: '' };
+    if (!meta) return { ok: false, msg: 'deadlock-api doesn’t have that match yet. Open it in Deadlock’s match history while the ingest tool runs, wait a minute, then try again.' };
+    const m = E.matchFromMeta(meta, acct);
+    if (!m) return { ok: false, msg: 'This account isn’t in that match.' };
+    if (m.mode === 'other') return { ok: false, msg: 'That isn’t a normal ranked or unranked game, so Climb doesn’t count it.' };
+    state.added[id] = m;
+    S.setData('added', state.added);
+    const L = E.compactLobby(meta, acct);
+    if (L) { state.lobbies[id] = L; S.setData('lobbies', state.lobbies); }
+    render();
+    return { ok: true, id, msg: '' };
+  }
   function dismissMissing(id) { settings.missingSeen = id; ctx.save(); render(); }
   /* How current deadlock-api is for this account (Engine.freshness), using the helper's sessions. */
   function freshnessNow() { return E.freshness(model().all, state.helper, Date.now() / 1000); }

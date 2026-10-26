@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 15, date: '2026-10-26', title: 'Add a match by id',
+      items: [
+        'Valve’s match history sometimes leaves a game out, even after deadlock-api has it. At the bottom of Matches (and in the “Missing games?” card), paste the match id from Deadlock’s match history and Climb adds the game, with its lobby and rank change.',
+        'Added games count everywhere your other games do, and are marked “added by id” on the match page.',
+      ],
+    },
+    {
       v: 14, date: '2026-10-25', title: 'Missing games, explained',
       items: [
         'Under your rank: how recent your newest match on deadlock-api is. Climb refreshes every few minutes; when a game is missing, it’s deadlock-api that hasn’t collected it from Valve yet.',

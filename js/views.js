@@ -182,6 +182,7 @@
     if (ok) ok.addEventListener('click', () => { S.seenV = c.VERSION; c.save(); c.render(); });
     const mk = host.querySelector('#missing-ok');
     if (mk) mk.addEventListener('click', () => c.dismissMissing(c.freshnessNow().newestId));
+    bindAddMatch(host, c);
     const rk = host.querySelector('#recap-ok');
     if (rk) rk.addEventListener('click', () => { const s0 = E.lastSession(M.all, c.state.helper, Date.now() / 1000, 18); if (s0) c.dismissRecap(s0.end); });
     if (!c.state.detailsBusy) c.ensureDetails();
@@ -334,6 +335,33 @@
     </ol>`;
   }
 
+  /* "Add a match by id": for a game deadlock-api has but Valve's match history leaves out. The
+     page re-renders while lobbies load, so the typed id and the reply live here, not in the DOM. */
+  const addState = { value: '', msg: '', busy: false };
+  function addMatchForm(c) {
+    return `<form class="acct-form small-form add-match" autocomplete="off">
+        <input name="mid" inputmode="numeric" placeholder="Match id, e.g. 125201309" aria-label="Match id" value="${c.esc(addState.value)}">
+        <button class="btn" type="submit"${addState.busy ? ' disabled' : ''}>Add match</button></form>
+      <p class="add-msg small muted" aria-live="polite">${c.esc(addState.busy ? 'Looking it up…' : addState.msg)}</p>`;
+  }
+  function bindAddMatch(host, c) {
+    host.querySelectorAll('form.add-match').forEach(f => {
+      f.elements.mid.addEventListener('input', e => { addState.value = e.target.value; });
+      f.addEventListener('submit', async e => {
+        e.preventDefault();
+        if (addState.busy) return;
+        addState.value = f.elements.mid.value; addState.busy = true; addState.msg = '';
+        c.render();
+        const r = await c.addMatch(addState.value);
+        addState.busy = false;
+        addState.msg = r.msg;
+        if (r.ok) addState.value = '';
+        if (r.ok && !r.msg) { addState.msg = ''; c.go('#/match/' + r.id); return; }
+        c.render();
+      });
+    });
+  }
+
   function freshLine(c) {
     const f = c.freshnessNow();
     if (!f.newestEnd) return '';
@@ -348,7 +376,10 @@
       <h2>You’ve played about ${P.dur(f.unseenS)} since your newest match on deadlock-api</h2></div>
       <button type="button" class="btn ghost-btn" id="missing-ok">Got it</button></div>
       <p class="muted">deadlock-api only has a game once someone sends it the game’s key from Valve, which can take hours for accounts it doesn’t watch. Any of these gets your games there within minutes:</p>
-      ${missingGuide(c)}</section>`;
+      ${missingGuide(c)}
+      <h3 class="add-h">Game on deadlock-api but not in your list?</h3>
+      <p class="muted small">Valve’s match history sometimes leaves a game out. Paste its match id from Deadlock’s match history and Climb adds it.</p>
+      ${addMatchForm(c)}</section>`;
   }
 
   // ---------------------------------------------------------------- focus loop
@@ -632,8 +663,14 @@
             <span class="n muted small">${c.ago(m.t)}</span></a>`;
         }).join('') : '<p class="empty-state">No matches with these filters.</p>'}
         ${rows.length > shown.length ? `<p class="muted small pad">Showing the latest ${shown.length}. Narrow the filters to see older ones.</p>` : ''}
+      </section>
+      <section class="card add-card">
+        <h2>Missing a game?</h2>
+        <p class="muted small">Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here.</p>
+        ${addMatchForm(c)}
       </section>`;
     ['hero', 'result', 'role', 'mode'].forEach(k => host.querySelector('#f-' + k).addEventListener('change', e => { matchFilter[k] = e.target.value; matches(host, c); }));
+    bindAddMatch(host, c);
   }
 
   // ---------------------------------------------------------------- match detail
@@ -649,7 +686,7 @@
       <div class="page-head match-head">
         <div class="ident">${icon(c, m.hero, 56)}
           <div><div class="rank-name">${c.esc(c.heroName(m.hero))} <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span></div>
-          <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${L && L.avgBadge ? ' · lobby ' + c.esc(E.badgeName(L.avgBadge, c.tiers())) : ''} · #${m.id}</div></div>
+          <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${L && L.avgBadge ? ' · lobby ' + c.esc(E.badgeName(L.avgBadge, c.tiers())) : ''} · #${m.id}${m.added ? ' · added by id' : ''}</div></div>
         </div>
         <div class="big-delta">${m.delta == null ? '' : `${deltaHtml(c, m)}<span class="muted small">rank pts</span>`}</div>
       </div>`;

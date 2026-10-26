@@ -25,6 +25,25 @@
   eq('history drops other modes + sorts asc',
     E.normalizeHistory([row({ match_id: 2, start_time: 20 }), row({ match_id: 3, match_mode: 3 }), row({ match_id: 1, start_time: 10 })]).map(m => m.id), [1, 2]);
 
+  // ---------------------------------------------------------------- matches added by id
+  {
+    const me = { account_id: 7, hero_id: 31, team: 'Team1', kills: 4, deaths: 9, assists: 6, net_worth: 37821, last_hits: 119,
+      player_rank_initial_flat_progress: 24310, player_rank_final_flat_progress: 24010, player_rank_initial_display_rank: 44 };
+    const mt = { match_id: 125201309, start_time: '2026-10-26 14:03:53', winning_team: 'Team0', duration_s: 2251, match_mode: 'Ranked',
+      players: [{ account_id: 8, team: 'Team0' }, me] };
+    const x = E.matchFromMeta(mt, 7);
+    eq('added: UTC start time string -> unix', x.t, Date.UTC(2026, 9, 26, 14, 3, 53) / 1000);
+    eq('added: ranked, lost, rank change from flat progress', [x.mode, x.won, x.delta, x.badge], ['ranked', false, -300, 44]);
+    eq('added: kda + souls + flag', [x.k, x.d, x.a, x.souls, x.dur, x.added], [4, 9, 6, 37821, 2251, true]);
+    eq('added: win when teams match', E.matchFromMeta(Object.assign({}, mt, { winning_team: 'Team1' }), 7).won, true);
+    eq('added: unranked has no delta', E.matchFromMeta(Object.assign({}, mt, { match_mode: 'Unranked' }), 7).delta, null);
+    eq('added: not in the match -> null', E.matchFromMeta(mt, 99), null);
+    const h = [{ id: 1, t: 10 }, { id: 3, t: 30 }];
+    eq('merge: added game slots in by time', E.mergeAdded(h, { 2: { id: 2, t: 20, mode: 'ranked' } }).map(m => m.id), [1, 2, 3]);
+    eq('merge: history row wins once Valve lists it', E.mergeAdded(h, { 3: { id: 3, t: 30, mode: 'ranked', added: true } })[1].added, undefined);
+    eq('merge: nothing added -> same array', E.mergeAdded(h, {}), h);
+  }
+
   // ---------------------------------------------------------------- compact lobby
   const meta = {
     average_badge: 40,
