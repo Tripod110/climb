@@ -1593,7 +1593,78 @@
     required: ['habit_id', 'why', 'how'],
   });
 
+  // ---------------------------------------------------------------- hero pool + readiness
+  /* Hero pool advisor: per hero, ranked games since the last big patch (widened like the Heroes
+     tab's benchWindow), record and rank points per game. The call is sample-aware: points per game
+     swing a lot (SD in the hundreds), so a hero is only "Keep" or "Bench" when the mean is clear of
+     zero by its standard error AND has the same sign in both halves of its games. Under
+     POOL_MIN games it makes no call. ranked: your ranked matches (normalized), ascending. */
+  const POOL_MIN = 10, POOL_KEEP_Z = 1.28, POOL_BENCH_Z = -1.64, POOL_NOT_Z = -0.8;
+  const POOL_LABEL = { keep: 'Keep', fine: 'Fine', notcarrying: 'Not carrying', bench: 'Bench', toofew: 'Too few' };
+  function heroPool(ranked, patchT, now) {
+    const wideFrom = Math.min(patchT == null ? Infinity : patchT, benchWideFrom(now));
+    const heroes = [...new Set(ranked.filter(m => m.t >= wideFrom).map(m => m.hero))];
+    const rows = heroes.map(hero => {
+      const w = benchWindow(ranked, hero, patchT, now);
+      const from = w ? w.from : wideFrom;
+      const gs = ranked.filter(m => m.hero === hero && m.t >= from);
+      const wins = gs.filter(m => m.won).length;
+      const ds = gs.filter(m => m.delta != null).map(m => m.delta);
+      const ppg = ds.length ? mean(ds) : null;
+      const sd = ds.length > 1 ? Math.sqrt(ds.reduce((s, x) => s + (x - ppg) * (x - ppg), 0) / (ds.length - 1)) : 0;
+      const z = ds.length > 1 && sd > 0 ? ppg / (sd / Math.sqrt(ds.length)) : null;
+      const half = Math.floor(ds.length / 2);
+      const h1 = half ? mean(ds.slice(0, half)) : null, h2 = ds.length - half ? mean(ds.slice(half)) : null;
+      let call = 'fine';
+      if (gs.length < POOL_MIN || z == null) call = 'toofew';
+      else if (z >= POOL_KEEP_Z && h1 > 0 && h2 > 0) call = 'keep';
+      else if (z <= POOL_BENCH_Z && h1 < 0 && h2 < 0) call = 'bench';
+      else if (z <= POOL_NOT_Z) call = 'notcarrying';
+      return { hero, from, widened: from < patchT || patchT == null, n: gs.length, wins, losses: gs.length - wins, ds: ds.length, ppg, net: ds.reduce((s, x) => s + x, 0), z, halves: [h1, h2], call };
+    }).sort((a, b) => b.n - a.n || a.hero - b.hero);
+    const best = rows.filter(r => r.call === 'keep').sort((a, b) => b.ppg - a.ppg)[0] || null;
+    return { rows, best };
+  }
+
+  /* Who to queue with: the friend the leaderboard (friendBoard) calls better than you, cleanest
+     first. null when no one is clearly better. */
+  function bestFriend(board) {
+    return (board || []).filter(p => p.call === 'them').sort((a, b) => a.cost - b.cost)[0] || null;
+  }
+
+  /* Queue readiness, 0–100, from things known BEFORE a game: rest (40), recent form (40), focus
+     streak (20). A Climb rule of thumb: none of it is claimed to predict wins (tilt, tested
+     2026-10-26 on 842 games, showed nothing). games: all matches ascending; form: { meanScore, n } over the
+     last 20 or null; focus: { habit, recent: [true/false…] } or null; tzMin: local UTC offset. */
+  const READY_GOOD = 65, READY_OK = 45;
+  function readiness(games, now, form, focus, tzMin) {
+    const tz = (tzMin || 0) * 60;
+    const parts = [];
+    const day = games.filter(m => m.t + m.dur > now - 86400);
+    const late = games.some(m => { const e = m.t + m.dur; return e > now - 18 * 3600 && e <= now && (((e + tz) % 86400) + 86400) % 86400 < 5 * 3600; });
+    const inGame = day.reduce((s, m) => s + m.dur, 0);
+    const heavy = inGame > 4 * 3600;
+    const rest = 40 - (late ? 15 : 0) - (heavy ? 10 : 0);
+    parts.push({ key: 'rest', label: 'Rest', pts: rest, max: 40, tone: rest >= 40 ? 1 : rest >= 30 ? 0 : -1,
+      note: late || heavy ? [late ? 'a game ended after midnight in the last 18 hours' : null, heavy ? Math.round(inGame / 360) / 10 + ' hours in game in the last day' : null].filter(Boolean).join('; ')
+        : 'no late night and under 4 hours in game in the last day' });
+    if (form && form.n >= 5 && form.meanScore != null) {
+      const f = Math.round(20 + Math.max(-1, Math.min(1, form.meanScore / 0.5)) * 20);
+      parts.push({ key: 'form', label: 'Form', pts: f, max: 40, tone: f >= 28 ? 1 : f >= 14 ? 0 : -1,
+        note: (f >= 28 ? 'above' : f >= 14 ? 'around' : 'below') + ' your usual over your last ' + form.n + ' games' });
+    } else parts.push({ key: 'form', label: 'Form', pts: 20, max: 40, tone: 0, note: 'not enough scored games yet, counted as neutral' });
+    const r = focus ? focus.recent.slice(-5) : [];
+    if (r.length >= 3) {
+      const p = r.filter(Boolean).length, f = Math.round(20 * p / r.length);
+      parts.push({ key: 'focus', label: 'Focus habit', pts: f, max: 20, tone: p / r.length >= 0.6 ? 1 : p / r.length >= 0.3 ? 0 : -1, note: p + ' of your last ' + r.length + ' games passed' });
+    } else parts.push({ key: 'focus', label: 'Focus habit', pts: 10, max: 20, tone: 0, note: focus ? 'fewer than 3 games checked, counted as neutral' : 'no habit picked, counted as neutral' });
+    const score = parts.reduce((s, x) => s + x.pts, 0);
+    const tone = score >= READY_GOOD ? 'good' : score >= READY_OK ? 'warn' : 'bad';
+    return { score, tone, word: tone === 'good' ? 'Good to queue' : tone === 'warn' ? 'Okay to queue' : 'Take it easy', parts };
+  }
+
   const Engine = {
+    POOL_MIN, POOL_LABEL, heroPool, bestFriend, readiness,
     freshness,
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,

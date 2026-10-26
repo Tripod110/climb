@@ -77,10 +77,54 @@
     if (!s) host.querySelector('#acct-in').focus();
   }
 
-  // ---------------------------------------------------------------- overview
+  // ---------------------------------------------------------------- today (overview)
+  /* Transient UI state lives here, not in the DOM: views redraw whenever data loads. */
+  let moreOpen = false, whyOpen = false;
+  const formWord = s => s == null ? null : s >= 0.17 ? 'above' : s <= -0.17 ? 'below' : 'around';
+
+  /* The Today card: readiness, the focus habit, the hero and friend to queue with. */
+  function tonightCard(c, cat) {
+    const M = c.M, E = c.E, now = Date.now() / 1000;
+    const last20 = E.seasonOf(M.ranked).slice(-E.COMPARE_N);
+    const sum = E.summarize(last20, M.perf, c.state.lobbies);
+    const f = c.state.focus.active, fp = f ? c.focusNow() : null;
+    const R = E.readiness(M.all, now, sum.classified ? { meanScore: sum.meanScore, n: sum.classified } : null,
+      fp ? { habit: f.habit, recent: fp.recent } : null, -new Date().getTimezoneOffset());
+    const catOf = id => cat.find(x => x.id === id);
+    let habit = f && E.habitById(f.habit), x = habit && catOf(f.habit), sugg = false;
+    if (!habit) { const s0 = E.suggestHabit(cat); if (s0) { habit = E.habitById(s0.id); x = s0; sugg = true; } }
+    const split = x && x.n && x.wrPass != null && x.wrFail != null
+      ? `You pass it in ${c.pct(x.passRate)} of your last ${x.n} games. You won ${c.pct(x.wrPass)} when you did and ${c.pct(x.wrFail)} when you didn’t.` : 'Counting once match details for your recent games have loaded…';
+    const pool = E.heroPool(M.ranked, c.state.patch ? c.state.patch.t : null, now);
+    const bench = pool.rows.filter(r => r.call === 'bench').map(r => c.heroName(r.hero));
+    const hb = pool.best;
+    const heroRow = hb ? `<div class="plan-row">${icon(c, hb.hero, 34)}<span><b>Queue ${c.esc(c.heroName(hb.hero))}</b><span class="sub">${c.signed(Math.round(hb.ppg))} rank points a game over ${hb.n} ranked games.${bench.length ? ' Bench ' + c.esc(bench.join(', ')) + ' in ranked for now.' : ''}</span></span><span class="call-pill keep">Your best climber</span></div>`
+      : `<div class="plan-row none"><span></span><span><b>No hero is clearly climbing you yet</b><span class="sub">A hero needs ${E.POOL_MIN}+ ranked games and a gain that holds in both halves. <a class="more" href="#/heroes">Hero pool →</a></span></span></div>`;
+    const list = c.friendList(), bf = list.length ? E.bestFriend(E.friendBoard(c.squadRows(), c.settings.account, list)) : null;
+    const fr = bf && list.find(q => q.acct === bf.acct);
+    const friendRow = bf ? `<div class="plan-row">${fr && fr.avatar ? `<img src="${c.esc(fr.avatar)}" alt="" width="34" height="34">` : '<span class="av-ph"></span>'}<span><b>Queue with ${c.esc(nameIn(c, list, bf.acct))}</b><span class="sub">Loses less win chance to deaths than you in your games together (${ptsLost(bf.cost)} a game, ${bf.n} games). <a class="more" href="#/friends">Squad →</a></span></span><span class="call-pill keep">Better than you</span></div>` : '';
+    const offs = Math.round(534 * (1 - R.score / 100));
+    return `<section class="card tonight" aria-labelledby="tn-h">
+      <div class="ring ${R.tone}" role="img" aria-label="Queue readiness ${R.score} out of 100: ${R.word}">
+        <svg viewBox="0 0 200 200" aria-hidden="true"><circle class="track" cx="100" cy="100" r="85" fill="none" stroke-width="14"/><circle class="val" cx="100" cy="100" r="85" fill="none" stroke-width="14" stroke-linecap="round" stroke-dashoffset="${offs}"/></svg>
+        <div class="ring-in"><b>${R.score}</b><span>${R.word}</span></div>
+      </div>
+      <div class="plan">
+        <div><div class="t-label">Tonight ${src('rule', 'A Climb rule of thumb built only from what is known before you queue: rest (late nights, hours in game), your form over the last 20 ranked games, and your focus-habit streak. It is not shown to predict wins. On your own games, game number in a session and losing streaks made no difference, so they are not counted.')}</div>
+          ${habit ? `<h2 id="tn-h">${sugg ? 'Try: ' : ''}${c.esc(habit.label)}</h2><p class="muted small">${split}${sugg ? ' <a class="more" href="#/coach">Pick it as your focus →</a>' : ''}</p>`
+            : `<h2 id="tn-h">No focus habit yet</h2><p class="muted small"><a class="more" href="#/coach">Pick one habit to work on →</a></p>`}</div>
+        <div class="plan-rows">${heroRow}${friendRow}</div>
+        <details class="fold" id="why-fold"${whyOpen ? ' open' : ''}><summary>Why ${R.score}?</summary>
+          <div class="fold-body">${R.parts.map(p => `<div class="why-row"><span class="${p.tone > 0 ? 'pos' : p.tone < 0 ? 'neg' : 'muted'}">${p.tone > 0 ? '+' : p.tone < 0 ? '−' : '·'}</span><span><b>${p.label}</b>: ${c.esc(p.note)}</span><span class="muted">${p.pts}/${p.max}</span></div>`).join('')}
+          <span class="muted small">Only things known before a game is decided. 65 and up reads “Good to queue”, under 45 “Take it easy”.</span></div></details>
+      </div></section>`;
+  }
+
   function overview(host, c) {
     const M = c.M, E = c.E, S = c.settings;
     if (!M.all.length) { host.innerHTML = `<div class="empty-state">${c.state.busy ? 'Loading your matches…' : 'No matches found for this account yet.'}</div>`; return; }
+    c.ensureFriends(); c.ensureSquad();
+    const now = Date.now() / 1000;
     const v = M.v;
     const roles = E.roleSummary(M.w.cur, c.state.lobbies);
     const items = c.state.items && c.state.items.map;
@@ -98,23 +142,40 @@
     const fresh = c.LOG.filter(e => e.v > S.seenV).slice(0, 2);
     const recent = M.all.slice(-8).reverse();
     const heroes = E.heroBreakdown(M.w.cur, M.perf).slice(0, 5);
+    const last20 = E.seasonOf(M.ranked).slice(-E.COMPARE_N), s20 = E.summarize(last20, M.perf, c.state.lobbies);
+    const fw = formWord(s20.meanScore);
+    const ls = E.lastSession(M.all, c.state.helper && Object.assign({}, c.state.helper, { playing: false }), now, 24 * 30);   // the finished session, even if one is open now
+    const lsW = ls ? ls.games.filter(m => m.won).length : 0, lsPts = ls ? ls.games.reduce((s, m) => s + (m.delta || 0), 0) : 0;
+    const ptsTxt = (n, has) => has ? `<span class="${n >= 0 ? 'pos' : 'neg'}">${c.signed(n)}</span> rank pts` : '';
 
     host.innerHTML = `
+      <div class="page-head"><div><h1 class="page-title">Today</h1>${freshLine(c)}</div></div>
       ${fresh.length ? `<section class="card whatsnew"><div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="btn ghost-btn" type="button">Got it</button></div>
         ${fresh.map(e => `<h3>v${e.v} · ${c.esc(e.title)}</h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>` : ''}
       ${missingCard(c)}
+      ${tonightCard(c, cat)}
       ${recapCard(c)}
-      ${focusCard(c, false)}
 
-      <div class="page-head">
-        <div class="ident">
-          ${M.badge ? `<img class="badge" src="${c.A.rankImage(M.badge)}" alt="" width="64" height="64">` : ''}
-          <div>
-            <div class="rank-name">${c.esc(E.badgeName(M.badge, c.tiers()))}</div>
-            <div class="muted">Season ${M.seasonSum.wins}–${M.seasonSum.losses}${M.seasonSum.hasDelta ? ' · ' + c.signed(M.seasonSum.net) + ' rank pts' : ''} · ${M.all.length} matches tracked</div>
-            ${freshLine(c)}
-          </div>
-        </div>
+      <div class="stat3">
+        <section class="card" aria-label="Rank">
+          <div class="t-label">Rank</div>
+          <div class="ident">${M.badge ? `<img class="badge" src="${c.A.rankImage(M.badge)}" alt="" width="44" height="44">` : ''}<div class="big">${c.esc(E.badgeName(M.badge, c.tiers()))}</div></div>
+          <div class="muted small">Season ${M.seasonSum.wins}–${M.seasonSum.losses}${M.seasonSum.hasDelta ? ' · ' + ptsTxt(M.seasonSum.net, true) : ''}</div>
+        </section>
+        <section class="card" aria-label="Last 20 ranked games">
+          <div class="t-label">Last ${last20.length || 20}</div>
+          <div class="big">${s20.wins}–${s20.losses}</div>
+          <div class="muted small">${[ptsTxt(s20.net, s20.hasDelta), fw ? `playing ${fw} your usual` : ''].filter(Boolean).join(' · ')}</div>
+        </section>
+        <section class="card" aria-label="Last session">
+          <div class="t-label">Last session</div>
+          ${ls ? `<div class="big">${lsW}–${ls.games.length - lsW}</div><div class="muted small">${[ptsTxt(lsPts, ls.games.some(m => m.delta != null)), c.P.dur(ls.end - ls.start), c.ago(ls.end)].filter(Boolean).join(' · ')}</div>`
+            : '<div class="big muted">—</div><div class="muted small">No recent session</div>'}
+        </section>
+      </div>
+
+      <details class="more-fold" id="more-fold"${moreOpen ? ' open' : ''}><summary>More detail: verdict, habits, recent games, rank chart</summary>
+      <div class="page-head"><div></div>
         <div class="ctl-row">
           ${seg('Time window', [['session', 'Last session'], ['last20', 'Last 20'], ['season', 'Season']], S.window).replace('class="seg-ctl"', 'class="seg-ctl" id="win"')}
           ${seg('Which games', [['all', 'All games'], ['ranked', 'Ranked']], S.games).replace('class="seg-ctl"', 'class="seg-ctl" id="scope"')}
@@ -166,7 +227,8 @@
         <h2>Rank points this season</h2>
         <p class="muted small">Running total of points gained and lost. The shaded area is the window you’re looking at.</p>
         <div id="rank-chart" class="chart"></div>
-      </section>`;
+      </section>
+      </details>`;
 
     const pts = E.rankSeries(M.season);
     const t0 = M.w.cur.length ? M.w.cur[0].t : Infinity;
@@ -176,6 +238,9 @@
       label: 'Cumulative rank points across the season',
       tipHtml: p => `<b>${c.signed(p.cum)} pts</b> · ${c.esc(E.badgeName(p.badge, c.tiers()))}<br>${p.won ? 'Win' : 'Loss'} on ${c.esc(c.heroName(p.hero))} (${c.signed(p.delta)})`,
     });
+    const more = host.querySelector('#more-fold'), why = host.querySelector('#why-fold');
+    if (why) why.addEventListener('toggle', () => { whyOpen = why.open; });
+    if (more) more.addEventListener('toggle', () => { if (more.open !== moreOpen) { moreOpen = more.open; if (moreOpen) c.render(); } });
     bindSeg(host, '#win', v2 => { S.window = v2; c.save(); c.render(); });
     bindSeg(host, '#scope', v2 => { S.games = v2; c.save(); c.render(); });
     const ok = host.querySelector('#wn-ok');
@@ -896,6 +961,21 @@
   }
 
   // ---------------------------------------------------------------- heroes + rank ladder
+  /* Hero pool advisor: ranked games since the last big patch, per hero, with a sample-aware call. */
+  function poolCard(c, pool) {
+    const E = c.E;
+    if (!pool.rows.length) return '';
+    const shown = pool.rows.filter(r => r.n >= E.MIN_HERO_GAMES), hidden = pool.rows.length - shown.length;
+    const tip = { keep: 'Gains rank points, clearly, in both halves of your games on it.', fine: 'No clear gain or loss.', notcarrying: 'Losing points on average, but not clearly enough to bench.',
+      bench: 'Losing rank points clearly, in both halves of your games on it.', toofew: `Under ${E.POOL_MIN} ranked games: too few to call.` };
+    return `<section class="card pool"><div class="card-head"><div><div class="t-label">Hero pool ${src('yours', `Your ranked games per hero since the last big patch (widened to the last ${E.BENCH_WIDE_DAYS} days when a hero has fewer than ${E.BENCH_MIN_PATCH}). Points per game are Valve’s rank-point changes. A call needs ${E.POOL_MIN}+ games; “Keep” and “Bench” also need the gain or loss to be clearly away from zero given how much your points swing, and to point the same way in both halves of your games on that hero.`)}</div>
+        <h2>Which heroes climb you</h2><p class="muted small">Ranked games since the last big patch. Under ${E.POOL_MIN} games it won’t guess.</p></div></div>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>Hero</th><th class="n">Games</th><th class="n hide-s">Record</th><th class="n">Pts / game</th><th class="n">Call</th></tr></thead><tbody>
+      ${shown.map(r => `<tr><td><a class="hero-cell" href="#/heroes/${r.hero}">${icon(c, r.hero, 28)}<span>${c.esc(c.heroName(r.hero))}</span></a></td><td class="n">${r.n}</td><td class="n hide-s">${r.wins}–${r.losses}</td>
+        <td class="n ${r.call === 'toofew' || r.ppg == null ? 'muted' : r.ppg > 0 && r.call !== 'fine' ? 'pos' : r.ppg < 0 && r.call !== 'fine' ? 'neg' : ''}">${r.ppg == null ? '—' : c.signed(Math.round(r.ppg))}</td>
+        <td class="n"><span class="call-pill ${r.call}" title="${tip[r.call]}">${E.POOL_LABEL[r.call]}</span></td></tr>`).join('')}</tbody></table></div>${hidden ? `<p class="muted small">${hidden} more hero${hidden > 1 ? 'es' : ''} under ${E.MIN_HERO_GAMES} ranked games in this window.</p>` : ''}</section>`;
+  }
+
   function heroes(host, c) {
     const M = c.M, E = c.E, S = c.settings;
     const now = Date.now() / 1000;
@@ -929,8 +1009,10 @@
     const window = !plan.widened ? `games since the ${new Date(plan.from * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} patch`
       : `the last ${E.BENCH_WIDE_DAYS} days` + (plan.spansPatch ? ' (spans a patch)' : '');
 
+    const pool = E.heroPool(M.ranked, c.state.patch ? c.state.patch.t : null, now);
     host.innerHTML = `
       <div class="page-head"><div><h1 class="page-title">Heroes</h1><p class="muted small">Pick a hero to see what stands between you and the next rank on it.</p></div></div>
+      ${poolCard(c, pool)}
       <div class="hero-pick" role="tablist" aria-label="Hero" data-keep-x="heroes">${list.map(h => `<a href="#/heroes/${h}" class="hp${h === hero ? ' on' : ''}" role="tab" aria-selected="${h === hero}" title="${c.esc(c.heroName(h))}">${icon(c, h, 36)}<span>${c.esc(c.heroName(h))}</span><span class="muted small">${counts.get(h)}</span></a>`).join('')}</div>
 
       <section class="card hero-sum">

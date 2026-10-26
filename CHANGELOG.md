@@ -4,6 +4,33 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v18 (2026-10-26): Today
+- Overview is renamed **Today** (route stays `#/overview`). New top card, `tonightCard` in `views.js`:
+  readiness ring, focus habit with its win-rate split, best hero to queue, best friend to queue
+  with, and a folded "Why N?". Rank, last 20 and last session sit under it; the old verdict,
+  tiles, habit table, recent lists and rank chart are folded under "More detail". Fold state
+  lives in module variables (`moreOpen`, `whyOpen`), not the DOM.
+- `Engine.readiness` (0–100): rest 40 (a game ending 0:00–5:00 in the last 18h costs 15; over 4h
+  in game in the last day costs 10), form 40 (last 20 ranked games' mean score vs your usual),
+  focus streak 20 (last 5 checked games, neutral under 3). Only things known before queueing.
+  It is a rule of thumb (tagged "Climb rule"), not a predictor. Green 65+, yellow 45+, red below.
+- `Engine.heroPool`: per hero, ranked games since the last big patch (widened like `benchWindow`),
+  record, rank points per game. Calls need 10+ games; Keep needs z ≥ 1.28 and a positive mean in
+  both halves, Bench z ≤ −1.64 and a negative mean in both halves, Not carrying z ≤ −0.8, else
+  Fine. Shown at the top of Heroes. `Engine.bestFriend` picks the cleanest friend `friendBoard`
+  calls "better than you".
+- **No stop-loss line.** Tested 2026-10-26 on account 186993885 (188 ranked games in 128 sessions
+  split at 45+ minute gaps; 842 games across all modes, 522 sessions):
+  - Win rate by game number (ranked): #1 49.2% (n=128), #2 48.8% (43), #3 58.3% (12), #4+ 5 games.
+    All modes: 48.7 / 51.2 / 52.3 / 54.2% for #1–#4. If anything later games do slightly better.
+  - Win rate after N losses in a row (ranked): after 0, 48.7% (154); after 1, 46.4% (28); after 2,
+    60% (5); after 3+, 1 game. All modes: 49.3% (686) / 49.6% (129) / 61.9% (21) / 50.0% (6).
+  - After 2+ losses vs the rest: ranked +18 points (z 0.9, 6 games), all modes +10 (z 1.0, 27
+    games); by halves there are 5 and 1 such games ranked, so nothing can be checked. The win rate
+    after a streak didn't drop, it rose, on tiny samples. A stop-loss line would be advice the
+    data doesn't support. Sessions rarely reach 3 ranked games.
+- Nav label Overview → Today.
+
 ## v17 (2026-10-26): Smoother Heroes tab
 - The hero picker is sorted A–Z: a wrapping grid on wide screens, and a sideways strip on phones
   (≤640px) that scrolls the picked hero into view. With no hero in the URL, it still opens your

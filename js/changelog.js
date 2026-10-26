@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 18, date: '2026-10-26', title: 'Today',
+      items: [
+        'Overview is now Today. At the top: a readiness score (rest, recent form, focus-habit streak, all known before you queue), the habit to work on with your win rate when you pass it and when you don’t, the hero to queue, and a friend to queue with when they lose clearly less win chance to deaths than you. “Why N?” shows how the score was built.',
+        'Below that: your rank, last 20 and last session. The verdict, habit table, recent games and rank chart are folded under “More detail”.',
+        'Heroes now opens with a hero pool: each hero’s ranked games since the last big patch, record and rank points per game, with a call (Keep, Fine, Not carrying, Bench, or Too few under 10 games). Keep and Bench only show when the gain or loss is clear and holds in both halves of your games on that hero.',
+        'There is no “stop after N losses” line. On your history, losing streaks and long sessions did not change your win rate, so Climb won’t tell you to stop.',
+      ],
+    },
+    {
       v: 17, date: '2026-10-26', title: 'Smoother Heroes tab',
       items: [
         'Heroes are listed A–Z, all visible at once on a wide screen. On a phone they stay a sideways strip that opens on the hero you picked.',
