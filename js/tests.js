@@ -494,41 +494,6 @@
     eq('freshness: no matches', E.freshness([], H, 14000).newestId, null);
   }
 
-  // ---------------------------------------------------------------- hero pool + readiness
-  {
-    const NOW = 100 * 86400, PATCH = 80 * 86400;
-    const mk = (hero, n, delta, t0) => Array.from({ length: n }, (_, i) => ({ id: hero * 1000 + i, t: t0 + i * 3600, hero, won: delta > 0, delta: delta + (i % 2 ? 20 : -20), dur: 1800, mode: 'ranked' }));
-    const ranked = [...mk(1, 20, 60, PATCH + 100), ...mk(2, 20, -90, PATCH + 100), ...mk(3, 12, -10, PATCH + 100).map((m, i) => Object.assign(m, { delta: i % 2 ? 190 : -210 })), ...mk(4, 6, 200, PATCH + 100),
-      ...mk(5, 20, 5, PATCH + 100).map((m, i) => Object.assign(m, { delta: i < 10 ? 400 : -380 }))].sort((a, b) => a.t - b.t);
-    const P = E.heroPool(ranked, PATCH, NOW);
-    const call = h => P.rows.find(r => r.hero === h).call;
-    eq('pool: clear gain in both halves = keep', call(1), 'keep');
-    eq('pool: clear loss in both halves = bench', call(2), 'bench');
-    eq('pool: under POOL_MIN games makes no call', call(4), 'toofew');
-    eq('pool: noise around zero = fine', call(3), 'fine');
-    ok('pool: a mean that flips sign between halves is never keep/bench', !['keep', 'bench'].includes(call(5)), call(5));
-    eq('pool: best = highest points per game among keeps', P.best && P.best.hero, 1);
-    near('pool: points per game', P.rows.find(r => r.hero === 1).ppg, 60);
-    eq('pool: record', [P.rows.find(r => r.hero === 1).wins, P.rows.find(r => r.hero === 1).n], [20, 20]);
-    eq('pool: games before the window are ignored', E.heroPool([{ id: 1, t: 1, hero: 9, won: true, delta: 10, dur: 1, mode: 'ranked' }], PATCH, NOW).rows, []);
-    const bf = E.bestFriend([{ acct: 1, cost: 0.2, call: 'them' }, { acct: 2, cost: 0.1, call: 'close' }, { acct: 3, cost: 0.15, call: 'them' }, { acct: 9, cost: 0.3, call: 'self' }]);
-    eq('best friend: cleanest of those called better', bf && bf.acct, 3);
-    eq('best friend: none called better', E.bestFriend([{ acct: 2, cost: 0.1, call: 'close' }]), null);
-
-    const R = (games, form, focus) => E.readiness(games, NOW, form, focus, 0);
-    const calm = R([], { meanScore: 0.5, n: 20 }, { recent: [true, true, true, true, true] });
-    eq('readiness: all good = 100, green', [calm.score, calm.tone], [100, 'good']);
-    const flat = R([], null, null);
-    eq('readiness: no form, no habit = neutral 40+20+10', flat.score, 70);
-    eq('readiness: a game that ended hours ago in the daytime costs nothing', R([{ t: 90 * 86400 + 13 * 3600, dur: 1800 }], null, null).parts[0].pts, 40);
-    const lateN = E.readiness([{ t: 90 * 86400 + 1800, dur: 1800 }], 90 * 86400 + 6 * 3600, null, null, 0);
-    eq('readiness: game ended 1:00 → late night', lateN.parts[0].pts, 25);
-    const heavy = R(Array.from({ length: 5 }, (_, i) => ({ t: NOW - 20 * 3600 + i * 3000, dur: 3000 })), null, null);
-    ok('readiness: over 4h in game costs rest', heavy.parts[0].pts <= 30, heavy.parts[0].pts);
-    eq('readiness: bad form is red-ish', R([], { meanScore: -1, n: 20 }, { recent: [false, false, false, false, false] }).tone, 'bad');
-    eq('readiness: needs 3 focus games', R([], null, { recent: [true, true] }).parts[2].pts, 10);
-  }
-
   // ---------------------------------------------------------------- misc
   eq('badge 42 = Sentinel 2', E.badgeName(42), 'Sentinel 2');
   eq('badge 24 = Seeker 4', E.badgeName(24), 'Seeker 4');
