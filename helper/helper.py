@@ -5,12 +5,15 @@ Phase 1 of the play-time tracker. Two jobs, plus one optional one:
 1. Every POLL_S seconds, ask Windows whether deadlock.exe is running (tasklist; the game is never
    touched, so this is anti-cheat safe). Runs of "running" become sessions {start, end}.
 2. Serve the log read-only on http://127.0.0.1:PORT/sessions for Climb to fetch.
-3. If deadlock-api's ingest tool is installed (INGEST_EXE), start it while Deadlock runs, in
-   cache-only mode (--no-gc --no-memory), and stop it INGEST_LINGER_S after Deadlock closes.
-   That gets your matches to deadlock-api within minutes. Steam's "%command%" launch-option
-   wrapper fails on Windows ("cannot find the path specified"), so the helper does it instead.
-   In this mode the tool only reads Steam's httpcache folder: it never uses your Steam login and
-   never reads the game's memory. Delete or rename the exe to turn this off.
+3. If deadlock-api's ingest tool is installed (INGEST_EXE), start it while Deadlock runs and
+   stop it INGEST_LINGER_S after Deadlock closes. Steam's "%command%" launch-option wrapper
+   fails on Windows ("cannot find the path specified"), so the helper does it instead.
+   It runs with --no-gc: it never logs into Steam with your saved session. It DOES read match
+   salts from Deadlock's memory (read-only; it never writes to or injects into the game), which
+   sends each match to deadlock-api right after it ends, while you're back in the hideout.
+   Cache-only mode (--no-memory) caught nothing on this PC: on 2026-10-26, Steam's httpcache had
+   no Deadlock match links even right after 3 games. The user accepted the small anti-cheat risk
+   of a read-only memory read (2026-10-26). Delete or rename the exe to turn all this off.
 
 Stdlib only. Run it with pythonw.exe so there's no console window; install-task.ps1 sets that up
 at logon. The log lives in %LOCALAPPDATA%\\climb-helper\\sessions.json and is the source of
@@ -46,7 +49,7 @@ ERR = os.path.join(DIR, 'helper.log')
 
 INGEST_EXE = os.path.join(os.environ.get('LOCALAPPDATA') or os.path.expanduser('~'),
                           'deadlock-api-ingest', 'deadlock-api-ingest.exe')
-INGEST_ARGS = ['--no-gc', '--no-memory']   # cache-only: no Steam login, no game memory
+INGEST_ARGS = ['--no-gc']                  # no Steam login; reads match salts from game memory (read-only)
 INGEST_LINGER_S = 180                       # Steam may still write the last match's files at exit
 ingest = {'proc': None, 'stop_at': None}
 
