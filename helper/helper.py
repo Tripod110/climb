@@ -1,10 +1,16 @@
 """Climb helper: logs when Deadlock is running and serves that log to Climb.
 
-Phase 1 of the play-time tracker. Two jobs, nothing else:
+Phase 1 of the play-time tracker. Two jobs, plus one optional one:
 
 1. Every POLL_S seconds, ask Windows whether deadlock.exe is running (tasklist; the game is never
    touched, so this is anti-cheat safe). Runs of "running" become sessions {start, end}.
 2. Serve the log read-only on http://127.0.0.1:PORT/sessions for Climb to fetch.
+3. If deadlock-api's ingest tool is installed (INGEST_EXE), start it while Deadlock runs, in
+   cache-only mode (--no-gc --no-memory), and stop it INGEST_LINGER_S after Deadlock closes.
+   That gets your matches to deadlock-api within minutes. Steam's "%command%" launch-option
+   wrapper fails on Windows ("cannot find the path specified"), so the helper does it instead.
+   In this mode the tool only reads Steam's httpcache folder: it never uses your Steam login and
+   never reads the game's memory. Delete or rename the exe to turn this off.
 
 Stdlib only. Run it with pythonw.exe so there's no console window; install-task.ps1 sets that up
 at logon. The log lives in %LOCALAPPDATA%\\climb-helper\\sessions.json and is the source of
@@ -37,6 +43,12 @@ HOSTS = {f'127.0.0.1:{PORT}', f'localhost:{PORT}'}
 DIR = os.path.join(os.environ.get('LOCALAPPDATA') or os.path.expanduser('~'), 'climb-helper')
 LOG = os.path.join(DIR, 'sessions.json')
 ERR = os.path.join(DIR, 'helper.log')
+
+INGEST_EXE = os.path.join(os.environ.get('LOCALAPPDATA') or os.path.expanduser('~'),
+                          'deadlock-api-ingest', 'deadlock-api-ingest.exe')
+INGEST_ARGS = ['--no-gc', '--no-memory']   # cache-only: no Steam login, no game memory
+INGEST_LINGER_S = 180                       # Steam may still write the last match's files at exit
+ingest = {'proc': None, 'stop_at': None}
 
 lock = threading.Lock()
 state = {'sessions': [], 'playing': False, 'since': None}
@@ -110,6 +122,30 @@ def snapshot():
     return out
 
 
+def manage_ingest(running, now):
+    """Keep deadlock-api's ingest tool running while Deadlock is, plus a short linger after."""
+    proc = ingest['proc']
+    alive = proc is not None and proc.poll() is None
+    if running:
+        ingest['stop_at'] = None
+        if not alive and os.path.isfile(INGEST_EXE):
+            ingest['proc'] = subprocess.Popen(
+                [INGEST_EXE, *INGEST_ARGS], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            note('ingest started (pid %d)' % ingest['proc'].pid)
+    elif alive:
+        if ingest['stop_at'] is None:
+            ingest['stop_at'] = now + INGEST_LINGER_S
+        elif now >= ingest['stop_at']:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            note('ingest stopped')
+            ingest['proc'] = ingest['stop_at'] = None
+
+
 def watch():
     while True:
         try:
@@ -117,6 +153,7 @@ def watch():
             with lock:
                 tick(int(time.time()), running)
                 save()  # 'seen' is persisted too, so a crash loses at most one poll
+            manage_ingest(running, int(time.time()))
         except Exception as e:  # never let one bad poll kill the watcher
             note('poll failed: %r' % (e,))
         time.sleep(POLL_S)
