@@ -55,6 +55,8 @@
     state.analysis = S.getData('analysis', null);   // { at, lastId, n, model, data } (+ error)
     state.focus = S.getData('focus', { active: null, history: [] });  // the focus loop (see Engine.focusProgress)
     state.friends = S.getData('friends', null);     // { at, mates: [...mate-stats rows], people: {acct: {name, avatar, badge}} }
+    state.squad = S.getData('squad', {});           // { matchId: Engine.squadRow } shared games, last SQUAD_DAYS
+    state.duoCoach = S.getData('duoCoach', {});     // { friendAcct: { at, model, data } | { error } } "Coach us"
   }
   loadAccountData();
 
@@ -110,7 +112,7 @@
     benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureMatchDetail, matchWin, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
     focusEntries, focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
     ensureFriends, ensureDetailsFor, friendList, entryOf: m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }), dismissRecap, dismissMissing, freshnessNow,
-    addMatch,
+    addMatch, ensureSquad, squadRows, runDuoCoach,
   };
 
   // ---------------------------------------------------------------- routing + render
@@ -571,6 +573,74 @@
       S.setData('details', state.details);
     } catch (e) { /* the view shows what it has */ }
     finally { state.detailsBusy = false; render(); }
+  }
+
+  /* Squads: one small row per shared game in the last SQUAD_DAYS (Engine.squadRow), built from
+     match detail that's then thrown away. Uses a cached detail when there is one; otherwise 10
+     matches per request, spaced out for the rate limit. Once built, a row is never fetched again. */
+  let squadBusy = false;
+  const squadAsked = new Set();
+  function squadRows() { return Object.values(state.squad); }
+  async function ensureSquad() {
+    if (squadBusy || !settings.account || !state.friends) return;
+    const acct = settings.account, since = Date.now() / 1000 - E.SQUAD_DAYS * 86400;
+    const shared = new Set(friendList().flatMap(f => f.ids));
+    const games = model().all.filter(m => m.t >= since && shared.has(m.id));
+    const byId = new Map(games.map(m => [m.id, m]));
+    let changed = false;
+    for (const m of games) {
+      const D = state.details[m.id];
+      if ((!state.squad[m.id] || state.squad[m.id].v !== E.SQUAD_V) && D && D.v === E.DETAIL_V) {
+        const r = E.squadRow(D, m, window.WPMODEL); if (r) { state.squad[m.id] = r; changed = true; }
+      }
+    }
+    const missing = games.filter(m => (!state.squad[m.id] || state.squad[m.id].v !== E.SQUAD_V) && !squadAsked.has(m.id)).map(m => m.id).reverse();
+    for (const id of Object.keys(state.squad)) if (!byId.has(Number(id))) { delete state.squad[id]; changed = true; }
+    if (changed) S.setData('squad', state.squad);
+    if (!missing.length) return;
+    missing.forEach(id => squadAsked.add(id));
+    squadBusy = true;
+    try {
+      for (let i = 0; i < missing.length; i += 10) {
+        setStatus(`Reading your games with friends… ${Math.min(i + 10, missing.length)}/${missing.length}`);
+        const metas = await A.matchDetails(missing.slice(i, i + 10));
+        if (acct !== settings.account) return;
+        for (const meta of metas || []) {
+          const D = E.compactMatchDetail(meta, acct), m = byId.get(meta.match_id);
+          const r = D && m && E.squadRow(D, m, window.WPMODEL);
+          if (r) state.squad[meta.match_id] = r;
+        }
+        S.setData('squad', state.squad);
+        render();
+        if (i + 10 < missing.length) await A.sleep(A.SPACING_MS);
+      }
+      setStatus('');
+    } catch (e) {
+      setStatus(e.waitMs ? 'deadlock-api is rate-limiting. Try again in a minute.' : 'Couldn’t load your games with friends: ' + e.message);
+    } finally { squadBusy = false; render(); }
+  }
+
+  /* "Coach us": Climb's scorecard for you + one friend -> Gemini -> cached per friend. */
+  async function runDuoCoach(friendAcct) {
+    if (state.coaching['duo' + friendAcct] || !state.coach.key || !state.coach.model) return;
+    const f = friendList().find(x => x.acct === friendAcct);
+    const sc = E.scorecard(squadRows(), settings.account, friendAcct);
+    if (!f || !sc.n) return;
+    const names = { me: (state.profile && state.profile.name) || 'You', them: f.name || 'Your friend' };
+    if (names.me === names.them) names.them += ' (friend)';
+    const key = 'duo' + friendAcct;
+    try {
+      state.coaching[key] = 'Coach is thinking…'; render();
+      const out = await K.json(state.coach.key, state.coach.model, E.DUO_SYSTEM, JSON.stringify(E.duoBrief(sc, names)), E.DUO_SCHEMA,
+        K.fallbacks(state.coach.models || [], state.coach.model), msg => { state.coaching[key] = msg; render(); });
+      state.duoCoach[friendAcct] = { at: Date.now(), model: out.model, data: out.data, n: sc.n };
+    } catch (e) {
+      state.duoCoach[friendAcct] = { at: Date.now(), error: e.message };
+    } finally {
+      delete state.coaching[key];
+      S.setData('duoCoach', state.duoCoach);
+      render();
+    }
   }
 
   function dismissRecap(end) { settings.recapSeen = end; ctx.save(); render(); }

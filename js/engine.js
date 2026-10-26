@@ -1046,6 +1046,171 @@
       wins: rows.filter(r => r.m.won).length };
   }
 
+  // ---------------------------------------------------------------- squads
+  /* Squads = you plus the friends on your team in a game. Everything here runs on one small row
+     per game (~300 bytes) instead of full match detail (~6KB), so 90 days of shared games fit in
+     localStorage. Only habits measured BEFORE the game is decided are used: tested on 266 games
+     (2026-10-26), caught-out deaths over the whole game split wins 55/36 but before 15:00 they
+     didn't (48/52), because losing teams get picked off late. Shared "squad rules" were dropped
+     too: a friend's early deaths and caught-outs barely moved your result; yours did.
+     row: { v, id, t, won, team: [[acct, hero, earlyDeaths, ahead12 (1/0/null), caught15 (1/0),
+     winChanceLostToDeaths (0–1, null without the model), worstDeath: [cost, t, killerHero] | null], ...] } */
+  const SQUAD_V = 1;
+  const SQUAD_DAYS = 90;
+  const CAUGHT_BEFORE_S = 900;
+  function squadRow(D, m, W) {
+    const me = D && D.players.find(p => p.items);
+    if (!me) return null;
+    const ahead = habitById('ahead12');
+    const team = D.players.filter(p => p.team === me.team && p.acct).map(p => {
+      const seat = asPlayer(D, p.acct);
+      const a = seat ? ahead.test(m, null, seat, null) : null;
+      const costs = W && W.death && seat ? deathCosts(seat, W) : null;
+      const worst = costs && costs.length ? costs.reduce((b, x) => x.total > b.total ? x : b) : null;
+      return [p.acct, p.hero, (p.deaths || []).filter(d => d[0] < 600).length, a == null ? null : a ? 1 : 0,
+        (p.deaths || []).some(d => d[0] < CAUGHT_BEFORE_S && d[4] > 0 && d[4] <= FAST_DEATH_S) ? 1 : 0,
+        costs ? Math.round(costs.reduce((s, x) => s + x.total, 0) * 1000) / 1000 : null,
+        worst ? [Math.round(worst.total * 1000) / 1000, worst.t, worst.killerHero] : null];
+    });
+    return { v: SQUAD_V, id: m.id, t: m.t, won: m.won, team };
+  }
+  const seatOf = (row, acct) => row.team.find(s => s[0] === acct) || null;
+
+  /* Your games by stack size: solo, duo, 3+ (friends on your team, from mate-stats ids). */
+  function squadRecord(history, friends, since) {
+    const byGame = new Map();
+    for (const f of friends) for (const id of f.ids) (byGame.get(id) || byGame.set(id, []).get(id)).push(f.acct);
+    const out = { solo: { n: 0, wins: 0 }, duo: { n: 0, wins: 0 }, squad: { n: 0, wins: 0 }, partners: {} };
+    for (const m of history) {
+      if (m.t < since) continue;
+      const mates = byGame.get(m.id) || [];
+      const b = out[mates.length === 0 ? 'solo' : mates.length === 1 ? 'duo' : 'squad'];
+      b.n++; if (m.won) b.wins++;
+      for (const a of mates) { const p = out.partners[a] || (out.partners[a] = { n: 0, wins: 0 }); p.n++; if (m.won) p.wins++; }
+    }
+    for (const k of ['solo', 'duo', 'squad']) out[k].wr = out[k].n ? out[k].wins / out[k].n : null;
+    return out;
+  }
+
+  /* Win chance lost to deaths per game, for `acct` over rows where they played. */
+  const costOf = (rows, acct) => {
+    const xs = rows.map(r => seatOf(r, acct)).filter(s => s && s[5] != null).map(s => s[5]);
+    return xs.length ? { mean: mean(xs), n: xs.length } : null;
+  };
+  /* "Better / worse / too close to call", you vs one friend, on win chance lost to deaths in your
+     shared games. Committed only when the gap is BOARD_GAP+ and points the same way in both
+     halves of the period (on 90 days of real data the order flipped between halves for 2 of 4
+     regular friends). */
+  const BOARD_MIN = 10, BOARD_GAP = 0.02;
+  function versus(rows, me, friend) {
+    const shared = rows.filter(r => seatOf(r, me) && seatOf(r, friend)).sort((a, b) => a.t - b.t);
+    const all = [costOf(shared, me), costOf(shared, friend)];
+    if (!all[0] || !all[1] || shared.length < BOARD_MIN) return { n: shared.length, me: all[0] && all[0].mean, them: all[1] && all[1].mean, call: 'few' };
+    const half = Math.floor(shared.length / 2);
+    const gap = rs => { const a = costOf(rs, me), b = costOf(rs, friend); return a && b ? b.mean - a.mean : 0; };
+    const g = all[1].mean - all[0].mean, g1 = gap(shared.slice(0, half)), g2 = gap(shared.slice(half));
+    const call = Math.abs(g) >= BOARD_GAP && Math.sign(g1) === Math.sign(g) && Math.sign(g2) === Math.sign(g) ? (g > 0 ? 'you' : 'them') : 'close';
+    return { n: shared.length, me: all[0].mean, them: all[1].mean, gap: g, halves: [g1, g2], call };
+  }
+  /* Everyone ranked on win chance lost to deaths per game in games with you (you: all rows). */
+  function friendBoard(rows, me, friends) {
+    const people = friends.map(f => {
+      const vs = versus(rows, me, f.acct);
+      return { acct: f.acct, cost: vs.them, n: vs.n, call: vs.call, vs };
+    }).filter(p => p.n >= BOARD_MIN && p.cost != null);
+    const mine = costOf(rows, me);
+    if (mine) people.push({ acct: me, cost: mine.mean, n: mine.n, call: 'self', you: true });
+    return people.sort((a, b) => a.cost - b.cost);
+  }
+
+  /* You vs one friend on the early-game habits + cost, and a catch-up plan for whoever trails.
+     metrics: { id, label, me, them, better: 'me'|'them'|null } (rates 0–1; cost: lower is better).
+     split: in your shared games, your team's win rate when the trailing player passed vs missed. */
+  const SCORE_METRICS = [
+    { id: 'early0', label: 'No deaths before 10:00', get: s => s[2] === 0 ? 1 : 0, how: 'Play the first 10 minutes for zero deaths: back off when your lane opponent has the souls lead or a teammate is missing, and don’t chase past your guardian.' },
+    { id: 'ahead12', label: 'Ahead of your lane at 12:00', get: s => s[3], how: 'Last-hit and deny every wave you can, take the urn and jungle camps between waves, and don’t trade health for kills that aren’t there.' },
+    { id: 'caught15', label: 'Not caught out before 15:00', get: s => s[4] ? 0 : 1, how: 'Before 15:00 don’t walk alone into fog on the enemy half; move with a teammate or stay where your lane can see you.' },
+  ];
+  const PLAN_GAP = 0.1;
+  function scorecard(rows, me, friend) {
+    const shared = rows.filter(r => seatOf(r, me) && seatOf(r, friend));
+    const rate = (acct, get) => { const xs = shared.map(r => get(seatOf(r, acct))).filter(x => x != null); return xs.length ? mean(xs) : null; };
+    const metrics = SCORE_METRICS.map(x => {
+      const a = rate(me, x.get), b = rate(friend, x.get);
+      return { id: x.id, label: x.label, me: a, them: b, better: a == null || b == null || Math.abs(a - b) < 0.05 ? null : a > b ? 'me' : 'them' };
+    });
+    const vs = versus(rows, me, friend);
+    metrics.push({ id: 'cost', label: 'Win chance lost to deaths per game', me: vs.me, them: vs.them, lowerBetter: true,
+      better: vs.call === 'you' ? 'me' : vs.call === 'them' ? 'them' : null });
+    const behindMetrics = who => metrics.filter(x => x.better && x.better !== who).length;
+    const trailing = vs.call === 'you' ? 'them' : vs.call === 'them' ? 'me' : behindMetrics('me') > behindMetrics('them') ? 'me' : behindMetrics('them') > behindMetrics('me') ? 'them' : null;
+    const plan = [];
+    if (trailing) {
+      const acct = trailing === 'me' ? me : friend;
+      for (const x of SCORE_METRICS) {
+        const mm = metrics.find(y => y.id === x.id);
+        const mine = trailing === 'me' ? mm.me : mm.them, other = trailing === 'me' ? mm.them : mm.me;
+        if (mine == null || other == null || other - mine < PLAN_GAP) continue;
+        const pass = shared.filter(r => x.get(seatOf(r, acct)) === 1), fail = shared.filter(r => x.get(seatOf(r, acct)) === 0);
+        plan.push({ id: x.id, label: x.label, how: x.how, from: mine, to: other, gap: other - mine,
+          wrPass: pass.length ? pass.filter(r => r.won).length / pass.length : null, wrFail: fail.length ? fail.filter(r => r.won).length / fail.length : null, nPass: pass.length, nFail: fail.length });
+      }
+      plan.sort((a, b) => b.gap - a.gap);
+    }
+    return { n: shared.length, wins: shared.filter(r => r.won).length, metrics, vs, trailing, plan: plan.slice(0, 2) };
+  }
+
+  /* The week together, for pasting into the group chat. Only games you played in (that's what
+     Climb has). worstDeath is a TYPICAL cost from the model, not an exact one. */
+  const WEEK_S = 7 * 86400;
+  function weeklyReport(rows, me, friends, now) {
+    const fs = new Set(friends.map(f => f.acct));
+    const inSquad = r => r.team.some(s => fs.has(s[0]));
+    const week = rows.filter(r => r.t >= now - WEEK_S && inSquad(r));
+    const before = rows.filter(r => r.t < now - WEEK_S && r.t >= now - 5 * WEEK_S && inSquad(r));
+    if (!week.length) return null;
+    const who = [me, ...fs].filter(a => week.some(r => seatOf(r, a)));
+    const people = who.map(acct => {
+      const c = costOf(week, acct), p = costOf(before, acct);
+      return { acct, games: week.filter(r => seatOf(r, acct)).length, cost: c ? c.mean : null, prev: p && p.n >= 4 ? p.mean : null };
+    }).filter(p => p.cost != null && p.games >= 2).sort((a, b) => a.cost - b.cost);
+    let worst = null;
+    for (const r of week) for (const s of r.team) if ((s[0] === me || fs.has(s[0])) && s[6] && (!worst || s[6][0] > worst.cost))
+      worst = { acct: s[0], hero: s[1], cost: s[6][0], t: s[6][1], killerHero: s[6][2], matchId: r.id, won: r.won };
+    const improved = people.filter(p => p.prev != null && p.prev - p.cost >= BOARD_GAP).sort((a, b) => (b.prev - b.cost) - (a.prev - a.cost))[0] || null;
+    return { games: week.length, wins: week.filter(r => r.won).length, people, best: people[0] || null,
+      worst: people.length > 1 ? people[people.length - 1] : null, worstDeath: worst, improved };
+  }
+
+  const DUO_SYSTEM = [
+    'You are a blunt, specific Deadlock coach for two friends who queue together.',
+    'You get their shared games: each player\'s rate on early-game habits, the win chance each loses to deaths per game, who is trailing, and the win rate in their shared games when the trailing player passes each habit vs misses it.',
+    'Rules:',
+    '- Use ONLY numbers in the brief, and cite them. No invented hero abilities, items or map facts.',
+    '- Coach the trailing player toward the leading one. Also give the duo one thing to do together.',
+    '- Friendly banter is fine, but every point must be useful. Plain words, no emojis, short.',
+  ].join('\n');
+  const DUO_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      verdict: { type: 'STRING', description: 'One sentence: who is ahead in these games, and by how much.' },
+      catch_up: { type: 'ARRAY', minItems: 2, maxItems: 3, items: { type: 'STRING', description: 'One concrete instruction for the trailing player, citing a number.' } },
+      together: { type: 'STRING', description: 'One thing to do as a duo next session.' },
+    },
+    required: ['verdict', 'catch_up', 'together'],
+  };
+  function duoBrief(sc, names) {
+    const pc = v => v == null ? null : Math.round(v * 100) + '%';
+    const nm = k => k === 'me' ? names.me : names.them;
+    return {
+      players: { you: names.me, friend: names.them }, shared_games: sc.n, shared_wins: sc.wins,
+      habits: sc.metrics.map(x => ({ habit: x.label, [names.me]: x.lowerBetter ? (x.me == null ? null : (x.me * 100).toFixed(1) + ' pts') : pc(x.me),
+        [names.them]: x.lowerBetter ? (x.them == null ? null : (x.them * 100).toFixed(1) + ' pts') : pc(x.them), lower_is_better: !!x.lowerBetter, better: x.better ? nm(x.better) : 'too close to call' })),
+      trailing_player: sc.trailing ? nm(sc.trailing) : 'neither clearly',
+      biggest_gaps: sc.plan.map(p => ({ habit: p.label, trailing_rate: pc(p.from), leading_rate: pc(p.to), team_win_rate_when_trailing_player_passed: pc(p.wrPass), when_missed: pc(p.wrFail) })),
+    };
+  }
+
   // ---------------------------------------------------------------- data freshness
 
   /* How far behind deadlock-api is for this account. deadlock-api only has a match once it has
@@ -1430,6 +1595,7 @@
 
   const Engine = {
     freshness,
+    SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,

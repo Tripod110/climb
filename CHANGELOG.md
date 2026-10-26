@@ -4,6 +4,25 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v16 (2026-10-26): Squads
+- Scoped with proper-plan against 266 games (90 days). What the data said:
+  - A friend's early deaths and caught-outs barely move your result, but yours do. So there are
+    no shared "squad rules".
+  - Caught-out deaths over the whole game mostly follow the result (55/36 overall, 48/52 before
+    15:00). Only habits measured before the game is decided are used: no deaths before 10:00,
+    ahead at 12:00, not caught out before 15:00.
+  - "Who's better" on win chance lost to deaths flipped between halves for 2 of 4 regular
+    friends, so the leaderboard only calls it when the gap is 2+ points and holds in both halves.
+  - There are too few games per lineup to rank lineups.
+- `Engine.squadRow`: one ~300-byte row per shared game (every teammate's early deaths, ahead at
+  12:00, caught out before 15:00, win chance lost to deaths, and their worst death). Rows are
+  cached under `squad` for 90 days, so full match detail isn't kept.
+- `friendBoard` / `versus`, `squadRecord`, `scorecard` (with a catch-up plan), `weeklyReport`, and
+  "Coach us" (`DUO_SYSTEM` / `DUO_SCHEMA`).
+- The weekly report copies as Discord markdown or as a PNG made with canvas (no avatars, since
+  cross-origin images would block the export).
+- "+ Add match" moved to the top of the Matches tab.
+
 ## v15 (2026-10-26): Add a match by id
 - Valve's match history (`/v1/players/{id}/match-history`, even with `force_refetch`) can leave
   out a game that deadlock-api has full metadata for. Found with match 125201309.

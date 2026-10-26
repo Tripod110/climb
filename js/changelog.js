@@ -6,6 +6,16 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 16, date: '2026-10-26', title: 'Squads',
+      items: [
+        'Friends tab: a leaderboard of who costs your squad least, ranked by the win chance each person loses to their own deaths per game in games with you. Against you it says “better”, “worse”, or “too close to call” when the gap isn’t steady.',
+        'Your record solo, as a duo and as a squad (2+ friends), over the last 90 days.',
+        'A weekly report of your games together: record, cleanest and most expensive player, death of the week, most improved. “Copy for Discord” copies it as text; “Copy image” as a picture.',
+        'Each friend’s page has a scorecard of you vs them on early-game habits, and a catch-up plan for whoever’s behind. With a Gemini key, “Coach us” writes a plan for the two of you.',
+        '“+ Add match” is now at the top of the Matches tab.',
+      ],
+    },
+    {
       v: 15, date: '2026-10-26', title: 'Add a match by id',
       items: [
         'Valve’s match history sometimes leaves a game out, even after deadlock-api has it. At the bottom of Matches (and in the “Missing games?” card), paste the match id from Deadlock’s match history and Climb adds the game, with its lobby and rank change.',

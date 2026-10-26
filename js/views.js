@@ -337,7 +337,7 @@
 
   /* "Add a match by id": for a game deadlock-api has but Valve's match history leaves out. The
      page re-renders while lobbies load, so the typed id and the reply live here, not in the DOM. */
-  const addState = { value: '', msg: '', busy: false };
+  const addState = { value: '', msg: '', busy: false, open: false };
   function addMatchForm(c) {
     return `<form class="acct-form small-form add-match" autocomplete="off">
         <input name="mid" inputmode="numeric" placeholder="Match id, e.g. 125201309" aria-label="Match id" value="${c.esc(addState.value)}">
@@ -549,11 +549,151 @@
     const head = `<div class="page-head"><div><h1 class="page-title">Friends</h1><p class="muted small">People you’ve played ${E.FRIEND_MIN}+ games with, found from your match history. ${src('yours', 'Steam’s own friends list isn’t reachable from a website (Steam’s API refuses browser requests, and deadlock-api doesn’t store it), so Climb finds friends from deadlock-api’s teammate history instead: anyone you’ve been on a team with 10+ times. Random teammates almost never repeat that often.')}</p></div></div>`;
     if (!st.friends) { host.innerHTML = head + '<section class="card"><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Finding the people you queue with…</p></section>'; return; }
     if (!list.length) { host.innerHTML = head + `<section class="card"><p class="muted">No one with ${E.FRIEND_MIN}+ games together yet.</p></section>`; return; }
-    host.innerHTML = head + `<section class="card flush"><ul class="friends">${list.map(f => `<li><a href="#/friend/${f.acct}">
+    c.ensureSquad();
+    const me = st.settings.account, rows = c.squadRows();
+    const rec = E.squadRecord(c.M.all, list, Date.now() / 1000 - E.SQUAD_DAYS * 86400);
+    const board = E.friendBoard(rows, me, list);
+    const week = E.weeklyReport(rows, me, list, Date.now() / 1000);
+    const bucket = (lab, b, sub) => `<div class="tile"><div class="t-label">${lab}</div><div class="t-val">${c.pct(b.wr)}</div><div class="t-sub">${b.wins}–${b.n - b.wins} · ${sub}</div></div>`;
+    host.innerHTML = head + `
+      ${week ? weekCard(c, week, list) : ''}
+      <section class="card"><div class="card-head"><div><div class="t-label">Last ${E.SQUAD_DAYS} days ${src('yours', 'Your games in the last ' + E.SQUAD_DAYS + ' days, split by how many of your friends (10+ games together) were on your team.')}</div><h2>Solo, duo or squad</h2></div></div>
+        <div class="tiles">${bucket('Solo', rec.solo, 'no friends')}${bucket('Duo', rec.duo, 'one friend')}${bucket('Squad', rec.squad, '2+ friends')}</div></section>
+      <section class="card flush"><div class="pad"><div class="t-label">Leaderboard ${src('model', `Each person’s win chance lost to their own deaths per game, in games with you over the last ${E.SQUAD_DAYS} days (yours: all those games). Each death is priced by the trained win model as a TYPICAL cost for that minute and soul lead, not an exact one. It works across roles where kills and damage don’t. “Better” or “worse” than you is only shown when the gap is 2+ points AND holds in both halves of your shared games; otherwise it’s too close to call. Needs ${E.BOARD_MIN}+ shared games.`)}</div>
+        <h2>Who costs the squad least</h2><p class="muted small">Win chance lost to their own deaths per game. Lower is better.</p></div>
+        ${board.length ? `<ol class="board">${board.map((p, i) => boardRow(c, p, i, list)).join('')}</ol>` : `<p class="muted pad coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games with friends…</p>`}
+      </section>
+      <section class="card flush"><div class="pad"><h2>Everyone you queue with</h2></div><ul class="friends">${list.map(f => `<li><a href="#/friend/${f.acct}">
       ${f.avatar ? `<img src="${c.esc(f.avatar)}" alt="" width="36" height="36">` : '<span class="av-ph"></span>'}
       <span class="fr-main"><b>${c.esc(f.name || 'Player ' + f.acct)}</b><span class="muted small">${f.badge ? c.esc(E.badgeName(f.badge, c.tiers())) : 'Unranked'} · ${c.fmtInt(f.games)} games together${f.last ? ' · last ' + c.ago(f.last) : ''}</span></span>
       <span class="fr-wr"><b class="${f.wrTogether != null && f.wrApart != null ? (f.wrTogether - f.wrApart >= 0.03 ? 'pos' : f.wrTogether - f.wrApart <= -0.03 ? 'neg' : '') : ''}">${c.pct(f.wrTogether)}</b><span class="muted small">together</span></span>
       <span class="fr-wr hide-s"><b>${c.pct(f.wrApart)}</b><span class="muted small">without</span></span></a></li>`).join('')}</ul></section>`;
+    bindWeek(host, c, week, list);
+  }
+
+  // ---------------------------------------------------------------- squads
+  const ptsLost = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
+  const nameIn = (c, list, acct) => acct === c.state.settings.account ? ((c.state.profile && c.state.profile.name) || 'You')
+    : ((list.find(f => f.acct === acct) || {}).name || 'Player ' + acct);
+  const CALL = { you: ['You’re better', 'pos'], them: ['Better than you', 'neg'], close: ['Too close to call', 'muted'], self: ['You', 'you'] };
+  function boardRow(c, p, i, list) {
+    const f = list.find(x => x.acct === p.acct) || {}, ca = CALL[p.call] || ['', ''];
+    const av = p.you ? (c.state.profile && c.state.profile.avatar) : f.avatar;
+    const inner = `<span class="b-rank">${i + 1}</span>${av ? `<img src="${c.esc(av)}" alt="" width="32" height="32">` : '<span class="av-ph"></span>'}
+      <span class="fr-main"><b>${c.esc(nameIn(c, list, p.acct))}</b><span class="muted small">${p.n} games${p.you ? ' with friends' : ' with you'}</span></span>
+      <span class="b-call ${ca[1]}">${ca[0]}</span><span class="b-val">${ptsLost(p.cost)}</span>`;
+    return `<li class="${p.you ? 'me' : ''}">${p.you ? `<div class="b-row">${inner}</div>` : `<a class="b-row" href="#/friend/${p.acct}">${inner}</a>`}</li>`;
+  }
+
+  const fmtT = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+  /* The weekly report as lines, shared by the card, the Discord text and the image. */
+  function weekLines(c, w, list) {
+    const nm = a => nameIn(c, list, a);
+    const day = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const lines = [{ k: 'title', t: `Squad week, ${day(new Date(Date.now() - 6 * 86400e3))} – ${day(new Date())}` },
+      { k: 'big', t: `${w.wins}–${w.games - w.wins} together (${w.games} games)` }];
+    if (w.best) lines.push({ k: 'good', t: `Cleanest: ${nm(w.best.acct)}, ${ptsLost(w.best.cost)} win chance lost to deaths per game` });
+    if (w.worst) lines.push({ k: 'bad', t: `Most expensive: ${nm(w.worst.acct)}, ${ptsLost(w.worst.cost)} per game` });
+    if (w.worstDeath) { const d = w.worstDeath; lines.push({ k: 'bad', t: `Death of the week: ${nm(d.acct)} on ${c.heroName(d.hero)} at ${fmtT(d.t)}${d.killerHero ? ', killed by ' + c.heroName(d.killerHero) : ''}. Cost about ${ptsLost(d.cost)} win chance` }); }
+    if (w.improved) lines.push({ k: 'good', t: `Most improved: ${nm(w.improved.acct)}, ${ptsLost(w.improved.prev)} → ${ptsLost(w.improved.cost)} per game vs the 4 weeks before` });
+    if (w.people.length > 2) lines.push({ k: 'list', t: 'Ranking: ' + w.people.map((p, i) => `${i + 1}. ${nm(p.acct)} ${ptsLost(p.cost)}`).join(' · ') });
+    lines.push({ k: 'foot', t: 'Death costs are typical costs from Climb’s win model. Games with ' + nm(c.state.settings.account) + ' only.' });
+    return lines;
+  }
+  function weekCard(c, w, list) {
+    const L = weekLines(c, w, list);
+    return `<section class="card week"><div class="card-head"><div><div class="t-label">This week ${src('model', 'Your games with at least one friend in the last 7 days. Per person: win chance lost to their own deaths per game (2+ games this week). The death of the week is the single most expensive death by the win model, a typical cost, not an exact one. Most improved compares with their 4 weeks before (4+ games then). Only games you played in, since those are the ones Climb has.')}</div>
+      <h2>${c.esc(L[1].t)}</h2></div>
+      <div class="week-btns"><button type="button" class="btn" id="wk-text">Copy for Discord</button><button type="button" class="btn ghost-btn" id="wk-img">Copy image</button></div></div>
+      <ul class="week-lines">${L.slice(2, -1).map(x => `<li class="${x.k}">${c.esc(x.t)}</li>`).join('')}</ul>
+      <p class="muted small" id="wk-msg" aria-live="polite">${c.esc(weekState.msg || L[L.length - 1].t)}</p>
+      ${weekState.text ? `<div class="week-out"><textarea readonly rows="8" aria-label="Weekly report text">${c.esc(weekState.text)}</textarea></div>` : ''}
+      ${weekState.img ? `<div class="week-out"><img alt="Weekly squad report" src="${weekState.img}"></div>` : ''}</section>`;
+  }
+  /* The page re-renders while data loads, so the copy result lives here, not in the DOM. */
+  const weekState = { msg: null, text: null, img: null };
+  function weekText(c, w, list) {
+    const L = weekLines(c, w, list);
+    return [`**${L[0].t}**`, `**${L[1].t}**`, ...L.slice(2, -1).map(x => '- ' + x.t), `-# ${L[L.length - 1].t} Made with Climb.`].join('\n');
+  }
+  /* A plain PNG of the report (no avatars: cross-origin images would block the export). */
+  function weekImage(c, w, list) {
+    const L = weekLines(c, w, list), W = 760, pad = 32;
+    const cv = document.createElement('canvas'), g = cv.getContext('2d');
+    const font = (s, b) => `${b ? 700 : 400} ${s}px system-ui, -apple-system, Segoe UI, sans-serif`;
+    const wrap = (t, size, max) => { g.font = font(size); const out = []; let line = ''; for (const w0 of t.split(' ')) { const n = line ? line + ' ' + w0 : w0; if (g.measureText(n).width > max && line) { out.push(line); line = w0; } else line = n; } out.push(line); return out; };
+    const items = L.map(x => ({ x, size: x.k === 'big' ? 30 : x.k === 'title' ? 15 : x.k === 'foot' ? 13 : 18 }));
+    const laid = items.map(it => ({ ...it, lines: wrap(it.x.t, it.size, W - pad * 2) }));
+    const H = pad * 2 + laid.reduce((s, it) => s + it.lines.length * it.size * 1.4 + 8, 0);
+    cv.width = W * 2; cv.height = H * 2; g.scale(2, 2);
+    g.fillStyle = '#0c0c0d'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#4c8dff'; g.fillRect(0, 0, 4, H);
+    let y = pad;
+    const col = { title: '#9a9aa2', big: '#f2f2f3', good: '#47c97a', bad: '#ff6b6b', list: '#d0d0d4', foot: '#77777f' };
+    for (const it of laid) {
+      g.font = font(it.size, it.x.k === 'big' || it.x.k === 'title'); g.fillStyle = col[it.x.k] || '#f2f2f3'; g.textBaseline = 'top';
+      for (const ln of it.lines) { g.fillText(ln, pad, y); y += it.size * 1.4; }
+      y += 8;
+    }
+    return new Promise(res => cv.toBlob(res, 'image/png'));
+  }
+  function bindWeek(host, c, w, list) {
+    const set = (msg, text, img) => { if (weekState.img && weekState.img !== img) URL.revokeObjectURL(weekState.img); Object.assign(weekState, { msg, text, img }); c.render(); };
+    const ta = host.querySelector('.week-out textarea');
+    if (ta && weekState.select) { weekState.select = false; ta.focus(); ta.select(); }
+    const bt = host.querySelector('#wk-text'), bi = host.querySelector('#wk-img');
+    // If the browser refuses the clipboard, show the text (selected) or the image instead to copy by hand.
+    if (bt) bt.addEventListener('click', async () => {
+      const text = weekText(c, w, list);
+      try { await navigator.clipboard.writeText(text); set('Copied. Paste it into your Discord.', null, null); }
+      catch (e) { weekState.select = true; set('Your browser blocked copying. The text is selected below: press Ctrl+C.', text, null); }
+    });
+    if (bi) bi.addEventListener('click', async () => {
+      try {
+        const blob = await weekImage(c, w, list);
+        const url = URL.createObjectURL(blob);
+        set('Copying…', null, url);
+        // Some browsers leave the permission request hanging instead of refusing, hence the timeout.
+        const timeout = new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 3000));
+        try { await Promise.race([navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]), timeout]); set('Image copied. Paste it into your Discord.', null, url); }
+        catch (e) { set('Your browser blocked copying. Right-click the image below and choose Copy image.', null, url); }
+      } catch (e) { set('Couldn’t make the image: ' + e.message, null, null); }
+    });
+  }
+
+  /* You vs one friend: early-game habits + win chance lost, the catch-up plan, and "Coach us". */
+  function scoreCard(c, sc, f) {
+    const st = c.state, me = c.esc((st.profile && st.profile.name) || 'You'), them = c.esc(f.name || 'Your friend');
+    if (!sc.n) return `<section class="card"><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games together…</p></section>`;
+    const val = (x, v) => v == null ? '—' : x.lowerBetter ? ptsLost(v) : c.pct(v);
+    const cell = (x, who, v) => `<td class="n${x.better === who ? ' best' : ''}">${val(x, v)}</td>`;
+    const lead = sc.vs.call === 'you' ? `<b>${me}</b> costs the duo less: ${ptsLost(sc.vs.me)} vs ${ptsLost(sc.vs.them)} win chance lost to deaths per game.`
+      : sc.vs.call === 'them' ? `<b>${them}</b> costs the duo less: ${ptsLost(sc.vs.them)} vs ${ptsLost(sc.vs.me)} win chance lost to deaths per game.`
+      : sc.vs.call === 'few' ? `Not enough shared games with full data yet to call it (${sc.n} of ${c.E.BOARD_MIN}).`
+      : `Too close to call: the gap in win chance lost to deaths isn’t big or steady enough.`;
+    const trail = sc.trailing === 'me' ? me : sc.trailing === 'them' ? them : null;
+    const leader = sc.trailing === 'me' ? them : me;
+    const plan = sc.plan.length ? `<h3 class="add-h">How ${trail} catches up</h3><ol class="plan">${sc.plan.map(p => `<li><b>${c.esc(p.label)}</b>: ${c.pct(p.from)} of games vs ${c.pct(p.to)} for ${leader}.
+      ${p.wrPass != null && p.wrFail != null && p.nPass >= 5 && p.nFail >= 5 ? `<span class="muted small">Together you won ${c.pct(p.wrPass)} when ${trail} did this and ${c.pct(p.wrFail)} when not.</span>` : ''}
+      <span class="small">${c.esc(p.how)}</span></li>`).join('')}</ol>`
+      : trail ? `<p class="muted small">${trail} trails overall, but no single early-game habit is 10+ points behind. The gap is in the deaths themselves: fewer, and later.</p>` : '';
+    return `<section class="card"><div class="card-head"><div><div class="t-label">Scorecard ${src('model', `Your last ${c.E.SQUAD_DAYS} days of shared games. Only habits measured before the game is decided are used (tested on 266 games: caught-out deaths after 15:00 mostly reflect a game already being lost). Win chance lost to deaths is priced by the trained win model, a typical cost per death, and only called when the gap holds in both halves of your games.`)}</div>
+      <h2>${me} vs ${them}</h2><p class="muted small">${sc.n} shared games · ${sc.wins}–${sc.n - sc.wins} together</p></div></div>
+      <p>${lead}</p>
+      <table class="score"><thead><tr><th></th><th class="n">${me}</th><th class="n">${them}</th></tr></thead><tbody>
+      ${sc.metrics.map(x => `<tr><td>${c.esc(x.label)}${x.lowerBetter ? ' <span class="muted small">(lower is better)</span>' : ''}</td>${cell(x, 'me', x.me)}${cell(x, 'them', x.them)}</tr>`).join('')}</tbody></table>
+      ${plan}</section>`;
+  }
+  function duoCoachCard(c, f) {
+    const st = c.state, d = st.duoCoach[f.acct], busy = st.coaching['duo' + f.acct];
+    const head = `<div class="card-head"><div><div class="t-label">AI coach ${src('ai', 'Gemini reads only the scorecard above (rates, win chance lost, gaps and win-rate splits) and writes the plan. The numbers are Climb’s; the wording is Gemini’s.')}</div><h2>Coach us</h2></div>`;
+    if (!st.coach.key) return `<section class="card coach">${head}</div><p class="muted">Add your Gemini key in <a class="more" href="#/about">Account & about</a> for a written plan for the two of you.</p></section>`;
+    if (busy) return `<section class="card coach">${head}</div><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(busy)}</p></section>`;
+    if (!d || (!d.data && !d.error)) return `<section class="card coach">${head}<button type="button" class="btn" data-duo="go">Coach us</button></div><p class="muted">A plan for whoever’s behind, and one thing to do together next session.</p></section>`;
+    if (d.error) return `<section class="card coach">${head}<button type="button" class="btn ghost-btn" data-duo="go">Try again</button></div><p class="neg">${c.esc(d.error)}</p></section>`;
+    return `<section class="card coach">${head}<button type="button" class="btn ghost-btn" data-duo="go">↻ Redo</button></div>
+      <p><b>${c.esc(d.data.verdict)}</b></p><ul class="fc-how">${d.data.catch_up.map(x => `<li>${c.esc(x)}</li>`).join('')}</ul>
+      <p><span class="t-label">Together</span> ${c.esc(d.data.together)}</p><p class="muted small">${c.esc(d.model || '')} · ${c.ago(d.at / 1000)}</p></section>`;
   }
 
   function friend(host, c) {
@@ -562,12 +702,9 @@
     const f = c.friendList().find(x => x.acct === acct);
     if (!f) { host.innerHTML = '<div class="empty-state">' + (st.friends ? 'Not one of your friends here. <a href="#/friends">Back to friends</a>' : 'Loading…') + '</div>'; return; }
     const shared = c.M.all.filter(m => f.ids.includes(m.id)).slice(-10);
-    c.ensureDetailsFor(shared.map(m => m.id));
-    const entries = shared.map(c.entryOf);
-    const focus = st.focus.active && st.focus.active.habit;
-    const habitId = focus && !['tier3', 'tier4', 'rate', 'late2'].includes(focus) ? focus : 'early0';
-    const du = E.duo(entries, st.settings.account, acct, habitId, st.items && st.items.map);
-    const name = c.esc(f.name || 'Player ' + acct), me = c.esc((st.profile && st.profile.name) || 'You');
+    c.ensureSquad();
+    const sc = E.scorecard(c.squadRows(), st.settings.account, acct);
+    const name = c.esc(f.name || 'Player ' + acct);
     host.innerHTML = `<a href="#/friends" class="back">← Friends</a>
       <div class="page-head"><div class="ident">${f.avatar ? `<img class="fr-av" src="${c.esc(f.avatar)}" alt="" width="56" height="56">` : ''}
         <div><div class="rank-name">${name}</div><div class="muted">${f.badge ? c.esc(E.badgeName(f.badge, c.tiers())) : 'Unranked'} · ${c.fmtInt(f.games)} games together</div></div></div></div>
@@ -576,21 +713,15 @@
         <div class="tile"><div class="t-label">You without ${name}</div><div class="t-val">${c.pct(f.wrApart)}</div><div class="t-sub">your other games</div></div>
         <div class="tile"><div class="t-label">Last played together</div><div class="t-val">${f.last ? c.ago(f.last) : '—'}</div><div class="t-sub">&nbsp;</div></div>
       </div>
-      <section class="card"><div class="card-head"><div><div class="t-label">Head to head ${src('yours', 'From the match details of your last shared games: both of you are in the same match data, so the same check is run for each seat.')}</div>
-        <h2>${c.esc(E.habitById(du.habit).label)}</h2>
-        <p class="muted small">${du.n ? `Your last ${du.n} shared games with match detail.` : 'Reading your shared games…'}${focus && habitId !== focus ? ' (Your focus habit can’t be checked for a friend, so this uses early deaths.)' : ''}</p></div></div>
-        ${du.n ? `<div class="h2h">
-          <div><span class="muted small">${me}</span><b>${du.mePass} of ${du.meN}</b><span class="muted small">${du.meEarly != null ? du.meEarly.toFixed(1) + ' deaths before 10:00 a game' : ''}</span></div>
-          <div><span class="muted small">${name}</span><b>${du.themPass} of ${du.themN}</b><span class="muted small">${du.themEarly != null ? du.themEarly.toFixed(1) + ' deaths before 10:00 a game' : ''}</span></div>
-        </div>
-        ${du.firstMe + du.firstThem ? `<p>In the losses, the first of you two to die was <b>${du.firstMe > du.firstThem ? 'you' : du.firstMe < du.firstThem ? name : 'split evenly'}</b> (${me} ${du.firstMe}, ${name} ${du.firstThem}).</p>` : ''}` : ''}
-      </section>
+      ${scoreCard(c, sc, f)}
+      ${sc.n ? duoCoachCard(c, f) : ''}
       <section class="card flush"><div class="pad"><h2>Recent games together</h2></div>
         ${shared.length ? shared.slice().reverse().map(m => `<a class="mrow ${m.won ? 'w' : 'l'}" href="#/match/${m.id}">
           <span class="mh">${icon(c, m.hero, 28)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${mins(m.dur)}</span></span></span>
           <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span><span></span><span class="n">${kda(m)}</span><span class="hide-s"></span><span class="hide-s"></span><span class="hide-s"></span>
           <span class="n">${deltaHtml(c, m)}</span><span class="n muted small">${c.ago(m.t)}</span></a>`).join('') : '<p class="muted pad">No shared games in your loaded history.</p>'}
       </section>`;
+    host.querySelectorAll('[data-duo]').forEach(b => b.addEventListener('click', () => c.runDuoCoach(acct)));
   }
 
   function aiCard(c, A) {
@@ -646,7 +777,13 @@
           <select id="f-result" aria-label="Result">${opt('all', 'Wins and losses', matchFilter.result)}${opt('win', 'Wins', matchFilter.result)}${opt('loss', 'Losses', matchFilter.result)}</select>
           <select id="f-role" aria-label="Team share">${opt('all', 'Any team share', matchFilter.role)}${opt('first', '★ 1st in the lobby', matchFilter.role)}${opt('top', 'Top share', matchFilter.role)}${opt('mid', 'Mid share', matchFilter.role)}${opt('low', 'Low share', matchFilter.role)}</select>
           <select id="f-mode" aria-label="Mode">${opt('all', 'Ranked + unranked', matchFilter.mode)}${opt('ranked', 'Ranked', matchFilter.mode)}${opt('unranked', 'Unranked', matchFilter.mode)}</select>
+          <button type="button" class="btn ghost-btn add-toggle" aria-expanded="${addState.open}">+ Add match</button>
         </div></div>
+      ${addState.open ? `<section class="card add-card">
+        <h2>Missing a game?</h2>
+        <p class="muted small">Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here.</p>
+        ${addMatchForm(c)}
+      </section>` : ''}
       <section class="card flush">
         <div class="mrow mhead"><span>Hero</span><span>Result</span><span>Team share</span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="hide-s">Impact</span><span class="n">Rank</span><span class="n">When</span></div>
         ${shown.length ? shown.map(({ m, g, L }) => {
@@ -663,13 +800,12 @@
             <span class="n muted small">${c.ago(m.t)}</span></a>`;
         }).join('') : '<p class="empty-state">No matches with these filters.</p>'}
         ${rows.length > shown.length ? `<p class="muted small pad">Showing the latest ${shown.length}. Narrow the filters to see older ones.</p>` : ''}
-      </section>
-      <section class="card add-card">
-        <h2>Missing a game?</h2>
-        <p class="muted small">Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here.</p>
-        ${addMatchForm(c)}
       </section>`;
     ['hero', 'result', 'role', 'mode'].forEach(k => host.querySelector('#f-' + k).addEventListener('change', e => { matchFilter[k] = e.target.value; matches(host, c); }));
+    host.querySelector('.add-toggle').addEventListener('click', () => {
+      addState.open = !addState.open; matches(host, c);
+      const inp = host.querySelector('form.add-match input'); if (inp) inp.focus();
+    });
     bindAddMatch(host, c);
   }
 

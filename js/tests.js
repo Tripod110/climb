@@ -452,6 +452,37 @@
     eq('asPlayer moves the seat', E.asPlayer(D, 7).players.find(p => p.items).acct, 7);
   }
 
+  // ---------------------------------------------------------------- squads
+  {
+    // squadRow from a small detail: me (1) and friend (2) on team 0, an enemy on team 1.
+    const pl = (acct, team, deaths, items) => ({ acct, team, hero: acct, slot: acct, lane: 1, items: items || null, deaths,
+      snaps: [[0, 0, 0, 0, 0, 0, 0, 0, 0], [720, 5000, 0, 0, 0, 0, 0, 0, 0]] });
+    const D = { v: 3, dur: 1800, players: [pl(1, 0, [[300, 3, 0, 0, 2]], []), pl(2, 0, [[1000, 3, 0, 0, 2]]), pl(3, 1, [])] };
+    const row = E.squadRow(D, { id: 9, t: 100, won: true }, null);
+    eq('squad row: only my team, me + friend', row.team.map(s => s[0]), [1, 2]);
+    eq('squad row: early deaths, caught before 15:00', [row.team[0][2], row.team[0][4], row.team[1][2], row.team[1][4]], [1, 1, 0, 0]);
+    eq('squad row: no model -> cost null', row.team[0][5], null);
+
+    // rows: friend 2 always loses less win chance than me (5 vs 15 pts) -> 'them'; friend 3 flips by half -> 'close'.
+    const R = (i, won, mine, f2, f3) => ({ v: 1, id: i, t: i, won, team: [[1, 1, 1, 1, 0, mine, [mine, 300, 7]], ...(f2 != null ? [[2, 2, 0, 1, 0, f2, null]] : []), ...(f3 != null ? [[3, 3, 0, 0, 1, f3, [0.3, 900, 8]]] : [])] });
+    const rows = [];
+    for (let i = 0; i < 12; i++) rows.push(R(i, i % 2 === 0, 0.15, 0.05, i < 6 ? 0.05 : 0.30));
+    eq('versus: steady gap -> them', E.versus(rows, 1, 2).call, 'them');
+    eq('versus: order flips between halves -> close', E.versus(rows, 1, 3).call, 'close');
+    eq('versus: too few shared games', E.versus(rows.slice(0, 5), 1, 2).call, 'few');
+    eq('board: sorted by cost, you included', E.friendBoard(rows, 1, [{ acct: 2 }, { acct: 3 }]).map(p => p.acct), [2, 1, 3]);
+    const sc = E.scorecard(rows, 1, 2);
+    eq('scorecard: I trail, plan targets my gaps', [sc.trailing, sc.plan.map(p => p.id)], ['me', ['early0']]);
+    eq('scorecard: cost metric names the better player', sc.metrics.find(x => x.id === 'cost').better, 'them');
+    const wk = E.weeklyReport(rows, 1, [{ acct: 2 }, { acct: 3 }], 7 * 86400);
+    eq('weekly: record + best/worst', [wk.games, wk.wins, wk.best.acct, wk.worst.acct], [12, 6, 2, 3]);
+    eq('weekly: most expensive death', [wk.worstDeath.acct, wk.worstDeath.cost], [3, 0.3]);
+    eq('weekly: nothing this week -> null', E.weeklyReport(rows, 1, [{ acct: 2 }], 1e9), null);
+    const rec = E.squadRecord([{ id: 1, t: 5, won: true }, { id: 2, t: 5, won: false }, { id: 3, t: 5, won: true }],
+      [{ acct: 2, ids: [2, 3] }, { acct: 3, ids: [3] }], 0);
+    eq('squad record: solo / duo / 3+', [rec.solo.n, rec.duo.n, rec.squad.n, rec.squad.wins], [1, 1, 1, 1]);
+  }
+
   // ---------------------------------------------------------------- freshness
   {
     const ms = [{ id: 1, t: 1000, dur: 1800 }, { id: 2, t: 5000, dur: 2000 }];   // newest ends at 7000
