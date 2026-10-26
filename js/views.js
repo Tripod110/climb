@@ -337,7 +337,7 @@
 
   /* "Add a match by id": for a game deadlock-api has but Valve's match history leaves out. The
      page re-renders while lobbies load, so the typed id and the reply live here, not in the DOM. */
-  const addState = { value: '', msg: '', busy: false, open: false };
+  const addState = { value: '', msg: '', busy: false };
   function addMatchForm(c) {
     return `<form class="acct-form small-form add-match" autocomplete="off">
         <input name="mid" inputmode="numeric" placeholder="Match id, e.g. 125201309" aria-label="Match id" value="${c.esc(addState.value)}">
@@ -777,13 +777,9 @@
           <select id="f-result" aria-label="Result">${opt('all', 'Wins and losses', matchFilter.result)}${opt('win', 'Wins', matchFilter.result)}${opt('loss', 'Losses', matchFilter.result)}</select>
           <select id="f-role" aria-label="Team share">${opt('all', 'Any team share', matchFilter.role)}${opt('first', '★ 1st in the lobby', matchFilter.role)}${opt('top', 'Top share', matchFilter.role)}${opt('mid', 'Mid share', matchFilter.role)}${opt('low', 'Low share', matchFilter.role)}</select>
           <select id="f-mode" aria-label="Mode">${opt('all', 'Ranked + unranked', matchFilter.mode)}${opt('ranked', 'Ranked', matchFilter.mode)}${opt('unranked', 'Unranked', matchFilter.mode)}</select>
-          <button type="button" class="btn ghost-btn add-toggle" aria-expanded="${addState.open}">+ Add match</button>
         </div></div>
-      ${addState.open ? `<section class="card add-card">
-        <h2>Missing a game?</h2>
-        <p class="muted small">Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here.</p>
-        ${addMatchForm(c)}
-      </section>` : ''}
+      <div class="add-bar"><span class="add-lab">Missing a game? ${src('rule', 'Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here and Climb adds it.')}</span>
+        ${addMatchForm(c)}</div>
       <section class="card flush">
         <div class="mrow mhead"><span>Hero</span><span>Result</span><span>Team share</span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="hide-s">Impact</span><span class="n">Rank</span><span class="n">When</span></div>
         ${shown.length ? shown.map(({ m, g, L }) => {
@@ -802,10 +798,6 @@
         ${rows.length > shown.length ? `<p class="muted small pad">Showing the latest ${shown.length}. Narrow the filters to see older ones.</p>` : ''}
       </section>`;
     ['hero', 'result', 'role', 'mode'].forEach(k => host.querySelector('#f-' + k).addEventListener('change', e => { matchFilter[k] = e.target.value; matches(host, c); }));
-    host.querySelector('.add-toggle').addEventListener('click', () => {
-      addState.open = !addState.open; matches(host, c);
-      const inp = host.querySelector('form.add-match input'); if (inp) inp.focus();
-    });
     bindAddMatch(host, c);
   }
 

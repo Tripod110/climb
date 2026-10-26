@@ -10,6 +10,7 @@
       items: [
         'Heroes are listed A–Z, all visible at once on a wide screen. On a phone they stay a sideways strip that opens on the hero you picked.',
         'Sections you open (like “Compare with your rank and the next”) no longer snap shut while data loads, or when your phone’s address bar slides in and out as you scroll.',
+        'The match id box is now always at the top of Matches: paste an id and press Add match.',
       ],
     },
     {

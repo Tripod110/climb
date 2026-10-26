@@ -12,6 +12,8 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   scroll when redrawing the same page. Pages redraw as data arrives, which used to close them.
 - Resize only redraws when the width changes. Phones fire resize whenever the address bar slides
   in or out, so scrolling used to close sections.
+- The match id field sits at the top of Matches, always visible, replacing v16's "+ Add match"
+  toggle.
 
 ## v16 (2026-10-26): Squads
 - Scoped with proper-plan against 266 games (90 days). What the data said:

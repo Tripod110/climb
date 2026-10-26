@@ -426,6 +426,11 @@ table.score td.best { color: var(--good-text); font-weight: 700; }
 .add-match { max-width: 440px; margin-top: 10px; }
 .add-msg { margin-top: 6px; min-height: 1em; }
 .add-card h2 { margin-bottom: 4px; }
+.add-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 14px; }
+.add-lab { font-size: 13.5px; color: var(--ink-2); white-space: nowrap; }
+.add-bar .add-match { margin: 0; flex: 1 1 300px; }
+.add-bar .add-msg { flex-basis: 100%; margin: 0; min-height: 0; }
+.add-bar .add-msg:empty { display: none; }
 code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10px; background: var(--raised); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; overflow-x: auto; white-space: pre; user-select: all; }
 
 /* focus loop */
