@@ -1576,6 +1576,20 @@
     return { n, passes, rate, recent, verdict, graduated, results: r, baseline: p0, needed: Math.max(0, FOCUS_MIN_GAMES - n) };
   }
 
+  /* Evidence for one hero's "Coach me" tab, from that hero's games that have match detail
+     (entries: [{ m, L, D }], oldest first). The same habit catalog as the Coach tab, but over this
+     hero only, plus the deaths/economy aggregate. `focus` is the habit that split THIS hero's wins
+     from losses most (suggestHabit's rule); nothing is called under HERO_COACH_MIN games, and
+     below HERO_COACH_FIRM the sample is flagged thin. */
+  const HERO_COACH_MIN = 8, HERO_COACH_FIRM = 15;
+  function heroCoach(entries, items, heroName) {
+    const rows = entries.filter(e => e.m && e.D);
+    const n = rows.length;
+    if (n < HERO_COACH_MIN) return { n, ready: false, thin: true, need: HERO_COACH_MIN - n };
+    const catalog = habitCatalog(rows, items).filter(x => x.n > 0);
+    return { n, ready: true, thin: n < HERO_COACH_FIRM, catalog, focus: suggestHabit(catalog), agg: aggregateGames(rows, items, heroName) };
+  }
+
   const FOCUS_SYSTEM = [
     'You are a Deadlock coach choosing ONE habit for the player to work on next.',
     'You get the player\'s recent stats and a catalog of habits Climb can check in every game, each with how often the player passes it and their win rate when they pass vs fail.',
@@ -1599,6 +1613,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

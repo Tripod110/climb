@@ -4,6 +4,13 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v22 (2026-10-28): Coach me on Heroes
+- Heroes gets a "Rank road | Coach me" switch (`heroTab` in `views.js`, a module variable). Coach me is
+  `heroCoachPanel`, fed by `Engine.heroCoach`: the habit catalog and `aggregateGames` over the hero's
+  last 30 games that have match detail (fetched with `ensureDetailsFor`), plus `nextRankPlan` gaps.
+  Needs 8 games with detail; under 15 it is flagged thin. The suggested habit uses `suggestHabit`'s rule
+  (5+ games each side, 10+ point win-rate split), computed on that hero only. No AI.
+
 ## v21 (2026-10-28): Bug fixes
 - From a code review. `focusProgress` ignores `m.added` games (backfill from "add match by id"); test added.
 - `loadLobbies`: a cached `null` lobby for a game under 3 days old is retried once per page visit.

@@ -364,6 +364,22 @@
     eq('games added by id never count toward a goal', [pa.n, pa.passes], [8, 6]);
   }
 
+  // ---------------------------------------------------------------- hero coach
+  {
+    const g = (i, won, deathTimes) => ({ m: { id: i, t: 1000 + i, won, d: deathTimes.length, dur: 1800 }, L: null,
+      D: { v: 1, dur: 1800, players: [{ slot: 1, team: 0, lane: 1, acct: 9, snaps: [], items: [], deaths: deathTimes.map(t => [t, 2, 0, 0, 9]) }] } });
+    const few = Array.from({ length: 7 }, (_, i) => g(i, true, [900]));
+    const r0 = E.heroCoach(few, {});
+    eq('hero coach: under the minimum makes no call', [r0.ready, r0.n, r0.need], [false, 7, 1]);
+    const es = [];
+    for (let i = 0; i < 6; i++) es.push(g(i, i < 5, [900]));
+    for (let i = 6; i < 12; i++) es.push(g(i, i < 7, [300]));
+    es.push(g(99, true, [900]), Object.assign(g(98, true, []), { D: null }));   // a game without detail is ignored
+    const r = E.heroCoach(es, {});
+    eq('hero coach: counts only games with detail, thin under 15', [r.ready, r.n, r.thin], [true, 13, true]);
+    eq('hero coach: picks the habit that splits this hero’s wins', r.focus && r.focus.id, 'early0');
+  }
+
   // ---------------------------------------------------------------- win chance
   {
     // A toy model: only souls matter, 1 logit per 10k souls, same at every minute.

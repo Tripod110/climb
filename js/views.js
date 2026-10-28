@@ -893,6 +893,49 @@
   }
 
   // ---------------------------------------------------------------- heroes + rank ladder
+  let heroTab = 'road';   // 'road' | 'coach'; kept here because the page redraws as data loads
+  const HERO_COACH_GAMES = 30;
+
+  /* "Coach me" on one hero: what to focus on, with the evidence from this hero's own games. */
+  function heroCoachPanel(c, hero, games, plan, lad, items) {
+    const E = c.E, name = c.esc(c.heroName(hero));
+    const recent = games.slice(-HERO_COACH_GAMES);
+    const missing = recent.filter(m => !c.state.details[m.id] || c.state.details[m.id].v !== E.DETAIL_V);
+    if (missing.length) c.ensureDetailsFor(missing.map(m => m.id));
+    const hc = E.heroCoach(recent.map(c.entryOf), items, c.heroName);
+    const loading = missing.length && c.state.detailsBusy ? `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading your ${name} games…</p>` : '';
+    const head = `<div class="t-label">Coach me ${src('yours', `Counted from your last ${HERO_COACH_GAMES} ${c.heroName(hero)} games that have match detail. Habits are the same checks as the Coach tab. A habit is only suggested when passing it split YOUR ${c.heroName(hero)} wins from losses by ${Math.round(E.FOCUS_MIN_LIFT * 100)}+ points with ${E.FOCUS_MIN_SIDE}+ games on each side. Under ${E.HERO_COACH_FIRM} games the sample is flagged thin. Nothing here is written by AI.`)}</div>`;
+    if (!hc.ready) return `<section class="card hero-coach">${head}<h2>Not enough ${name} games read yet</h2>
+      <p class="muted">Needs ${E.HERO_COACH_MIN} games with match detail; ${hc.n} so far${hc.need ? ` (${hc.need} to go)` : ''}. ${loading}${missing.length ? '' : 'Play a few more games on this hero.'}</p></section>`;
+    const f = hc.focus, x = f && hc.catalog.find(k => k.id === f.id);
+    const active = c.state.focus.active && c.state.focus.active.habit;
+    const habitRows = hc.catalog.filter(k => k.n >= 5 && !k.outcome).sort((a, b) => (b.eligible - a.eligible) || ((b.lift || -1) - (a.lift || -1))).slice(0, 5);
+    const d = hc.agg.deaths, pc = c.pct, r1 = v => v == null ? '—' : v.toFixed(1);
+    const gaps = lad ? E.nextRankPlan(lad).gaps.slice(0, 3) : null;
+    return `<section class="card hero-coach">${head}
+      <h2>${f ? `On ${name}, work on: ${c.esc(f.label)}` : `No habit clearly separates your ${name} wins from losses yet`}</h2>
+      ${f ? `<p class="muted">You pass it in ${pc(x.passRate)} of ${x.n} games. You won ${pc(x.wrPass)} of the ${x.nPass} you passed and ${pc(x.wrFail)} of the ${x.nFail} you missed.${hc.thin ? ' <b>Thin sample</b>: treat it as a hint.' : ''}</p>
+        ${active === f.id ? '<p class="muted small">This is already your focus habit.</p>' : `<button type="button" class="btn" data-pick="${f.id}">Make this my focus</button>`}`
+        : `<p class="muted">${hc.thin ? `Only ${hc.n} games read; ` : ''}the wins and losses look alike on every early-game habit. Look at deaths and the rank gaps below.</p>`}
+      ${loading}
+      <h3 class="add-h">Habits on ${name}</h3>
+      <div class="table-wrap"><table class="tbl habits"><thead><tr><th>Habit</th><th class="n">You pass it</th><th class="n">Won when passed</th><th class="n">Won when missed</th></tr></thead>
+        <tbody>${habitRows.map(k => `<tr class="${k.eligible ? '' : 'dim'}"><td>${c.esc(k.label)}${k.eligible ? '' : ' <span class="muted small">no clear split</span>'}</td><td class="n">${pc(k.passRate)} <span class="muted small">of ${k.n}</span></td>
+          <td class="n">${pc(k.wrPass)} <span class="muted small">${k.nPass}</span></td><td class="n">${pc(k.wrFail)} <span class="muted small">${k.nFail}</span></td></tr>`).join('')}</tbody></table></div>
+      <h3 class="add-h">Deaths on ${name}</h3>
+      <div class="tiles">
+        <div class="tile"><div class="t-label">Deaths per game</div><div class="t-val">${r1(d.perGame.all)}</div><div class="t-sub">${r1(d.perGame.win)} in wins · ${r1(d.perGame.loss)} in losses</div></div>
+        <div class="tile"><div class="t-label">Before 10:00</div><div class="t-val">${r1(d.before10.all)}</div><div class="t-sub">${r1(d.before10.win)} in wins · ${r1(d.before10.loss)} in losses</div></div>
+        <div class="tile"><div class="t-label">Caught out</div><div class="t-val">${d.fastShare == null ? '—' : pc(d.fastShare)}</div><div class="t-sub">of deaths, within ${E.FAST_DEATH_S}s of damage</div></div>
+      </div>
+      ${d.killers.length ? `<p class="muted small">Most often killed by ${d.killers.slice(0, 3).map(k => `${c.esc(k.name)} (${k.n})`).join(', ')}${d.zones.length ? '. Most deaths in ' + c.esc(d.zones[0].zone) + ` (${pc(d.zones[0].share)})` : ''}.</p>` : ''}
+      <h3 class="add-h">Biggest gaps to ${c.esc(c.tierName(Math.min(11, (c.M.badge ? Math.floor(c.M.badge / 10) : 0) + 1)))}</h3>
+      ${gaps == null ? '<p class="muted small">Loading the rank comparison…</p>' : gaps.length
+        ? `<ul class="plain-ul">${gaps.map(g => `<li><b>${g.label}</b> <span class="muted small">you ${g.fmt === 'pct' ? pc(g.you) : g.fmt === 'dec' ? g.you.toFixed(1) : c.kfmt(g.you)}, next rank ${g.fmt === 'pct' ? pc(g.target) : g.fmt === 'dec' ? g.target.toFixed(1) : c.kfmt(g.target)}</span></li>`).join('')}</ul>`
+        : '<p class="muted small">No stat clearly trails the next rank on this hero.</p>'}
+      <p class="muted small">${hc.n} ${name} games with detail${hc.thin ? ' (thin)' : ''}${plan.thin ? '; few games in the rank-comparison window' : ''}.</p>
+    </section>`;
+  }
   function heroes(host, c) {
     const M = c.M, E = c.E, S = c.settings;
     const now = Date.now() / 1000;
@@ -942,15 +985,17 @@
         </div>
       </section>
 
-      <section class="card road">
+      ${seg('Hero view', [['road', 'Rank road'], ['coach', 'Coach me']], heroTab).replace('class="seg-ctl"', 'class="seg-ctl" id="ht"')}
+      ${heroTab === 'coach' ? heroCoachPanel(c, hero, games, plan, lad, c.state.items && c.state.items.map) : `<section class="card road">
         <div class="card-head"><div><div class="t-label">Your road to ${c.esc(tn(nextTier))}</div><h2>What ${c.esc(tn(nextTier))} players do on ${c.esc(c.heroName(hero))} that you don’t, yet</h2>
           <p class="muted small">Your average ${c.esc(c.heroName(hero))} game vs the average one in ${c.esc(tn(nextTier))} lobbies, at ${T / 60}:00, over ${window} (${plan.n} of your games${plan.thin ? ', fewer than ' + E.MIN_HERO_GAMES + ', so treat it as a rough read' : ''}).</p></div>
           ${seg('Game time', [[900, '15 min'], [1200, '20 min'], [1800, '30 min']], T).replace('class="seg-ctl"', 'class="seg-ctl" id="bt"')}</div>
         ${!ready ? `<p class="muted">Loading the comparison… ${loaded}/${E.LADDER_TIERS.length} ranks</p>` : roadHtml(c, lad, yourTier, nextTier, fmt, tn, T, tiersData, hero)}
-      </section>`;
+      </section>`}`;
     // Phone strip: bring the picked hero into view (render() restores the scroll on redraws of the same hero).
     const strip = host.querySelector('.hero-pick'), on = strip.querySelector('.hp.on');
     if (on && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = on.offsetLeft - strip.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2;
+    bindSeg(host, '#ht', v2 => { heroTab = v2; c.render(); });
     bindSeg(host, '#bt', v2 => { S.benchT = Number(v2); c.save(); c.render(); });
     host.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => { c.startFocus(b.dataset.pick, null, null, 'you'); c.go('#/coach'); }));
     if (!ready) c.ensureHeroLadder(hero);

@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 22, date: '2026-10-28', title: 'Coach me on Heroes',
+      items: [
+        'Heroes has a new “Coach me” view next to “Rank road”. For the hero you picked it shows the habit that most separates that hero’s wins from its losses, with your win rate when you pass it and when you miss it, deaths per game in wins vs losses, who kills you most, and the stats that trail the next rank.',
+        'It reads your last 30 games on the hero and says when the sample is thin. “Make this my focus” turns the suggested habit into your focus habit.',
+      ],
+    },
+    {
       v: 21, date: '2026-10-28', title: 'Bug fixes',
       items: [
         'Games you add by match id no longer count as new games on a focus habit.',
