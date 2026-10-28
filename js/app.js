@@ -226,6 +226,7 @@
 
   /* Lobbies for every game in the pool (season, or season + blend). A cached lobby of an older
      shape counts as missing so roles get computed for it. */
+  const nullTried = new Set();
   async function loadLobbies() {
     const acct = settings.account;
     // The season pool first (it feeds form and the verdict), then every older match so the
@@ -233,7 +234,10 @@
     const M0 = model();
     const inPool = new Set(M0.pool.map(m => m.id));
     const want = [...M0.all.filter(m => !inPool.has(m.id)).map(m => m.id), ...inPool];
-    const missing = want.filter(id => !(id in state.lobbies) || (state.lobbies[id] && state.lobbies[id].v !== E.LOBBY_V)).reverse();
+    // A null lobby (the API had nothing yet) is retried once per visit while the game is under 3 days old.
+    const born = new Map(M0.all.map(m => [m.id, m.t])), young = id => Date.now() / 1000 - (born.get(id) || 0) < 3 * 86400;
+    const missing = want.filter(id => !(id in state.lobbies) || (state.lobbies[id] && state.lobbies[id].v !== E.LOBBY_V)
+      || (state.lobbies[id] === null && young(id) && !nullTried.has(id))).reverse();
     for (let i = 0; i < missing.length; i += A.BATCH) {
       const ids = missing.slice(i, i + A.BATCH);
       setStatus(`Loading lobbies… ${Math.min(i + A.BATCH, missing.length)}/${missing.length}`);
@@ -245,7 +249,7 @@
         if (L) { state.lobbies[meta.match_id] = L; got.add(meta.match_id); }
       }
       // A match the API has no metadata for is recorded as null so we don't ask forever.
-      for (const id of ids) if (!got.has(id)) state.lobbies[id] = null;
+      for (const id of ids) if (!got.has(id)) { state.lobbies[id] = null; nullTried.add(id); }
       S.setData('lobbies', state.lobbies);
       render();
       if (i + A.BATCH < missing.length) await A.sleep(A.SPACING_MS);
@@ -421,14 +425,21 @@
 
   // ---------------------------------------------------------------- overall analysis (Coach tab)
   const ANALYSIS_N = 30;
-  const DETAILS_KEEP = 60;
+  const DETAILS_KEEP = 60, GOAL_KEEP = 300;
   const lastGames = () => model().all.slice(-ANALYSIS_N);
-  /* Games that need match detail: the last ANALYSIS_N, plus everything since the focus started. */
+  /* How many recent games get match detail: ANALYSIS_N, or every game since the focus started (up to
+     GOAL_KEEP) so a long goal doesn't lose its early games' results. Cached details are kept for at
+     least DETAILS_KEEP games. */
+  const detailCap = () => {
+    const f = state.focus && state.focus.active;
+    const since = f ? model().all.filter(m => !m.added && m.t >= f.start).length : 0;
+    return Math.min(GOAL_KEEP, Math.max(ANALYSIS_N, since));
+  };
+  /* Games that need match detail: the last ANALYSIS_N, plus everything since the focus started (detailCap). */
   const detailGames = () => {
     const all = model().all;
     const f = state.focus && state.focus.active;
-    const since = f ? all.filter(m => m.t >= f.start).length : 0;
-    return all.slice(-Math.min(DETAILS_KEEP, Math.max(ANALYSIS_N, since)));
+    return all.slice(-detailCap());
   };
 
   /* Match detail for your last ANALYSIS_N games, 10 per request, cached. Details older than the
@@ -455,7 +466,7 @@
         }
         render();
       }
-      const keep = new Set(model().all.slice(-DETAILS_KEEP).map(m => m.id));
+      const keep = new Set(model().all.slice(-Math.max(DETAILS_KEEP, detailCap())).map(m => m.id));
       // Keep the last DETAILS_KEEP games plus up to 40 shared games with friends (fetched on their page).
       const shared = new Set(friendList().flatMap(f => f.ids.slice(-10)));
       for (const id of Object.keys(state.details)) if (!keep.has(Number(id)) && !shared.has(Number(id))) delete state.details[id];
@@ -736,8 +747,9 @@
     state.busy = true; setStatus('Updating…'); render();
     loadHelper().then(render);
     try {
-      await loadAssets();
-      await Promise.all([loadProfile(), loadHistory(force), loadPatch()]);
+      // Names, badge and patch date are nice-to-haves: a failure there must not block history, lobbies or details.
+      await loadAssets().catch(() => {});
+      await Promise.all([loadProfile().catch(() => {}), loadHistory(force), loadPatch().catch(() => {})]);
       render();
       await loadLobbies();
       // A habit is being tracked: read the new games' details so their ✓/✗ shows up.

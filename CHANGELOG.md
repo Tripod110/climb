@@ -4,6 +4,16 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v21 (2026-10-28): Bug fixes
+- From a code review. `focusProgress` ignores `m.added` games (backfill from "add match by id"); test added.
+- `loadLobbies`: a cached `null` lobby for a game under 3 days old is retried once per page visit.
+- `refresh`: assets, profile and patch lookups are best-effort, so a failure no longer skips history,
+  lobbies and match details.
+- `detailCap`: with a focus active, details are fetched and kept for every game since it started
+  (up to 300), not just the last 60.
+- Not fixed yet (review findings 5–10): model() recomputation, squad-row pruning, stale helper
+  session, silent storage failures, unescaped icon URL, hero-ladder concurrency.
+
 ## v20 (2026-10-26): Setup guide for faster match updates
 - New static page `ingest.html` (+ `js/guide.js` for its Copy buttons). It's a deadlock-api-ingest
   setup guide built from the tool's README on 2026-10-26: the installer and the PowerShell

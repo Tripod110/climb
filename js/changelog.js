@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 21, date: '2026-10-28', title: 'Bug fixes',
+      items: [
+        'Games you add by match id no longer count as new games on a focus habit.',
+        'A game whose lobby deadlock-api didn’t have yet is retried the next time you open Climb (for games under 3 days old), instead of staying “no lobby data”.',
+        'If the profile, rank or patch lookup fails, your games and lobbies still load.',
+        'A long focus habit keeps match details for every game since you started, so its pass rate no longer drops early games after 60.',
+      ],
+    },
+    {
       v: 20, date: '2026-10-26', title: 'Setup guide for faster match updates',
       items: [
         'A new page walks you through installing deadlock-api’s ingest tool, so new games show up in Climb within minutes. It covers a normal install, a more private one that only runs while Deadlock is open, and what the tool does with your Steam login.',

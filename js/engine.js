@@ -1561,7 +1561,8 @@
   function focusProgress(goal, entries, items) {
     const h = habitById(goal.habit);
     if (!h) return null;
-    const r = habitResults(h, entries.filter(e => e.m && e.m.t >= goal.start), items).filter(x => x.pass != null);
+    // Games added by id (m.added) are backfill Valve's history left out, so they never count as new games on a goal.
+    const r = habitResults(h, entries.filter(e => e.m && !e.m.added && e.m.t >= goal.start), items).filter(x => x.pass != null);
     const passes = r.filter(x => x.pass).length, n = r.length;
     const rate = n ? passes / n : null;
     const recent = r.slice(-FOCUS_GRAD[1]).map(x => x.pass);

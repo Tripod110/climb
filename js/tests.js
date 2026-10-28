@@ -358,6 +358,10 @@
     eq('30% -> 75% over 16 games = improved', p16.verdict, 'improved');
     eq('7+ of last 10 -> graduated', [p16.recent.length, p16.graduated], [10, true]);
     eq('unknown habit -> null', E.focusProgress({ habit: 'nope', start: 0 }, es, {}), null);
+    const addedLate = Object.assign(g(99, true, [300]), {}); addedLate.m.added = true;   // played after the goal, but added by id
+    const addedOld = g(98, true, [300]); addedOld.m.added = true; addedOld.m.t = 500;     // played before the goal
+    const pa = E.focusProgress(goal, [...es, ...after(8), addedLate, addedOld], {});
+    eq('games added by id never count toward a goal', [pa.n, pa.passes], [8, 6]);
   }
 
   // ---------------------------------------------------------------- win chance
