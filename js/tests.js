@@ -364,6 +364,21 @@
     eq('games added by id never count toward a goal', [pa.n, pa.passes], [8, 6]);
   }
 
+  // ---------------------------------------------------------------- street brawl + game notes
+  {
+    eq('street brawl (game_mode 4) is dropped from history', E.normalizeHistory([row({ game_mode: 4, match_mode: 1 }), row({ match_id: 2, game_mode: 1, match_mode: 1 })]).map(m => m.id), [2]);
+    eq('added street brawl game is not counted', E.matchFromMeta({ match_id: 5, start_time: '2026-10-28 03:16:39', match_mode: 'Unranked', game_mode: 'StreetBrawl', winning_team: 'Team0', duration_s: 700,
+      players: [{ account_id: 7, hero_id: 1, team: 'Team0' }] }, 7).mode, 'other');
+    // 12 players: me (index 0) with 2 deaths, +50% souls, average damage.
+    const pl = (souls, k, d, a, dmg) => [0, souls, k, d, a, dmg, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0];
+    const L = { v: E.LOBBY_V, me: 0, avgBadge: null, dur: 1800, win: 0, p: [pl(60000, 9, 2, 5, 30000), ...Array.from({ length: 11 }, (_, i) => pl(37000, 5, 7, 5, 30000))] };
+    const n = E.gameNotes(L, 2);
+    eq('notes: few deaths and rich souls, strongest first', n.map(x => x.text), ['Only 2 deaths', '+54% souls']);
+    eq('notes: none without a v2 lobby', E.gameNotes(null), []);
+    const bad = { v: E.LOBBY_V, me: 0, p: [pl(20000, 1, 12, 2, 8000), ...Array.from({ length: 11 }, () => pl(40000, 5, 6, 5, 30000))] };
+    eq('notes: a rough game says so', E.gameNotes(bad, 3).map(x => x.tone), ['bad', 'bad', 'bad']);
+  }
+
   // ---------------------------------------------------------------- hero coach
   {
     const g = (i, won, deathTimes) => ({ m: { id: i, t: 1000 + i, won, d: deathTimes.length, dur: 1800 }, L: null,

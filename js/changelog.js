@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 23, date: '2026-10-28', title: 'Clearer matches, tidier Friends',
+      items: [
+        'Street Brawl games are left out everywhere (they’re a different game, so their numbers only muddied yours).',
+        'Matches: the “Top / Mid / Low share” chip is gone. A game now shows “Above your usual” or “Below your usual” when you clearly played better or worse than your other games on that hero, plus up to two chips with the number, like “Only 2 deaths”, “+54% souls” or “11 deaths”. The gold ★ 1st for Valve’s MVP stays.',
+        'The Matches filter follows: Any performance, ★ 1st in the lobby, Above your usual, Below your usual.',
+        'Friends: “Everyone you queue with” is removed.',
+      ],
+    },
+    {
       v: 22, date: '2026-10-28', title: 'Coach me on Heroes',
       items: [
         'Heroes has a new “Coach me” view next to “Rank road”. For the hero you picked it shows the habit that most separates that hero’s wins from its losses, with your win rate when you pass it and when you miss it, deaths per game in wins vs losses, who kills you most, and the stats that trail the next rank.',

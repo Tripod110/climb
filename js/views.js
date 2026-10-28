@@ -10,8 +10,19 @@
   const firstChip = g => g && g.lobbyFirst ? '<span class="first" title="Valve named you MVP: 1st in the lobby">★ 1st</span>' : '';
   /* Team share is neutral on purpose: on the user's 400 games it didn't predict results (see
      Engine.teamShare). Gold ★ 1st (Valve's MVP) is the only highlight. */
-  const roleChip = (c, g, id) => g ? `${firstChip(g)}<span class="role share" title="Your share of your own team's stats: #${g.teamRank} of ${g.teamSize}. Describes your part, doesn't predict wins.">${g.teamRank <= 2 ? 'Top share' : g.teamRank >= g.teamSize - 1 ? 'Low share' : 'Mid share'}</span>`
-    : id != null && c.state.lobbies[id] === null ? '<span class="role pending">No lobby data</span>' : '<span class="role pending">Reading lobby…</span>';
+  /* How the game went compared with YOUR usual on that hero (the form score), only when it is clearly
+     above or below. It replaces "Top/Mid/Low share", which described your team's split and said
+     nothing about how you played. */
+  const FORM_GAME = 0.4;
+  const roleChip = (c, g, id) => {
+    if (!g) return id != null && c.state.lobbies[id] === null ? '<span class="role pending">No lobby data</span>' : '<span class="role pending">Reading lobby…</span>';
+    const p = c.M.perf.get(id);
+    const f = !p ? '' : p.score >= FORM_GAME ? '<span class="role good" title="You played above your usual on this hero (souls, damage, kills + assists, staying alive vs your other games on it).">Above your usual</span>'
+      : p.score <= -FORM_GAME ? '<span class="role bad" title="You played below your usual on this hero (souls, damage, kills + assists, staying alive vs your other games on it).">Below your usual</span>' : '';
+    return firstChip(g) + f;
+  };
+  /* Short chips with the number in them (Engine.gameNotes): what stood out in this game. */
+  const noteChips = (c, L, max) => c.E.gameNotes(L, max).map(n => `<span class="tag ${n.tone}">${c.esc(n.text)}</span>`).join('');
 
   /* Where a number comes from. Tap a badge to see how it was worked out. Kinds:
      yours = counted from your own games · model = Climb's trained win model · ranks = averages
@@ -558,12 +569,7 @@
       <section class="card flush"><div class="pad"><div class="t-label">Leaderboard ${src('model', `Each person’s win chance lost to their own deaths per game, in games with you over the last ${E.SQUAD_DAYS} days (yours: all those games). Each death is priced by the trained win model as a TYPICAL cost for that minute and soul lead, not an exact one. It works across roles where kills and damage don’t. “Better” or “worse” than you is only shown when the gap is 2+ points AND holds in both halves of your shared games; otherwise it’s too close to call. Needs ${E.BOARD_MIN}+ shared games.`)}</div>
         <h2>Who costs the squad least</h2><p class="muted small">Win chance lost to their own deaths per game. Lower is better.</p></div>
         ${board.length ? `<ol class="board">${board.map((p, i) => boardRow(c, p, i, list)).join('')}</ol>` : `<p class="muted pad coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games with friends…</p>`}
-      </section>
-      <section class="card flush"><div class="pad"><h2>Everyone you queue with</h2></div><ul class="friends">${list.map(f => `<li><a href="#/friend/${f.acct}">
-      ${f.avatar ? `<img src="${c.esc(f.avatar)}" alt="" width="36" height="36">` : '<span class="av-ph"></span>'}
-      <span class="fr-main"><b>${c.esc(f.name || 'Player ' + f.acct)}</b><span class="muted small">${f.badge ? c.esc(E.badgeName(f.badge, c.tiers())) : 'Unranked'} · ${c.fmtInt(f.games)} games together${f.last ? ' · last ' + c.ago(f.last) : ''}</span></span>
-      <span class="fr-wr"><b class="${f.wrTogether != null && f.wrApart != null ? (f.wrTogether - f.wrApart >= 0.03 ? 'pos' : f.wrTogether - f.wrApart <= -0.03 ? 'neg' : '') : ''}">${c.pct(f.wrTogether)}</b><span class="muted small">together</span></span>
-      <span class="fr-wr hide-s"><b>${c.pct(f.wrApart)}</b><span class="muted small">without</span></span></a></li>`).join('')}</ul></section>`;
+      </section>`;
     bindWeek(host, c, week, list);
   }
 
@@ -759,7 +765,7 @@
         && (matchFilter.result === 'all' || (matchFilter.result === 'win') === m.won)
         && (matchFilter.mode === 'all' || m.mode === matchFilter.mode)
         && (matchFilter.role === 'all' || (g && (matchFilter.role === 'first' ? g.lobbyFirst
-          : matchFilter.role === (g.teamRank <= 2 ? 'top' : g.teamRank >= g.teamSize - 1 ? 'low' : 'mid')))));
+          : matchFilter.role === 'above' ? (c.M.perf.get(m.id) || { score: 0 }).score >= FORM_GAME : (c.M.perf.get(m.id) || { score: 0 }).score <= -FORM_GAME))));
     const shown = rows.slice(0, 150);
     const fp = c.state.focus.active ? c.focusNow() : null;
     const fpass = new Map(fp ? fp.results.map(r => [r.m.id, r.pass]) : []);
@@ -771,7 +777,7 @@
         <div class="filters">
           <select id="f-hero" aria-label="Hero">${opt('all', 'All heroes', matchFilter.hero)}${heroes.map(h => opt(h, c.heroName(h), matchFilter.hero)).join('')}</select>
           <select id="f-result" aria-label="Result">${opt('all', 'Wins and losses', matchFilter.result)}${opt('win', 'Wins', matchFilter.result)}${opt('loss', 'Losses', matchFilter.result)}</select>
-          <select id="f-role" aria-label="Team share">${opt('all', 'Any team share', matchFilter.role)}${opt('first', '★ 1st in the lobby', matchFilter.role)}${opt('top', 'Top share', matchFilter.role)}${opt('mid', 'Mid share', matchFilter.role)}${opt('low', 'Low share', matchFilter.role)}</select>
+          <select id="f-role" aria-label="How you played">${opt('all', 'Any performance', matchFilter.role)}${opt('first', '★ 1st in the lobby', matchFilter.role)}${opt('above', 'Above your usual', matchFilter.role)}${opt('below', 'Below your usual', matchFilter.role)}</select>
           <select id="f-mode" aria-label="Mode">${opt('all', 'Ranked + unranked', matchFilter.mode)}${opt('ranked', 'Ranked', matchFilter.mode)}${opt('unranked', 'Unranked', matchFilter.mode)}</select>
         </div></div>
       <div class="add-bar"><span class="add-lab">Missing a game? ${src('rule', 'Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here and Climb adds it.')}</span>
@@ -784,7 +790,7 @@
           return `<a class="mrow ${m.won ? 'w' : 'l'}${g && g.lobbyFirst ? ' gold' : ''}" href="#/match/${m.id}">
             <span class="mh">${icon(c, m.hero, 32)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
             <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span>
-            <span class="mrole">${fmark(m.id)}${roleChip(c, g, m.id)}<span class="tags">${tagChips(c, g, 2)}</span></span>
+            <span class="mrole">${fmark(m.id)}${roleChip(c, g, m.id)}<span class="tags">${noteChips(c, L, 2)}</span></span>
             <span class="n">${kda(m)}</span>
             <span class="n hide-s">${c.kfmt(m.souls)}</span>
             <span class="n hide-s">${me ? c.kfmt(me[5]) : '—'}</span>

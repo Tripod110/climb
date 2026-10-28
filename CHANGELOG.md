@@ -4,6 +4,15 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v23 (2026-10-28): Clearer matches, tidier Friends
+- `game_mode === 4` is Street Brawl (checked against /v1/matches/metadata): `normalizeMatch` and
+  `matchFromMeta` give it mode `other`, so it is dropped like other modes. Tests added.
+- `Engine.gameNotes(L, max)`: up to two chips with numbers (few/many deaths vs the lobby average,
+  souls and damage vs the lobby average, most kills). Used in the Matches list. `roleChip` now shows the
+  form score ("Above/Below your usual" at ±0.4) instead of Top/Mid/Low share; the match page's team-share
+  card is unchanged. The Matches role filter changed to match.
+- Friends: removed the "Everyone you queue with" list. The friend pages are still reached from the leaderboard.
+
 ## v22 (2026-10-28): Coach me on Heroes
 - Heroes gets a "Rank road | Coach me" switch (`heroTab` in `views.js`, a module variable). Coach me is
   `heroCoachPanel`, fed by `Engine.heroCoach`: the habit catalog and `aggregateGames` over the hero's

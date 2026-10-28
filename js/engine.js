@@ -40,7 +40,8 @@
   /* /v1/players/{id}/match-history row -> our match. Win is match_result === player_team
      (player_match_outcome is not reliable for this). ranked_delta is null for pre-2025 games. */
   function normalizeMatch(r) {
-    const mode = r.match_mode === 4 ? 'ranked' : r.match_mode === 1 ? 'unranked' : 'other';
+    // game_mode 4 = Street Brawl (confirmed against /v1/matches/metadata 2026-10-28): a different game, never counted.
+    const mode = r.game_mode === 4 ? 'other' : r.match_mode === 4 ? 'ranked' : r.match_mode === 1 ? 'unranked' : 'other';
     return {
       id: r.match_id, t: r.start_time, mode, hero: r.hero_id,
       won: r.match_result === r.player_team,
@@ -66,7 +67,8 @@
     const t = typeof meta.start_time === 'number' ? meta.start_time
       : Math.floor(Date.parse(String(meta.start_time).replace(' ', 'T') + 'Z') / 1000);
     const mm = String(meta.match_mode).toLowerCase();
-    const mode = mm === 'ranked' || mm === '4' ? 'ranked' : mm === 'unranked' || mm === '1' ? 'unranked' : 'other';
+    const brawl = /street|^4$/i.test(String(meta.game_mode));
+    const mode = brawl ? 'other' : mm === 'ranked' || mm === '4' ? 'ranked' : mm === 'unranked' || mm === '1' ? 'unranked' : 'other';
     const a = p.player_rank_initial_flat_progress, b = p.player_rank_final_flat_progress;
     return {
       id: meta.match_id, t, mode, hero: p.hero_id,
@@ -666,6 +668,23 @@
     // lobbyFirst: Valve's own post-game MVP #1, the "1st in the lobby" shown in-game. Climb's impact
     // score is team-relative, so it doesn't rank across both teams; on 60 real games the two never agreed.
     return { role, tags, impact: imp.impact, teamRank: imp.teamRank, teamSize: imp.teamSize, r: imp.r, mvp, lobbyFirst: mvp === 1 };
+  }
+
+  /* The two things that most set one game apart, as short chips with the number in them, for the
+     Matches list. All relative to that lobby's average (both teams), so they read the same in a
+     stomp and a slugfest. -> [{ text, tone: 'good'|'bad', w }] strongest first, at most `max`. */
+  function gameNotes(L, max) {
+    if (!L || L.v !== LOBBY_V) return [];
+    const P = L.p, me = P[L.me], out = [];
+    const avgD = mean(P.map(p => p[3]));
+    if (me[3] <= 2 || (me[3] <= 0.5 * avgD && me[3] <= 4)) out.push({ text: me[3] === 0 ? 'No deaths' : `Only ${me[3]} death${me[3] === 1 ? '' : 's'}`, tone: 'good', w: 1 + (avgD - me[3]) / 10 });
+    else if (me[3] >= 10 || me[3] >= 1.6 * avgD) out.push({ text: `${me[3]} deaths`, tone: 'bad', w: 1 + (me[3] - avgD) / 10 });
+    const r = lobbyStats(L).ratio;
+    const rel = (v, label) => { if (v == null) return; const d = Math.round((v - 1) * 100);
+      if (v >= 1.25) out.push({ text: `+${d}% ${label}`, tone: 'good', w: v - 1 }); else if (v <= 0.75) out.push({ text: `−${-d}% ${label}`, tone: 'bad', w: 1 - v }); };
+    rel(r.souls, 'souls'); rel(r.dmg, 'damage');
+    if (rankOf(P.map(p => p[2]), L.me, true) === 1 && me[2] >= 8) out.push({ text: `${me[2]} kills, most in the lobby`, tone: 'good', w: 0.5 });
+    return out.sort((a, b) => b.w - a.w).slice(0, max || 2);
   }
 
   /* Role counts and rates over a set of games, for the Overview tiles and hero cards. */
@@ -1618,7 +1637,7 @@
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
     LOBBY_V, ROLE_LABEL, ROLE_GOOD, ROLE_NOTE, TAG2_LABEL, TAG2_GOOD, LADDER_TIERS, LADDER_METRICS,
-    parseSteamInput, lobbyImpact, gameRole, roleSummary, compactHeroStats, rankLadder,
+    parseSteamInput, lobbyImpact, gameNotes, gameRole, roleSummary, compactHeroStats, rankLadder,
     BENCH_TIMES, BENCH_STATS, BENCH_MIN_PATCH, BENCH_WIDE_DAYS,
     lastBigPatch, benchWindow, benchHeroes, benchBrackets, compactCurve, benchCompare,
     ACCOUNT_ID, MIN_HERO_GAMES, COMPARE_N, QUADS, QUAD_LABEL, TAG_LABEL, TIER_NAMES,

@@ -607,3 +607,5 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
   .key, .cell, .hbar, .rb-seg, .ibar span { forced-color-adjust: none; }
 }
 #ht { margin: 0 0 16px; }
+.tag.good { color: var(--good-text); border-color: color-mix(in oklab, var(--good) 35%, transparent); }
+.tag.bad { color: var(--bad-text); border-color: color-mix(in oklab, var(--bad) 35%, transparent); }
