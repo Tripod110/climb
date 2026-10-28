@@ -93,7 +93,6 @@
     const M = c.M, E = c.E, S = c.settings;
     if (!M.all.length) { host.innerHTML = `<div class="empty-state">${c.state.busy ? 'Loading your matches…' : 'No matches found for this account yet.'}</div>`; return; }
     const v = M.v;
-    const roles = E.roleSummary(M.w.cur, c.state.lobbies);
     const items = c.state.items && c.state.items.map;
     const early = E.earlyRates(M.w.cur.map(c.entryOf), items);
     const earlyPrev = M.w.prev.length ? E.earlyRates(M.w.prev.map(c.entryOf), items) : null;
@@ -108,7 +107,6 @@
     const R = M.curRanked;
     const fresh = c.LOG.filter(e => e.v > S.seenV).slice(0, 2);
     const recent = M.all.slice(-8).reverse();
-    const heroes = E.heroBreakdown(M.w.cur, M.perf).slice(0, 5);
 
     host.innerHTML = `
       ${fresh.length ? `<section class="card whatsnew"><div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="btn ghost-btn" type="button">Got it</button></div>
@@ -145,7 +143,6 @@
           ${tile('Ahead of lane at 12:00', early.nAhead ? c.pct(early.ahead12) : '—', earlyPrev && earlyPrev.nAhead ? delta(early.ahead12, earlyPrev.ahead12, true) : `${early.nAhead} games with detail`, src('yours', `Games where your souls at 12:00 beat your lane opponents’ average, out of ${early.nAhead} games in this window with match detail.` + splitNote('ahead12')))}
           ${tile('No deaths before 10:00', early.nClean ? c.pct(early.clean10) : '—', earlyPrev && earlyPrev.nClean ? delta(early.clean10, earlyPrev.clean10, true) : `${early.nClean} games with detail`, src('yours', `Games with zero deaths in the first 10 minutes, out of ${early.nClean} games in this window with match detail.` + splitNote('early0')))}
           ${tile('Deaths per game', M.cur.n ? (M.w.cur.reduce((s, m) => s + m.d, 0) / M.cur.n).toFixed(1) : '—', M.prev && M.prev.n ? `${(M.w.prev.reduce((s, m) => s + m.d, 0) / M.prev.n).toFixed(1)} before` : '', src('yours', 'Average deaths per game in this window, from your match history.'))}
-          ${tile('MVP awards', roles.n ? String(roles.mvp) : '—', roles.n ? `in ${roles.n} games` : '', src('valve', 'Valve’s post-game MVP (1st to 3rd in the lobby), as recorded in the match data.'))}
         </div>
       </div>
 
@@ -154,7 +151,7 @@
         ${splitTable(c, cat)}
       </section>
 
-      <div class="grid-2">
+      <div>
         <section class="card">
           <div class="card-head"><h2>Recent matches</h2><a href="#/matches" class="more">See all →</a></div>
           <ul class="mini-list">${recent.map(m => {
@@ -163,13 +160,6 @@
               <span class="ml-main"><b>${c.esc(c.heroName(m.hero))}</b> <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'W' : 'L'}</span> ${roleChip(c, g, m.id)}</span>
               <span class="ml-kda">${kda(m)}</span><span class="ml-d">${deltaHtml(c, m)}</span><span class="muted small ml-t">${c.ago(m.t)}</span></a></li>`;
           }).join('')}</ul>
-        </section>
-        <section class="card">
-          <div class="card-head"><h2>Heroes in this window</h2><a href="#/heroes" class="more">Your road to the next rank →</a></div>
-          <ul class="mini-list">${heroes.map(h => `<li><a href="#/heroes/${h.hero}">${icon(c, h.hero, 30)}
-            <span class="ml-main"><b>${c.esc(c.heroName(h.hero))}</b> <span class="muted small">${h.games} games</span></span>
-            <span class="ml-kda">${h.wins}–${h.losses}</span><span class="ml-d">${h.hasDelta ? `<span class="${h.net > 0 ? 'pos' : h.net < 0 ? 'neg' : 'muted'}">${c.signed(h.net)}</span>` : ''}</span>
-            <span class="ml-t">${trendTxt(h)}</span></a></li>`).join('')}</ul>
         </section>
       </div>
 
@@ -558,19 +548,12 @@
     if (!list.length) { host.innerHTML = head + `<section class="card"><p class="muted">No one with ${E.FRIEND_MIN}+ games together yet.</p></section>`; return; }
     c.ensureSquad();
     const me = st.settings.account, rows = c.squadRows();
-    const rec = E.squadRecord(c.M.all, list, Date.now() / 1000 - E.SQUAD_DAYS * 86400);
     const board = E.friendBoard(rows, me, list);
-    const week = E.weeklyReport(rows, me, list, Date.now() / 1000);
-    const bucket = (lab, b, sub) => `<div class="tile"><div class="t-label">${lab}</div><div class="t-val">${c.pct(b.wr)}</div><div class="t-sub">${b.wins}–${b.n - b.wins} · ${sub}</div></div>`;
     host.innerHTML = head + `
-      ${week ? weekCard(c, week, list) : ''}
-      <section class="card"><div class="card-head"><div><div class="t-label">Last ${E.SQUAD_DAYS} days ${src('yours', 'Your games in the last ' + E.SQUAD_DAYS + ' days, split by how many of your friends (10+ games together) were on your team.')}</div><h2>Solo, duo or squad</h2></div></div>
-        <div class="tiles">${bucket('Solo', rec.solo, 'no friends')}${bucket('Duo', rec.duo, 'one friend')}${bucket('Squad', rec.squad, '2+ friends')}</div></section>
       <section class="card flush"><div class="pad"><div class="t-label">Leaderboard ${src('model', `Each person’s win chance lost to their own deaths per game, in games with you over the last ${E.SQUAD_DAYS} days (yours: all those games). Each death is priced by the trained win model as a TYPICAL cost for that minute and soul lead, not an exact one. It works across roles where kills and damage don’t. “Better” or “worse” than you is only shown when the gap is 2+ points AND holds in both halves of your shared games; otherwise it’s too close to call. Needs ${E.BOARD_MIN}+ shared games.`)}</div>
         <h2>Who costs the squad least</h2><p class="muted small">Win chance lost to their own deaths per game. Lower is better.</p></div>
         ${board.length ? `<ol class="board">${board.map((p, i) => boardRow(c, p, i, list)).join('')}</ol>` : `<p class="muted pad coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games with friends…</p>`}
       </section>`;
-    bindWeek(host, c, week, list);
   }
 
   // ---------------------------------------------------------------- squads
@@ -854,7 +837,6 @@
           ${g.lobbyFirst ? '<div class="first-line">★ 1st in the lobby · Valve’s MVP</div>' : g.mvp >= 2 && g.mvp <= 3 ? `<div class="muted small">Valve’s ${g.mvp === 2 ? '2nd' : '3rd'} MVP</div>` : ''}
           <div class="role-big">#${g.teamRank} of ${g.teamSize}</div>
           <p class="muted">${g.teamRank <= 2 ? 'Top share' : g.teamRank >= g.teamSize - 1 ? 'Low share' : 'Mid share'} of your team’s stats · impact <b>${g.impact.toFixed(2)}</b> <span class="small">(1.00 = an average teammate)</span></p>
-          <div class="tags">${tagChips(c, g)}</div>
         </section>
         <section class="card">
           <div class="t-label">You vs an average teammate <span class="muted">(100% = average)</span></div>

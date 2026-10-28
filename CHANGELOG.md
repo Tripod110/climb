@@ -4,6 +4,12 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v24 (2026-10-28): Coaching first
+- Friends renders only the leaderboard (`friendBoard`) and the `#/friend/<id>` pages. `weekCard`, `bindWeek`
+  and `squadRecord` are no longer called from it but stay in the code, ready to bring back.
+- Play time is removed from the nav only; the `#/play` route still works.
+- Overview: MVP awards tile and Heroes-in-this-window card removed. Match page: `tagChips` row removed.
+
 ## v23 (2026-10-28): Clearer matches, tidier Friends
 - `game_mode === 4` is Street Brawl (checked against /v1/matches/metadata): `normalizeMatch` and
   `matchFromMeta` give it mode `other`, so it is dropped like other modes. Tests added.

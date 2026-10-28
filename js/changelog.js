@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 24, date: '2026-10-28', title: 'Coaching first',
+      items: [
+        'Friends is now just the leaderboard: who costs the squad least, and the per-friend catch-up plan. The weekly Discord report and the solo / duo / squad record are gone from the page.',
+        'The Play time tab is hidden from the menu. Your hours still feed the session recap on Overview.',
+        'Overview is leaner: the MVP awards tile and the “Heroes in this window” card are removed (Heroes has all of it).',
+        'The match page no longer shows the role-tag chips; your share, the comparison with your usual, win chance and the coach card stay.',
+      ],
+    },
+    {
       v: 23, date: '2026-10-28', title: 'Clearer matches, tidier Friends',
       items: [
         'Street Brawl games are left out everywhere (they’re a different game, so their numbers only muddied yours).',
