@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 25, date: '2026-10-28', title: 'Proof your habit works, and your climb pace',
+      items: [
+        'Your focus card now shows your win rate before you started the habit against every game since, with your win rate when you passed it vs when you didn’t. It only calls a change when it clears normal swing, and warns when the pass rate is up in only one half of your games (a streak).',
+        'Overview has a new “Your climb” card: how many ranked games each division has taken you over your last 40, with a range, or “holding” / “sliding” when that’s what both halves of those games say. It measures divisions you actually moved through, not a rank-point prediction, because Valve’s points don’t convert to divisions at a fixed rate.',
+      ],
+    },
+    {
       v: 24, date: '2026-10-28', title: 'Coaching first',
       items: [
         'Friends is now just the leaderboard: who costs the squad least, and the per-friend catch-up plan. The weekly Discord report and the solo / duo / squad record are gone from the page.',

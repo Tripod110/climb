@@ -362,6 +362,39 @@
     const addedOld = g(98, true, [300]); addedOld.m.added = true; addedOld.m.t = 500;     // played before the goal
     const pa = E.focusProgress(goal, [...es, ...after(8), addedLate, addedOld], {});
     eq('games added by id never count toward a goal', [pa.n, pa.passes], [8, 6]);
+
+    // focusImpact: win rate before vs since the goal, only called past the 15-game floor and 2 standard errors.
+    const hist = (n, t0, winEvery) => Array.from({ length: n }, (_, k) => ({ id: 500 + t0 + k, t: t0 + k, won: k % winEvery !== 0, d: 0, dur: 1800 }));
+    const gl = { habit: 'early0', start: 1000, baseline: { rate: 0.3, n: 30 } };
+    const afterG = n => Array.from({ length: n }, (_, k) => g(100 + k, true, k % 5 === 0 ? [300] : [900]));
+    const pI = E.focusProgress(gl, afterG(20), {});
+    const bad = hist(30, 900, 2);                                  // 50% before
+    const goodAfter = afterG(20).map(e => e.m);                    // 100% after
+    const imp = E.focusImpact(gl, [...bad, ...goodAfter], pI);
+    eq('impact: clear win-rate rise is called up', [imp.call, imp.nBefore, imp.nAfter], ['up', 30, 20]);
+    eq('impact: pass rate beat baseline in both halves = held', imp.held, true);
+    eq('impact: split by pass vs fail', [imp.split.nPass, imp.split.nFail], [16, 4]);
+    const pFew = E.focusProgress(gl, afterG(8), {});
+    eq('impact: under 15 games since = early', E.focusImpact(gl, [...bad, ...afterG(8).map(e => e.m)], pFew).call, 'early');
+    const same = afterG(20).map((e, k) => ({ ...e.m, won: k % 2 === 0 }));
+    eq('impact: same win rate is not called', E.focusImpact(gl, [...bad, ...same], pI).call, 'same');
+    const lateAdd = { ...afterG(1)[0].m, id: 9999, added: true };
+    eq('impact: added games are not counted', E.focusImpact(gl, [...bad, ...goodAfter, lateAdd], pI).nAfter, 20);
+    eq('impact: null without a goal', E.focusImpact(null, [], pI), null);
+
+    // rankForecast: divisions per game over the last 40 ranked games, direction only when both halves agree.
+    const rk = (badges, won) => badges.map((b, i) => ({ id: i, t: i, mode: 'ranked', badge: b, calib: false, won: won ? won(i) : i % 2 === 0 }));
+    eq('forecast: under 15 games = thin', E.rankForecast(rk([41, 41, 41])).call, 'thin');
+    const climbing = rk(Array.from({ length: 31 }, (_, i) => 31 + Math.floor(i / 6)));   // +1 division per 6 games across 31 games
+    const fc = E.rankForecast(climbing);
+    eq('forecast: climbing + pace', [fc.call, fc.gain, Math.round(fc.perDivision)], ['climbing', 5, 6]);
+    eq('forecast: next division', [fc.now, fc.next], [36, 41]);
+    eq('forecast: next badge rolls over a tier', [E.nextBadge(36), E.nextBadge(42), E.nextBadge(null)], [41, 43, null]);
+    eq('forecast: flat', E.rankForecast(rk(Array(20).fill(42))).call, 'flat');
+    eq('forecast: sliding', E.rankForecast(rk(Array.from({ length: 30 }, (_, i) => 44 - Math.floor(i / 10)))).call, 'sliding');
+    const wobble = rk([...Array(10).fill(41), ...Array(10).fill(43), ...Array(10).fill(41)]);
+    eq('forecast: up then down is mixed, not a trend', E.rankForecast(wobble).call, 'mixed');
+    eq('forecast: calibration and unranked games are ignored', E.rankForecast([...climbing, ...climbing.map(m => ({ ...m, calib: true })), { id: 1, t: 1, mode: 'unranked', badge: 50 }]).n, 31);
   }
 
   // ---------------------------------------------------------------- street brawl + game notes

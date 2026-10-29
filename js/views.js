@@ -89,6 +89,21 @@
   }
 
   // ---------------------------------------------------------------- overview
+  /* Pace of your climb, in divisions you actually moved (never a points prediction: see Engine.rankForecast). */
+  function forecastCard(c) {
+    const E = c.E, fc = E.rankForecast(c.M.all.filter(m => m.mode === 'ranked'));
+    if (fc.call === 'thin') return '';
+    const nm = b => c.esc(E.badgeName(b, c.tiers()));
+    const span = `${nm(fc.from)} → ${nm(fc.to)} over your last ${fc.n} ranked games, winning ${c.pct(fc.winRate)}`;
+    const info = src('rule', `Counts the divisions you moved through in your last ${E.RANK_FC_N} ranked games (calibration excluded) and only calls a direction when both halves of that stretch agree. It does not predict rank points, because Valve’s points don’t convert to divisions at a fixed rate.`);
+    const [head, body] = fc.call === 'climbing'
+      ? [`About one division every ${Math.round(fc.perDivision)} games`, `${span}. The two halves of that stretch put it between ${fc.range[0]} and ${fc.range[1]} games per division. Next up: ${nm(fc.next)}.`]
+      : fc.call === 'sliding' ? ['Sliding at the moment', `${span}. Both halves of that stretch went down, so the quickest fix is the focus habit below.`]
+      : fc.call === 'flat' ? ['Holding your rank', `${span}. No movement in either half of that stretch.`]
+      : ['No steady direction yet', `${span}. The first and second halves of that stretch disagree, so Climb won’t call a pace.`];
+    return `<section class="card forecast"><div class="t-label">Pace ${info}</div><h2>${head}</h2><p class="muted small">${body}</p></section>`;
+  }
+
   function overview(host, c) {
     const M = c.M, E = c.E, S = c.settings;
     if (!M.all.length) { host.innerHTML = `<div class="empty-state">${c.state.busy ? 'Loading your matches…' : 'No matches found for this account yet.'}</div>`; return; }
@@ -114,6 +129,7 @@
       ${missingCard(c)}
       ${recapCard(c)}
       ${focusCard(c, false)}
+      ${forecastCard(c)}
 
       <div class="page-head">
         <div class="ident">
@@ -393,6 +409,20 @@
       : `<span><b>No real change yet:</b> ${from}. Keep at it, or try a different habit.</span>`;
   }
 
+  /* Did the habit pay off in wins? Win rate before vs since, called only when it clears chance. */
+  function impactBlock(c, f, p, full) {
+    const E = c.E, imp = E.focusImpact(f, c.M.all, p);
+    if (!imp) return '';
+    if (imp.call === 'early') return full ? `<p class="muted small">Win rate: Climb compares your last ${E.IMPACT_BEFORE_N} games before you started with the games since once you have ${E.FOCUS_MIN_GAMES} since.</p>` : '';
+    const note = imp.call === 'up' ? '<span class="pos">Up by more than normal swing.</span>'
+      : imp.call === 'down' ? '<span class="neg">Down by more than normal swing.</span>'
+      : '<span class="muted">Within normal swing, so not a real change yet.</span>';
+    const sp = imp.split, both = sp.nPass >= 3 && sp.nFail >= 3;
+    const slip = p.verdict === 'improved' && !imp.held ? '<p class="muted small">Your pass rate is up, but only in one half of the games since you started, so it could be a streak.</p>' : '';
+    return `<p class="fc-impact small"><b>Win rate</b> ${pc0(imp.wrBefore)} → ${pc0(imp.wrAfter)} <span class="muted">(${imp.nBefore} games before, ${imp.nAfter} since)</span> ${note}</p>${slip}
+      ${full && both ? `<p class="muted small">Since you started: ${pc0(sp.wrPass)} wins when you passed it (${sp.nPass} games), ${pc0(sp.wrFail)} when you didn’t (${sp.nFail}).</p>` : ''}`;
+  }
+
   /* full = the Coach tab version (why/how, games since start, controls); otherwise the Overview card. */
   function focusCard(c, full) {
     const E = c.E, st = c.state, f = st.focus.active;
@@ -406,6 +436,7 @@
     const head = `<div class="fc-head"><div><div class="t-label">Your focus${f.by === 'coach' ? ' · picked by the coach' : f.by === 'climb' ? ' · Climb’s pick' : ''}</div>
       <div class="fc-habit">${c.esc(h.label)}</div></div>${dots(p.recent)}</div>
       <p class="fc-line">${verdictLine(c, p)}</p>
+      ${impactBlock(c, f, p, full)}
       <p class="muted small">Before you started: you passed it in ${pc0(f.baseline.rate)} of your last ${f.baseline.n} games, and won ${pc0(f.baseline.wrPass)} of those vs ${pc0(f.baseline.wrFail)} of the rest.</p>`;
     if (!full) return `<section class="card focus-card${p.graduated ? ' done' : ''}">${head}<a class="more" href="#/coach">Details →</a></section>`;
     const res = p.results.slice().reverse().slice(0, 15);

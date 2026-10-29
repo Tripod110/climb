@@ -4,6 +4,15 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v25 (2026-10-28): Proof your habit works, and your climb pace
+- `Engine.focusImpact(goal, all, progress)`: win rate over the 30 games before the goal vs every non-added game since,
+  called up/down only past 2 standard errors and only with 15+ games each side; `held` = pass rate above baseline in
+  both halves of the games since. Shown in `focusCard` (Overview one line, Coach tab with the pass/fail split).
+- `Engine.rankForecast(ranked)`: divisions per game over the last 40 ranked games (needs 15), direction only when both
+  halves agree. Deliberately not a points forecast: real history showed division changes after 600 to 1,900 net
+  `ranked_delta` points, so points do not map to divisions at a fixed rate. Overview "Your climb" card.
+- 15 new tests (220 total).
+
 ## v24 (2026-10-28): Coaching first
 - Friends renders only the leaderboard (`friendBoard`) and the `#/friend/<id>` pages. `weekCard`, `bindWeek`
   and `squadRecord` are no longer called from it but stay in the code, ready to bring back.

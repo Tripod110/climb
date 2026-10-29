@@ -325,6 +325,30 @@
     });
   }
 
+  /* How fast you have been climbing, from the divisions you actually moved through. Rank points
+     do not convert to divisions at a fixed rate (division changes came after 600 to 1,900 net points
+     in real histories), so this never predicts points: it measures divisions per game over your last
+     RANK_FC_N ranked games, and only calls a direction when both halves of that window agree.
+     ranked: ranked matches (mode 'ranked', not calibration), oldest first. */
+  const RANK_FC_N = 40, RANK_FC_MIN = 15;
+  const nextBadge = b => b == null || b <= 0 ? null : b % 10 >= 6 ? (Math.floor(b / 10) + 1) * 10 + 1 : b + 1;
+  function rankForecast(ranked) {
+    const rows = (ranked || []).filter(m => m.mode === 'ranked' && !m.calib && m.badge > 0).slice(-RANK_FC_N);
+    const n = rows.length;
+    if (n < RANK_FC_MIN) return { call: 'thin', n, need: RANK_FC_MIN - n };
+    const L = rows.map(m => ladder(m.badge));
+    const slope = (a, b) => (L[b] - L[a]) / Math.max(1, b - a);
+    const mid = Math.floor(n / 2), s1 = slope(0, mid), s2 = slope(mid, n - 1);
+    const gain = L[n - 1] - L[0], wins = rows.filter(m => m.won).length;
+    const base = { n, gain, from: rows[0].badge, to: rows[n - 1].badge, now: rows[n - 1].badge, next: nextBadge(rows[n - 1].badge), winRate: wins / n };
+    if (gain > 0 && s1 > 0 && s2 > 0) {
+      const per = (n - 1) / gain, hi = 1 / Math.min(s1, s2), lo = 1 / Math.max(s1, s2);
+      return { ...base, call: 'climbing', perDivision: per, range: [Math.round(Math.min(lo, per)), Math.round(Math.max(hi, per))] };
+    }
+    if (gain <= 0 && s1 <= 0 && s2 <= 0) return { ...base, call: gain < 0 ? 'sliding' : 'flat' };
+    return { ...base, call: 'mixed' };
+  }
+
   function heroBreakdown(games, perf) {
     const by = new Map();
     for (const m of games) {
@@ -1595,6 +1619,35 @@
     return { n, passes, rate, recent, verdict, graduated, results: r, baseline: p0, needed: Math.max(0, FOCUS_MIN_GAMES - n) };
   }
 
+  /* Did the focus habit pay off? Win rate over your last IMPACT_BEFORE_N games before the goal vs
+     every game since (games added by id never count, as in focusProgress), plus your win rate in the
+     games where you passed the habit vs where you didn't. A win-rate change is only called when it
+     clears two standard errors, and "held" says the pass rate beat its baseline in BOTH halves of the
+     games since, so one lucky stretch can't read as progress. all: your matches (any detail), oldest first;
+     p: the focusProgress result for this goal. */
+  const IMPACT_BEFORE_N = 30;
+  function focusImpact(goal, all, p) {
+    if (!goal || !p) return null;
+    const wr = xs => xs.length ? xs.filter(m => m.won).length / xs.length : null;
+    const before = (all || []).filter(m => m.t < goal.start).slice(-IMPACT_BEFORE_N);
+    const after = (all || []).filter(m => !m.added && m.t >= goal.start);
+    const res = p.results || [];
+    const yes = res.filter(r => r.pass).map(r => r.m), no = res.filter(r => !r.pass).map(r => r.m);
+    const half = Math.floor(res.length / 2);
+    const rate = xs => xs.length ? xs.filter(r => r.pass).length / xs.length : null;
+    const halves = [rate(res.slice(0, half)), rate(res.slice(half))];
+    const p0 = p.baseline;
+    const held = p0 != null && halves[0] != null && halves[1] != null && halves[0] > p0 && halves[1] > p0;
+    const out = { nBefore: before.length, nAfter: after.length, wrBefore: wr(before), wrAfter: wr(after), halves, held,
+      split: { nPass: yes.length, nFail: no.length, wrPass: wr(yes), wrFail: wr(no) }, call: 'early', diff: null };
+    if (before.length < FOCUS_MIN_GAMES || after.length < FOCUS_MIN_GAMES) return out;
+    const a = out.wrAfter, b = out.wrBefore;
+    out.diff = a - b;
+    const se = Math.sqrt(b * (1 - b) / before.length + a * (1 - a) / after.length);
+    out.call = out.diff > 2 * se ? 'up' : out.diff < -2 * se ? 'down' : 'same';
+    return out;
+  }
+
   /* Evidence for one hero's "Coach me" tab, from that hero's games that have match detail
      (entries: [{ m, L, D }], oldest first). The same habit catalog as the Coach tab, but over this
      hero only, plus the deaths/economy aggregate. `focus` is the habit that split THIS hero's wins
@@ -1632,7 +1685,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, IMPACT_BEFORE_N, rankForecast, nextBadge, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
