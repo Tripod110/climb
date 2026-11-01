@@ -824,15 +824,17 @@
     return out;
   }
 
-  const DETAIL_V = 3;   // 2 = + objectives and mid-boss; 3 = every player's deaths. Older cached details get re-fetched
+  const DETAIL_V = 4;   // 2 = + objectives and mid-boss; 3 = every player's deaths; 4 = farm sources (boxes, treasure, creeps available) and lane souls without the orb double count. Older cached details get re-fetched
   /* Full metadata for one match (items, death details, stat snapshots) -> what the brief needs.
-     Snapshots: [t, souls, kills, deaths, assists, heroDamage, laneSouls, jungleSouls, lastHits]. */
+     Snapshots: [t, souls, kills, deaths, assists, heroDamage, laneSouls, jungleSouls, lastHits, boxSouls, treasureSouls, creepsAvailable]. */
   function compactMatchDetail(meta, accountId) {
     const teamNum = t => (typeof t === 'number' ? t : String(t).endsWith('1') ? 1 : 0);
     const players = (meta.players || []).map(p => ({
       slot: p.player_slot, team: teamNum(p.team), hero: p.hero_id, lane: p.assigned_lane || 0, acct: p.account_id,
       snaps: (p.stats || []).map(s => [s.time_stamp_s, s.net_worth || 0, s.kills || 0, s.deaths || 0, s.assists || 0, s.player_damage || 0,
-        (s.gold_lane_creep || 0) + (s.gold_lane_creep_orbs || 0), (s.gold_neutral_creep || 0) + (s.gold_neutral_creep_orbs || 0), s.creep_kills || 0]),
+        // gold_lane_creep already includes the part collected as orbs (orbs <= lane in every snapshot), so lane souls are not summed with them.
+        s.gold_lane_creep || 0, (s.gold_neutral_creep || 0) + (s.gold_neutral_creep_orbs || 0), s.creep_kills || 0,
+        s.gold_source_breakable_gold || 0, s.gold_treasure || 0, s.possible_creeps || 0]),
       items: p.account_id === accountId ? (p.items || []).map(x => [x.game_time_s, x.item_id, x.sold_time_s || 0]) : null,
       deaths: (p.death_details || []).map(d => [d.game_time_s, d.killer_player_slot,
         Math.round((d.death_pos || [])[0] || 0), Math.round((d.death_pos || [])[1] || 0), Math.round((d.time_to_kill_s || 0) * 10) / 10]),
@@ -1557,6 +1559,58 @@
     const x = (me.items || []).filter(([, id]) => items[id] && items[id][2] >= tier).sort((a, b) => a[0] - b[0])[0];
     return x ? x[0] : Infinity;
   };
+  /* ---- farm: where your souls came from, against the players in your lane ----
+     The API gives cumulative souls by source at about 10 snapshots a match (every 3 to 5 minutes), for
+     every player. It does NOT say which camp or box was taken or when, so this compares totals by
+     source and never claims anything about individual spawns. Needs DETAIL_V 4 snapshots (12 columns). */
+  const FARM_SRC = [['lane', 'Lane creeps', 6], ['camps', 'Jungle camps', 7], ['boxes', 'Boxes & breakables', 9], ['treasure', 'Treasure', 10]];
+  const FARM_T = 720;                 // the 12:00 checkpoint every farm number is read at
+  const FARM_MIN_GAMES = 8, FARM_MIN_GAP = 150;   // games for a profile; souls a gap needs to count as real
+  const hasFarm = s => s && s.length >= 12;
+  function farmAt(D, t) {
+    t = t || FARM_T;
+    const me = D && D.players.find(p => p.items);
+    const a = me && snapAtT(me, t);
+    if (!hasFarm(a) || D.dur < t) return null;
+    const opps = me.lane ? D.players.filter(p => p.team !== me.team && p.lane === me.lane).map(p => snapAtT(p, t)).filter(hasFarm) : [];
+    const avg = i => opps.length ? mean(opps.map(s => s[i])) : null;
+    const eff = s => s[11] > 0 ? s[8] / s[11] : null;
+    return { t: a[0], nOpp: opps.length,
+      src: FARM_SRC.map(([key, label, i]) => ({ key, label, me: a[i], opp: avg(i) })),
+      eff: { me: eff(a), opp: opps.length ? mean(opps.map(eff).filter(x => x != null)) : null } };
+  }
+  /* Per lane at time t: souls per player from the four sources, your side vs theirs. */
+  function farmLanes(D, t) {
+    t = t || FARM_T;
+    const me = D && D.players.find(p => p.items);
+    if (!me || D.dur < t) return null;
+    const per = ps => { const ss = ps.map(p => snapAtT(p, t)).filter(hasFarm); return ss.length ? { n: ss.length, souls: mean(ss.map(s => FARM_SRC.reduce((x, [, , i]) => x + s[i], 0))) } : null; };
+    const out = [];
+    for (const lane of [...new Set(D.players.map(p => p.lane).filter(Boolean))].sort()) {
+      const mine = per(D.players.filter(p => p.lane === lane && p.team === me.team)), theirs = per(D.players.filter(p => p.lane === lane && p.team !== me.team));
+      if (mine && theirs) out.push({ lane, yours: lane === me.lane, mine: mine.souls, theirs: theirs.souls, nMine: mine.n, nTheirs: theirs.n });
+    }
+    return out.length ? out : null;
+  }
+  /* Your habits across games: per source, your souls minus your lane opponents' at 12:00, averaged.
+     A gap is only called when it is at least FARM_MIN_GAP souls AND has the same sign in both halves
+     of your games. entries: [{ m, L, D }] oldest first. */
+  function farmProfile(entries) {
+    const rows = (entries || []).map(e => farmAt(e.D)).filter(f => f && f.nOpp);
+    const n = rows.length;
+    if (n < FARM_MIN_GAMES) return { n, ready: false, need: FARM_MIN_GAMES - n };
+    const half = Math.floor(n / 2);
+    const gap = (rs, i) => mean(rs.map(f => f.src[i].me - f.src[i].opp));
+    const src = FARM_SRC.map(([key, label], i) => {
+      const d = gap(rows, i), d1 = gap(rows.slice(0, half), i), d2 = gap(rows.slice(half), i);
+      const call = Math.abs(d) >= FARM_MIN_GAP && Math.sign(d1) === Math.sign(d) && Math.sign(d2) === Math.sign(d) ? (d > 0 ? 'ahead' : 'behind') : 'even';
+      return { key, label, me: mean(rows.map(f => f.src[i].me)), opp: mean(rows.map(f => f.src[i].opp)), gap: d, call };
+    });
+    const effs = rows.filter(f => f.eff.me != null && f.eff.opp != null);
+    const behind = src.filter(x => x.call === 'behind').sort((a, b) => a.gap - b.gap)[0] || null;
+    return { n, ready: true, src, headline: behind, eff: effs.length ? { me: mean(effs.map(f => f.eff.me)), opp: mean(effs.map(f => f.eff.opp)) } : null };
+  }
+
   /* test(m, L, D, items) -> true / false / null (can't tell from this game's data). */
   const HABITS = [
     { id: 'early0', label: 'No deaths before 10:00', short: 'No early deaths', test: (m, L, D) => { const d = deathsIn(D, 0, 600); return d ? d.length === 0 : null; } },
@@ -1567,6 +1621,11 @@
       const opps = D.players.filter(p => p.team !== me.team && p.lane === me.lane).map(p => snapAtT(p, 720)).filter(Boolean);
       const mine = snapAtT(me, 720); return mine && opps.length ? mine[1] > mean(opps.map(s => s[1])) : null; } },
     { id: 'cs12', label: '25+ last hits by 12:00', short: '25 CS by 12:00', test: (m, L, D) => { const me = meOf(D); const s = me && D.dur >= 720 ? snapAtT(me, 720) : null; return s ? s[8] >= 25 : null; } },
+    { id: 'jungle12', label: 'More camp + box souls than your lane opponents at 12:00', short: 'Out-jungle lane opp', test: (m, L, D) => {
+      const f = farmAt(D); if (!f || !f.nOpp) return null;
+      const j = k => f.src.filter(x => x.key === 'camps' || x.key === 'boxes').reduce((a, x) => a + x[k], 0);
+      return j('me') > j('opp'); } },
+    { id: 'creeps12', label: 'Kill 80%+ of the lane creeps by 12:00', short: '80% of creeps by 12:00', test: (m, L, D) => { const f = farmAt(D); return f && f.eff.me != null ? f.eff.me >= 0.8 : null; } },
     { id: 'tier3', label: 'First tier-3 item before 13:00', short: 'Tier 3 by 13:00', test: (m, L, D, items) => { const t = firstTierAt(D, items, 3); return t == null ? null : t < 780; } },
     { id: 'tier4', label: 'First tier-4 item before 24:00', short: 'Tier 4 by 24:00', test: (m, L, D, items) => { const t = firstTierAt(D, items, 4); return t == null || (t === Infinity && D.dur < 1440) ? null : t < 1440; } },
     { id: 'rate', label: 'Under 1.2 deaths per 10 minutes', short: '<1.2 deaths / 10 min', outcome: true, test: m => m.dur ? (m.d / (m.dur / 60)) * 10 < 1.2 : null },
@@ -1685,7 +1744,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, IMPACT_BEFORE_N, rankForecast, nextBadge, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, farmAt, farmLanes, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

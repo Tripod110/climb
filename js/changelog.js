@@ -6,6 +6,16 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 26, date: '2026-11-01', title: 'Farm analyzer',
+      items: [
+        'Every match now has a Farm card: the souls you had from lane creeps, jungle camps, boxes & breakables and treasure at 12:00, against the average of your lane opponents, with your biggest gap named and a lane-by-lane comparison.',
+        'The Coach tab has a “How you farm against your lane” card over your last 30 games. It only says you trail a source when the gap is 150+ souls and shows in both halves of your games.',
+        'Two new farm habits you can focus on: more camp + box souls than your lane opponents at 12:00, and killing 80%+ of the lane creeps by 12:00. Unlike “tier 3 by 14:00”, they don’t depend on already being rich.',
+        'deadlock-api only records souls by source a few times a match, not which camp or box you took or when, so Climb says what you got, never which spawn you missed.',
+        'Your recent games reload once in the background to read the new data. Lane souls in the AI debrief also stop being double counted.',
+      ],
+    },
+    {
       v: 25, date: '2026-10-28', title: 'Proof your habit works, and your climb pace',
       items: [
         'Your focus card now shows your win rate before you started the habit against every game since, with your win rate when you passed it vs when you didn’t. It only calls a change when it clears normal swing, and warns when the pass rate is up in only one half of your games (a streak).',

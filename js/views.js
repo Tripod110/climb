@@ -295,6 +295,48 @@
       ${swings}<path class="line" d="${line}"/>${deaths}</svg>`;
   }
 
+  /* ---- farm: souls by source against your lane opponents (see Engine.farmAt) ---- */
+  const FARM_INFO = 'Climb reads the souls you had earned from each source by this minute against the average of the players in your lane on the other team. deadlock-api records totals a few times a match, not which camp or box was taken or when, so this says what you got, never which spawn you missed.';
+  const gapHtml = (c, v) => `<span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : 'muted'}">${v > 0 ? '+' : v < 0 ? '−' : '±'}${c.fmtInt(Math.abs(Math.round(v)))}</span>`;
+  const clk = t => Math.floor(t / 60) + ':' + String(Math.round(t % 60)).padStart(2, '0');
+
+  function farmMatchCard(c, m) {
+    const E = c.E, D = c.state.details[m.id];
+    if (!D || D.v !== E.DETAIL_V) return '';
+    const f = E.farmAt(D);
+    if (!f) return '';
+    const lanes = E.farmLanes(D, f.t);
+    const rows = f.src.filter(x => x.opp != null);
+    const worst = rows.slice().sort((a, b) => (a.me - a.opp) - (b.me - b.opp))[0];
+    const line = !rows.length ? 'No lane opponent found for this game, so there is nothing to compare against.'
+      : worst && worst.me - worst.opp <= -E.FARM_MIN_GAP ? `Biggest gap: <b>${c.esc(worst.label.toLowerCase())}</b>, ${gapHtml(c, worst.me - worst.opp)} souls against your lane opponents by ${clk(f.t)}.`
+      : `No source where you trailed your lane opponents by ${E.FARM_MIN_GAP}+ souls by ${clk(f.t)}.`;
+    const eff = f.eff.me == null ? '' : `<p class="muted small">Lane creeps killed by ${clk(f.t)}: you ${Math.round(f.eff.me * 100)}%${f.eff.opp != null ? `, lane opponents ${Math.round(f.eff.opp * 100)}%` : ''}.</p>`;
+    return `<section class="card farm-card"><div class="card-head"><div><div class="t-label">Farm ${src('yours', FARM_INFO)}</div><h2>Where your souls came from at ${clk(f.t)}</h2></div></div>
+      <p>${line}</p>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>Source</th><th class="n">You</th><th class="n">Lane opponents</th><th class="n">Gap</th></tr></thead>
+      <tbody>${f.src.map(x => `<tr><td>${c.esc(x.label)}</td><td class="n">${c.fmtInt(x.me)}</td><td class="n">${x.opp == null ? '—' : c.fmtInt(Math.round(x.opp))}</td><td class="n">${x.opp == null ? '—' : gapHtml(c, x.me - x.opp)}</td></tr>`).join('')}</tbody></table></div>
+      ${eff}
+      ${lanes && lanes.length > 1 ? `<div class="t-label" style="margin-top:12px">Lane by lane · souls per player from those four sources</div>
+        <ul class="farm-lanes">${lanes.map((l, i) => `<li><span>${l.yours ? 'Your lane <span class="you-tag">You</span>' : 'Other lane ' + (lanes.slice(0, i).filter(x => !x.yours).length + 1)}</span><span class="n">${c.fmtInt(Math.round(l.mine))} <span class="muted">vs</span> ${c.fmtInt(Math.round(l.theirs))}</span>${gapHtml(c, l.mine - l.theirs)}</li>`).join('')}</ul>` : ''}
+    </section>`;
+  }
+
+  function farmProfileCard(c) {
+    const E = c.E, P = E.farmProfile(c.analysisEntries());
+    const head = `<div class="card-head"><div><div class="t-label">Farm habits ${src('yours', FARM_INFO + ' A gap is only called when it is 150+ souls and shows in both halves of your games.')}</div><h2>How you farm against your lane</h2></div></div>`;
+    if (!P.ready) return `<section class="card farm-card">${head}<p class="muted">Needs ${P.need} more game${P.need === 1 ? '' : 's'} with farm detail (${P.n} so far, read at ${clk(E.FARM_T)} against your lane opponents). Older games reload in the background.</p></section>`;
+    const call = { ahead: '<span class="pos">ahead</span>', behind: '<span class="neg">behind</span>', even: '<span class="muted">even</span>' };
+    const h = P.headline;
+    const line = h ? `You trail your lane on <b>${c.esc(h.label.toLowerCase())}</b> by about ${c.fmtInt(Math.round(-h.gap))} souls at ${clk(E.FARM_T)}, in both halves of your last ${P.n} games.`
+      : `No source where you trail your lane by 150+ souls in both halves of your last ${P.n} games.`;
+    return `<section class="card farm-card">${head}<p>${line}</p>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>Source at ${clk(E.FARM_T)}</th><th class="n">You</th><th class="n">Lane opponents</th><th class="n">Gap</th><th></th></tr></thead>
+      <tbody>${P.src.map(x => `<tr><td>${c.esc(x.label)}</td><td class="n">${c.fmtInt(Math.round(x.me))}</td><td class="n">${c.fmtInt(Math.round(x.opp))}</td><td class="n">${gapHtml(c, x.gap)}</td><td>${call[x.call]}</td></tr>`).join('')}</tbody></table></div>
+      ${P.eff ? `<p class="muted small">Lane creeps killed by ${clk(E.FARM_T)}: you ${Math.round(P.eff.me * 100)}%, lane opponents ${Math.round(P.eff.opp * 100)}%.</p>` : ''}
+      <p class="muted small">The farm habits in the list above (“More camp + box souls…”, “Kill 80%+ of the lane creeps…”) can be your focus once they split your wins from your losses.</p></section>`;
+  }
+
   function wpCard(c, m) {
     const W = window.WPMODEL;
     if (!W) return '';
@@ -526,6 +568,7 @@
       ${c.state.focus.active ? focusCard(c, true) : habitPicker(c)}
       ${calibrationCard(c)}
       ${aiCard(c, A)}
+      ${farmProfileCard(c)}
       <div class="t-label sec">The numbers · wins vs losses</div>
       <div class="tiles tiles-6">
         ${wl('Deaths per game', A.deaths.perGame, one, 'lower')}
@@ -877,6 +920,7 @@
         </section>
       </div>
       ${wpCard(c, m)}
+      ${farmMatchCard(c, m)}
       ${coachCard(c, m)}
       <section class="card flush scoreboard">${team(myTeam)}${team(1 - myTeam)}</section>`;
     if (window.WPMODEL && !c.matchWin(m.id)) c.ensureMatchDetail(m.id);

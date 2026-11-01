@@ -611,3 +611,5 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
 .tag.bad { color: var(--bad-text); border-color: color-mix(in oklab, var(--bad) 35%, transparent); }
 .fc-impact { margin: 4px 0; }
 .forecast h2 { margin: 4px 0 6px; }
+.farm-lanes { list-style: none; margin: 6px 0 0; padding: 0; }
+.farm-lanes li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line, #26262a); }

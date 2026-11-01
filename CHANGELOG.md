@@ -4,6 +4,16 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v26 (2026-11-01): Farm analyzer
+- `DETAIL_V` 4: compact snapshots gain boxes (`gold_source_breakable_gold`), treasure and `possible_creeps`
+  (12 columns). Lane souls were `gold_lane_creep + gold_lane_creep_orbs`, which double counted: orbs are a
+  subset of lane gold (<= in every snapshot sampled). Cached v3 details re-fetch through the usual path.
+- `Engine.farmAt/farmLanes/farmProfile`: souls by source at 12:00 vs the players in your lane on the other team;
+  profile calls a gap only at 150+ souls with the same sign in both halves, from 8+ games.
+- Habits `jungle12` (camps + boxes vs lane opponents) and `creeps12` (80% of lane creeps). Match page Farm card,
+  Coach tab farm profile. The API has no per-camp or per-box timing or movement, so nothing claims that.
+- 13 new tests (233 total).
+
 ## v25 (2026-10-28): Proof your habit works, and your climb pace
 - `Engine.focusImpact(goal, all, progress)`: win rate over the 30 games before the goal vs every non-added game since,
   called up/down only past 2 standard errors and only with 15+ games each side; `held` = pass rate above baseline in

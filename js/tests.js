@@ -382,6 +382,32 @@
     eq('impact: added games are not counted', E.focusImpact(gl, [...bad, ...goodAfter, lateAdd], pI).nAfter, 20);
     eq('impact: null without a goal', E.focusImpact(null, [], pI), null);
 
+    // farm: souls by source vs lane opponents. Snapshot = [t, nw, k, d, a, dmg, lane, camps, creepKills, boxes, treasure, creepsAvail].
+    const sn = (lane, camps, boxes, treasure, kills, avail) => [720, 8000, 0, 0, 0, 0, lane, camps, kills, boxes, treasure, avail];
+    const fp = (acct, team, laneId, snap, isMe) => ({ slot: acct, team, lane: laneId, acct, snaps: [snap], items: isMe ? [] : null, deaths: [] });
+    const fg = (mine, opp1, opp2) => ({ m: { id: 1, t: 1, won: true }, L: null, D: { v: 4, dur: 1800, players: [
+      fp(1, 0, 2, mine, true), fp(2, 0, 2, sn(2000, 500, 500, 0, 30, 36)), fp(3, 1, 2, opp1), fp(4, 1, 2, opp2), fp(5, 1, 1, sn(9999, 9999, 9999, 0, 36, 36)) ] } });
+    const f1 = E.farmAt(fg(sn(2400, 300, 100, 0, 32, 36), sn(2400, 700, 900, 0, 30, 36), sn(2400, 500, 700, 0, 34, 36)).D);
+    eq('farmAt: souls by source vs the average of your lane opponents', f1.src.map(x => [x.key, x.me, x.opp]), [['lane', 2400, 2400], ['camps', 300, 600], ['boxes', 100, 800], ['treasure', 0, 0]]);
+    eq('farmAt: lane creep efficiency, you vs lane opponents', [Math.round(f1.eff.me * 100), Math.round(f1.eff.opp * 100)], [89, 89]);
+    eq('farmAt: opponents in other lanes are ignored', f1.nOpp, 2);
+    eq('farmAt: a v3 snapshot (9 columns) has no farm data', E.farmAt({ dur: 1800, players: [{ team: 0, lane: 2, items: [], snaps: [[720, 1, 0, 0, 0, 0, 1, 1, 1]] }] }), null);
+    eq('farmAt: game shorter than 12:00 has no checkpoint', E.farmAt({ ...fg(sn(1, 1, 1, 1, 1, 1), sn(1, 1, 1, 1, 1, 1), sn(1, 1, 1, 1, 1, 1)).D, dur: 600 }), null);
+    const lanes = E.farmLanes(fg(sn(2400, 300, 100, 0, 32, 36), sn(2400, 700, 900, 0, 30, 36), sn(2400, 500, 700, 0, 34, 36)).D);
+    eq('farmLanes: per-player souls per lane (both sides present only), flags your lane', lanes.map(l => [l.lane, l.yours, Math.round(l.mine), Math.round(l.theirs)]), [[2, true, 2900, 3800]]);
+    const prof = fgs => E.farmProfile(fgs);
+    const mk = (n, boxesMine, boxesOpp) => Array.from({ length: n }, () => fg(sn(2400, 500, boxesMine, 0, 32, 36), sn(2400, 500, boxesOpp, 0, 32, 36), sn(2400, 500, boxesOpp, 0, 32, 36)));
+    eq('farmProfile: under 8 games is not ready', prof(mk(5, 0, 800)).ready, false);
+    const pr = prof(mk(12, 100, 800));
+    eq('farmProfile: consistent box gap is called behind and headlined', [pr.src.find(x => x.key === 'boxes').call, pr.headline.key, Math.round(pr.src.find(x => x.key === 'boxes').gap)], ['behind', 'boxes', -700]);
+    eq('farmProfile: matching camps and lane read even', [pr.src.find(x => x.key === 'camps').call, pr.src.find(x => x.key === 'lane').call], ['even', 'even']);
+    const split = [...mk(6, 100, 800), ...mk(6, 800, 100)];
+    eq('farmProfile: a gap that flips between halves is not called', E.farmProfile(split).src.find(x => x.key === 'boxes').call, 'even');
+    eq('habit jungle12: more camp+box souls than lane opponents', [E.habitById('jungle12').test(null, null, fg(sn(2400, 900, 900, 0, 32, 36), sn(2400, 500, 500, 0, 32, 36), sn(2400, 500, 500, 0, 32, 36)).D), E.habitById('jungle12').test(null, null, mk(1, 0, 800)[0].D)], [true, false]);
+    eq('habit creeps12: 80% of lane creeps', [E.habitById('creeps12').test(null, null, fg(sn(1, 1, 1, 0, 30, 36), sn(1, 1, 1, 0, 1, 36), sn(1, 1, 1, 0, 1, 36)).D), E.habitById('creeps12').test(null, null, fg(sn(1, 1, 1, 0, 20, 36), sn(1, 1, 1, 0, 1, 36), sn(1, 1, 1, 0, 1, 36)).D)], [true, false]);
+    const cd4 = E.compactMatchDetail({ duration_s: 100, players: [{ account_id: 7, player_slot: 1, team: 'Team0', assigned_lane: 1, items: [], stats: [{ time_stamp_s: 60, net_worth: 5, gold_lane_creep: 400, gold_lane_creep_orbs: 300, gold_neutral_creep: 50, gold_source_breakable_gold: 70, gold_treasure: 20, possible_creeps: 9, creep_kills: 8 }] }] }, 7);
+    eq('detail v4: lane souls not double counted by orbs; boxes, treasure, creeps available kept', cd4.players[0].snaps[0].slice(6), [400, 50, 8, 70, 20, 9]);
+
     // rankForecast: divisions per game over the last 40 ranked games, direction only when both halves agree.
     const rk = (badges, won) => badges.map((b, i) => ({ id: i, t: i, mode: 'ranked', badge: b, calib: false, won: won ? won(i) : i % 2 === 0 }));
     eq('forecast: under 15 games = thin', E.rankForecast(rk([41, 41, 41])).call, 'thin');
