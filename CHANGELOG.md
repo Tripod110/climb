@@ -4,6 +4,14 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v27 (2026-11-01): Farm: tabs and named lanes
+- `FARM_SRC` is lane, camps, boxes (treasure dropped). `Engine.laneSide(lane, team)`: assigned_lane 1/4/6 sit at
+  x ~ -7k / 0 / +7k for both teams (25 games of early deaths), shown as left/centre/right from your own base.
+  Colours are not in the data. `farmLanes(D, t, key)` takes one source and returns who was in each lane;
+  `farmSeries(D, key)` is you vs lane opponents at every snapshot.
+- Match Farm card: Summary / Lane creeps / Jungle / Boxes (module state `farmTab`), "usual for you" line from
+  `farmProfile`, deaths before 12:00 beside the gaps. 5 new tests (238 total).
+
 ## v26 (2026-11-01): Farm analyzer
 - `DETAIL_V` 4: compact snapshots gain boxes (`gold_source_breakable_gold`), treasure and `possible_creeps`
   (12 columns). Lane souls were `gold_lane_creep + gold_lane_creep_orbs`, which double counted: orbs are a

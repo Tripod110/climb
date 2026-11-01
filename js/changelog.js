@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 27, date: '2026-11-01', title: 'Farm: tabs and named lanes',
+      items: [
+        'The match Farm card now says who you are compared with: your own souls against the average of the player(s) against you in the same lane as you (their heroes are named), not the whole enemy team.',
+        'New tabs: Summary, Lane creeps, Jungle and Boxes. Each source tab shows you against your lane opponents at every snapshot (and lane creeps killed), plus a lane-by-lane view of that source.',
+        'Lanes are named by where they are on the map, as you face the enemy base: Left, Centre or Right lane (the data’s lane ids 1, 4 and 6 are fixed places), with the heroes in each lane shown and yours marked.',
+        'The summary says whether your biggest gap is usual for you or an exception, and how many times you died before 12:00. The treasure row is gone (it is almost always 0 by 12:00).',
+      ],
+    },
+    {
       v: 26, date: '2026-11-01', title: 'Farm analyzer',
       items: [
         'Every match now has a Farm card: the souls you had from lane creeps, jungle camps, boxes & breakables and treasure at 12:00, against the average of your lane opponents, with your biggest gap named and a lane-by-lane comparison.',

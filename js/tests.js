@@ -388,13 +388,27 @@
     const fg = (mine, opp1, opp2) => ({ m: { id: 1, t: 1, won: true }, L: null, D: { v: 4, dur: 1800, players: [
       fp(1, 0, 2, mine, true), fp(2, 0, 2, sn(2000, 500, 500, 0, 30, 36)), fp(3, 1, 2, opp1), fp(4, 1, 2, opp2), fp(5, 1, 1, sn(9999, 9999, 9999, 0, 36, 36)) ] } });
     const f1 = E.farmAt(fg(sn(2400, 300, 100, 0, 32, 36), sn(2400, 700, 900, 0, 30, 36), sn(2400, 500, 700, 0, 34, 36)).D);
-    eq('farmAt: souls by source vs the average of your lane opponents', f1.src.map(x => [x.key, x.me, x.opp]), [['lane', 2400, 2400], ['camps', 300, 600], ['boxes', 100, 800], ['treasure', 0, 0]]);
+    eq('farmAt: souls by source vs the average of your lane opponents', f1.src.map(x => [x.key, x.me, x.opp]), [['lane', 2400, 2400], ['camps', 300, 600], ['boxes', 100, 800]]);
     eq('farmAt: lane creep efficiency, you vs lane opponents', [Math.round(f1.eff.me * 100), Math.round(f1.eff.opp * 100)], [89, 89]);
     eq('farmAt: opponents in other lanes are ignored', f1.nOpp, 2);
     eq('farmAt: a v3 snapshot (9 columns) has no farm data', E.farmAt({ dur: 1800, players: [{ team: 0, lane: 2, items: [], snaps: [[720, 1, 0, 0, 0, 0, 1, 1, 1]] }] }), null);
     eq('farmAt: game shorter than 12:00 has no checkpoint', E.farmAt({ ...fg(sn(1, 1, 1, 1, 1, 1), sn(1, 1, 1, 1, 1, 1), sn(1, 1, 1, 1, 1, 1)).D, dur: 600 }), null);
     const lanes = E.farmLanes(fg(sn(2400, 300, 100, 0, 32, 36), sn(2400, 700, 900, 0, 30, 36), sn(2400, 500, 700, 0, 34, 36)).D);
     eq('farmLanes: per-player souls per lane (both sides present only), flags your lane', lanes.map(l => [l.lane, l.yours, Math.round(l.mine), Math.round(l.theirs)]), [[2, true, 2900, 3800]]);
+    eq('laneSide: ids 1/4/6 are fixed places, flipped for the other team', [E.laneSide(1, 0), E.laneSide(4, 0), E.laneSide(6, 0), E.laneSide(1, 1), E.laneSide(6, 1), E.laneSide(4, 1), E.laneSide(2, 0)], ['left', 'centre', 'right', 'right', 'left', 'centre', null]);
+    const gd = { dur: 1800, players: [
+      { team: 0, lane: 6, hero: 11, acct: 1, items: [], snaps: [[720, 0, 0, 0, 0, 0, 1000, 200, 20, 100, 0, 30]] },
+      { team: 0, lane: 6, hero: 12, acct: 2, items: null, snaps: [[720, 0, 0, 0, 0, 0, 800, 100, 20, 0, 0, 30]] },
+      { team: 1, lane: 6, hero: 21, acct: 3, items: null, snaps: [[720, 0, 0, 0, 0, 0, 900, 50, 20, 300, 0, 30]] },
+      { team: 0, lane: 1, hero: 13, acct: 4, items: null, snaps: [[720, 0, 0, 0, 0, 0, 500, 500, 20, 0, 0, 30]] },
+      { team: 1, lane: 1, hero: 22, acct: 5, items: null, snaps: [[720, 0, 0, 0, 0, 0, 600, 400, 20, 0, 0, 30]] } ] };
+    const gl2 = E.farmLanes(gd, 720, 'camps');
+    eq('farmLanes: one source, ordered left to right with who was there', gl2.map(l => [l.side, l.yours, Math.round(l.mine), Math.round(l.theirs), l.mineHeroes.map(h => h.hero), l.theirHeroes.map(h => h.hero)]),
+      [['left', false, 500, 400, [13], [22]], ['right', true, 150, 50, [11, 12], [21]]]);
+    eq('farmLanes: only the you flag marks you', gl2[1].mineHeroes.map(h => h.you), [true, false]);
+    const sr = E.farmSeries({ ...gd, players: gd.players.map(p => ({ ...p, snaps: [[360, 0, 0, 0, 0, 0, 300, 0, 9, 0, 0, 15], ...p.snaps] })) }, 'lane');
+    eq('farmSeries: you vs lane opponent at every snapshot', sr.map(r => [r.t, r.me, r.opp]), [[360, 300, 300], [720, 1000, 900]]);
+    eq('farmSeries: unknown source', E.farmSeries(gd, 'nope'), null);
     const prof = fgs => E.farmProfile(fgs);
     const mk = (n, boxesMine, boxesOpp) => Array.from({ length: n }, () => fg(sn(2400, 500, boxesMine, 0, 32, 36), sn(2400, 500, boxesOpp, 0, 32, 36), sn(2400, 500, boxesOpp, 0, 32, 36)));
     eq('farmProfile: under 8 games is not ready', prof(mk(5, 0, 800)).ready, false);

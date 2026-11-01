@@ -613,3 +613,8 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
 .forecast h2 { margin: 4px 0 6px; }
 .farm-lanes { list-style: none; margin: 6px 0 0; padding: 0; }
 .farm-lanes li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line, #26262a); }
+.farm-lanes li { align-items: center; }
+.fl-name { min-width: 150px; }
+.fl-who { display: flex; align-items: center; gap: 4px; flex: 1; }
+.fl-h { display: inline-flex; border-radius: 50%; }
+.fl-h.you { outline: 2px solid #e8e8ea; outline-offset: 1px; }

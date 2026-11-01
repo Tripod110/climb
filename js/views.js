@@ -300,25 +300,56 @@
   const gapHtml = (c, v) => `<span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : 'muted'}">${v > 0 ? '+' : v < 0 ? '−' : '±'}${c.fmtInt(Math.abs(Math.round(v)))}</span>`;
   const clk = t => Math.floor(t / 60) + ':' + String(Math.round(t % 60)).padStart(2, '0');
 
+  let farmTab = 'sum';   // 'sum' | 'lane' | 'camps' | 'boxes'; module state because the page redraws as data loads
+  const FARM_TABS = [['sum', 'Summary'], ['lane', 'Lane creeps'], ['camps', 'Jungle'], ['boxes', 'Boxes']];
+  const laneName = l => l.side ? l.side[0].toUpperCase() + l.side.slice(1) + ' lane' : 'Lane ' + l.lane;
+  const sgnN = (c, v) => (v > 0 ? '+' : v < 0 ? '−' : '±') + c.fmtInt(Math.abs(Math.round(v)));
+  /* Named lanes, with who stood in them: the same lane you were in is the one your numbers are compared in. */
+  function lanesList(c, lanes) {
+    const heroes = hs => hs.map(h => `<span class="fl-h${h.you ? ' you' : ''}" title="${c.esc(c.heroName(h.hero))}">${icon(c, h.hero, 22)}</span>`).join('');
+    return `<ul class="farm-lanes">${lanes.map(l => `<li><span class="fl-name"><b>${laneName(l)}</b>${l.yours ? ' <span class="you-tag">Your lane</span>' : ''}</span>
+      <span class="fl-who">${heroes(l.mineHeroes)} <span class="muted small">vs</span> ${heroes(l.theirHeroes)}</span>
+      <span class="n">${c.fmtInt(Math.round(l.mine))} <span class="muted">vs</span> ${c.fmtInt(Math.round(l.theirs))}</span>${gapHtml(c, l.mine - l.theirs)}</li>`).join('')}</ul>`;
+  }
+
   function farmMatchCard(c, m) {
     const E = c.E, D = c.state.details[m.id];
     if (!D || D.v !== E.DETAIL_V) return '';
     const f = E.farmAt(D);
     if (!f) return '';
-    const lanes = E.farmLanes(D, f.t);
+    const lanes = E.farmLanes(D, f.t), yours = lanes && lanes.find(l => l.yours);
+    const opps = yours ? yours.theirHeroes.map(h => c.esc(c.heroName(h.hero))).join(' and ') : '';
+    const who = f.nOpp ? `<p class="muted small">Compared with the ${f.nOpp === 1 ? 'player' : f.nOpp + ' players'} against you in your own lane (${yours ? laneName(yours).toLowerCase() : 'your lane'}${opps ? ': ' + opps : ''}): your souls from each source against their average. Not the whole enemy team.</p>` : '';
+    const tabs = seg('Farm view', FARM_TABS, farmTab).replace('class="seg-ctl"', 'class="seg-ctl" id="ft"');
+    const head = `<div class="card-head"><div><div class="t-label">Farm ${src('yours', FARM_INFO)}</div><h2>${farmTab === 'sum' ? `Where your souls came from at ${clk(f.t)}` : c.esc((E.FARM_SRC.find(x => x[0] === farmTab) || [])[1])}</h2></div></div>${tabs}`;
+    if (farmTab !== 'sum') {
+      const rows = E.farmSeries(D, farmTab) || [];
+      const ls = E.farmLanes(D, f.t, farmTab);
+      return `<section class="card farm-card">${head}${who}
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>By</th><th class="n">You</th><th class="n">Lane opponents</th><th class="n">Gap</th>${farmTab === 'lane' ? '<th class="n">Creeps killed (you / them)</th>' : ''}</tr></thead>
+        <tbody>${rows.map(r => `<tr><td>${clk(r.t)}</td><td class="n">${c.fmtInt(r.me)}</td><td class="n">${r.opp == null ? '—' : c.fmtInt(Math.round(r.opp))}</td><td class="n">${r.opp == null ? '—' : gapHtml(c, r.me - r.opp)}</td>${farmTab === 'lane' ? `<td class="n">${r.effMe == null ? '—' : Math.round(r.effMe * 100) + '%'}${r.effOpp == null ? '' : ' / ' + Math.round(r.effOpp * 100) + '%'}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+        ${ls ? `<div class="t-label" style="margin-top:12px">Lane by lane at ${clk(f.t)} · souls per player from this source</div>${lanesList(c, ls)}` : ''}
+      </section>`;
+    }
     const rows = f.src.filter(x => x.opp != null);
     const worst = rows.slice().sort((a, b) => (a.me - a.opp) - (b.me - b.opp))[0];
-    const line = !rows.length ? 'No lane opponent found for this game, so there is nothing to compare against.'
-      : worst && worst.me - worst.opp <= -E.FARM_MIN_GAP ? `Biggest gap: <b>${c.esc(worst.label.toLowerCase())}</b>, ${gapHtml(c, worst.me - worst.opp)} souls against your lane opponents by ${clk(f.t)}.`
-      : `No source where you trailed your lane opponents by ${E.FARM_MIN_GAP}+ souls by ${clk(f.t)}.`;
-    const eff = f.eff.me == null ? '' : `<p class="muted small">Lane creeps killed by ${clk(f.t)}: you ${Math.round(f.eff.me * 100)}%${f.eff.opp != null ? `, lane opponents ${Math.round(f.eff.opp * 100)}%` : ''}.</p>`;
-    return `<section class="card farm-card"><div class="card-head"><div><div class="t-label">Farm ${src('yours', FARM_INFO)}</div><h2>Where your souls came from at ${clk(f.t)}</h2></div></div>
+    const P = E.farmProfile(c.analysisEntries());
+    let line;
+    if (!rows.length) line = 'No lane opponent found for this game, so there is nothing to compare against.';
+    else if (worst && worst.me - worst.opp <= -E.FARM_MIN_GAP) {
+      const gap = worst.me - worst.opp, u = P.ready ? (P.src.find(x => x.key === worst.key) || {}).gap : null;
+      const usual = u == null ? '' : Math.abs(u) < E.FARM_MIN_GAP ? ` You’re usually about even here (${sgnN(c, u)}), so this game was unusual.`
+        : u < 0 ? ` You’re usually ${sgnN(c, u)} here, so this is your pattern.` : ` You’re usually ${sgnN(c, u)} here, so this game was the exception.`;
+      line = `Biggest gap: <b>${c.esc(worst.label.toLowerCase())}</b>, ${gapHtml(c, gap)} souls against your lane opponents by ${clk(f.t)}.${usual}`;
+    } else line = `No source where you trailed your lane opponents by ${E.FARM_MIN_GAP}+ souls by ${clk(f.t)}.`;
+    const me = D.players.find(p => p.items), early = me ? (me.deaths || []).filter(d => d[0] < f.t).length : null;
+    const eff = f.eff.me == null ? '' : `<p class="muted small">Lane creeps killed by ${clk(f.t)}: you ${Math.round(f.eff.me * 100)}%${f.eff.opp != null ? `, lane opponents ${Math.round(f.eff.opp * 100)}%` : ''}.${early != null ? ` You died ${early} time${early === 1 ? '' : 's'} before then, which costs farm too.` : ''}</p>`;
+    return `<section class="card farm-card">${head}${who}
       <p>${line}</p>
       <div class="table-wrap"><table class="tbl"><thead><tr><th>Source</th><th class="n">You</th><th class="n">Lane opponents</th><th class="n">Gap</th></tr></thead>
       <tbody>${f.src.map(x => `<tr><td>${c.esc(x.label)}</td><td class="n">${c.fmtInt(x.me)}</td><td class="n">${x.opp == null ? '—' : c.fmtInt(Math.round(x.opp))}</td><td class="n">${x.opp == null ? '—' : gapHtml(c, x.me - x.opp)}</td></tr>`).join('')}</tbody></table></div>
       ${eff}
-      ${lanes && lanes.length > 1 ? `<div class="t-label" style="margin-top:12px">Lane by lane · souls per player from those four sources</div>
-        <ul class="farm-lanes">${lanes.map((l, i) => `<li><span>${l.yours ? 'Your lane <span class="you-tag">You</span>' : 'Other lane ' + (lanes.slice(0, i).filter(x => !x.yours).length + 1)}</span><span class="n">${c.fmtInt(Math.round(l.mine))} <span class="muted">vs</span> ${c.fmtInt(Math.round(l.theirs))}</span>${gapHtml(c, l.mine - l.theirs)}</li>`).join('')}</ul>` : ''}
+      ${lanes && lanes.length > 1 ? `<div class="t-label" style="margin-top:12px">Lane by lane · souls per player from all three sources</div>${lanesList(c, lanes)}` : ''}
     </section>`;
   }
 
@@ -924,6 +955,7 @@
       ${coachCard(c, m)}
       <section class="card flush scoreboard">${team(myTeam)}${team(1 - myTeam)}</section>`;
     if (window.WPMODEL && !c.matchWin(m.id)) c.ensureMatchDetail(m.id);
+    bindSeg(host, '#ft', v2 => { farmTab = v2; c.render(); });
     const cb = host.querySelector('[data-coach]');
     if (cb) cb.addEventListener('click', () => c.runDebrief(m.id, cb.dataset.coach === 'again'));
   }

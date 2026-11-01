@@ -1563,7 +1563,7 @@
      The API gives cumulative souls by source at about 10 snapshots a match (every 3 to 5 minutes), for
      every player. It does NOT say which camp or box was taken or when, so this compares totals by
      source and never claims anything about individual spawns. Needs DETAIL_V 4 snapshots (12 columns). */
-  const FARM_SRC = [['lane', 'Lane creeps', 6], ['camps', 'Jungle camps', 7], ['boxes', 'Boxes & breakables', 9], ['treasure', 'Treasure', 10]];
+  const FARM_SRC = [['lane', 'Lane creeps', 6], ['camps', 'Jungle camps', 7], ['boxes', 'Boxes & breakables', 9]];
   const FARM_T = 720;                 // the 12:00 checkpoint every farm number is read at
   const FARM_MIN_GAMES = 8, FARM_MIN_GAP = 150;   // games for a profile; souls a gap needs to count as real
   const hasFarm = s => s && s.length >= 12;
@@ -1579,18 +1579,46 @@
       src: FARM_SRC.map(([key, label, i]) => ({ key, label, me: a[i], opp: avg(i) })),
       eff: { me: eff(a), opp: opps.length ? mean(opps.map(eff).filter(x => x != null)) : null } };
   }
-  /* Per lane at time t: souls per player from the four sources, your side vs theirs. */
-  function farmLanes(D, t) {
+  /* Lane ids (assigned_lane) are 1, 4 and 6. Early deaths across 25 games put 1 at x ~ -7,000, 4 at ~0 and 6
+     at ~ +7,000 on BOTH teams' players, so they are fixed places on the map. Seen from your own base (team 0 at
+     -y looks towards +y, team 1 the other way) that is left, centre or right. Colours aren't in the data. */
+  const LANE_X = { 1: -1, 4: 0, 6: 1 };
+  function laneSide(lane, team) {
+    if (!(lane in LANE_X)) return null;
+    const x = LANE_X[lane] * (team === 0 ? 1 : -1);
+    return x < 0 ? 'left' : x > 0 ? 'right' : 'centre';
+  }
+  const srcFilter = key => key ? FARM_SRC.filter(x => x[0] === key) : FARM_SRC;
+  /* Per lane at time t: souls per player from the chosen source (or all of them), your side vs theirs,
+     with who was in the lane. */
+  function farmLanes(D, t, key) {
     t = t || FARM_T;
     const me = D && D.players.find(p => p.items);
     if (!me || D.dur < t) return null;
-    const per = ps => { const ss = ps.map(p => snapAtT(p, t)).filter(hasFarm); return ss.length ? { n: ss.length, souls: mean(ss.map(s => FARM_SRC.reduce((x, [, , i]) => x + s[i], 0))) } : null; };
+    const srcs = srcFilter(key);
+    const per = ps => { const ss = ps.map(p => snapAtT(p, t)).filter(hasFarm); return ss.length ? { n: ss.length, souls: mean(ss.map(s => srcs.reduce((x, [, , i]) => x + s[i], 0))) } : null; };
     const out = [];
-    for (const lane of [...new Set(D.players.map(p => p.lane).filter(Boolean))].sort()) {
-      const mine = per(D.players.filter(p => p.lane === lane && p.team === me.team)), theirs = per(D.players.filter(p => p.lane === lane && p.team !== me.team));
-      if (mine && theirs) out.push({ lane, yours: lane === me.lane, mine: mine.souls, theirs: theirs.souls, nMine: mine.n, nTheirs: theirs.n });
+    for (const lane of [...new Set(D.players.map(p => p.lane).filter(Boolean))].sort((a, b) => (LANE_X[a] ?? 9) - (LANE_X[b] ?? 9))) {
+      const mp = D.players.filter(p => p.lane === lane && p.team === me.team), tp = D.players.filter(p => p.lane === lane && p.team !== me.team);
+      const mine = per(mp), theirs = per(tp);
+      if (mine && theirs) out.push({ lane, side: laneSide(lane, me.team), yours: lane === me.lane, mine: mine.souls, theirs: theirs.souls, nMine: mine.n, nTheirs: theirs.n,
+        mineHeroes: mp.map(p => ({ hero: p.hero, you: p === me })), theirHeroes: tp.map(p => ({ hero: p.hero })) });
     }
     return out.length ? out : null;
+  }
+  /* One source at every snapshot: you vs the average of your lane opponents. */
+  function farmSeries(D, key) {
+    const me = D && D.players.find(p => p.items);
+    const col = (FARM_SRC.find(x => x[0] === key) || [])[2];
+    if (!me || col == null) return null;
+    const opps = me.lane ? D.players.filter(p => p.team !== me.team && p.lane === me.lane) : [];
+    const rows = me.snaps.filter(hasFarm).filter(a => a[0] > 0).map(a => {
+      const os = opps.map(p => snapAtT(p, a[0])).filter(hasFarm);
+      const eff = s => s[11] > 0 ? s[8] / s[11] : null;
+      return { t: a[0], me: a[col], opp: os.length ? mean(os.map(s => s[col])) : null,
+        effMe: eff(a), effOpp: os.length ? mean(os.map(eff).filter(x => x != null)) : null };
+    });
+    return rows.length ? rows : null;
   }
   /* Your habits across games: per source, your souls minus your lane opponents' at 12:00, averaged.
      A gap is only called when it is at least FARM_MIN_GAP souls AND has the same sign in both halves
@@ -1744,7 +1772,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, farmAt, farmLanes, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, farmAt, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
