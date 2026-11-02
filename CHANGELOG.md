@@ -4,6 +4,10 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.34 (2026-11-02): Scouting reads left to right
+- `splitTable` drops the dumbbell (`.db*`) for diverging bars (`.dv*`): 50% at centre, track 20–80% clamped, one
+  "Do it" and one "Skip it" lane per habit, red left of centre, green right. Header row labels Losing ◀ 50% ▶ Winning.
+
 ## 0.33 (2026-11-02): Form now counts your farm
 - `METRICS` gains `farm`: `Engine.farmRatio(D)` = (lane + camps + boxes souls at 12:00 + 100) ÷ (lane opponents' average + 100),
   log-scaled and z-scored against your other games on the hero like the other four. `perfScores(pool, lobbies, targets, details)`

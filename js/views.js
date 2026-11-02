@@ -247,17 +247,15 @@
   function splitTable(c, cat) {
     const rows = cat.filter(x => x.eligible).slice(0, 4);
     if (!rows.length) return '<p class="muted small">Counting once match details for your recent games have loaded…</p>';
-    /* A dumbbell per habit on a 0–100% win-rate track: red = when you don't, green = when you do. */
-    const at = v => Math.round(Math.max(0, Math.min(1, v)) * 1000) / 10;
-    return `<div class="db-key small"><span class="muted">Win rate</span><span><i class="db-dot y"></i>when you do</span><span><i class="db-dot n"></i>when you don’t</span>${src('yours', `Win rate in your last ${rows[0].n} games with match detail, split by whether you passed each check. These are measured before the game is decided, unless marked “follows result”.`)}</div>
-      <ul class="splits">${rows.map(x => {
-        const lo = Math.min(x.wrPass, x.wrFail), hi = Math.max(x.wrPass, x.wrFail);
-        return `<li><span class="sp-lab">${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}<span class="muted small" title="How often you do it">${c.pct(x.passRate)} of games</span></span>
-        <span class="db" role="img" aria-label="${c.pct(x.wrPass)} when you do, ${c.pct(x.wrFail)} when you don’t"><span class="db-mid"></span>
-          <span class="db-span" style="left:${at(lo)}%;width:${at(hi) - at(lo)}%"></span>
-          <span class="db-dot n" style="left:${at(x.wrFail)}%"></span><span class="db-dot y" style="left:${at(x.wrPass)}%"></span></span>
-        <span class="sp-num"><b class="pos">${c.pct(x.wrPass)}</b><span class="neg">${c.pct(x.wrFail)}</span></span></li>`;
-      }).join('')}</ul>`;
+    /* Diverging from a 50% win rate: a bar left of centre is a losing record, right is a winning one.
+       Two bars per habit, when you do it and when you skip it. The track spans 20–80% (clamped). */
+    const LO = 0.2, HI = 0.8, at = v => (Math.max(LO, Math.min(HI, v)) - LO) / (HI - LO) * 100;
+    const lane = (k, v) => `<span class="dv-lane"><span class="dv-k">${k}</span><span class="dv-track"><span class="dv-bar ${v >= 0.5 ? 'w' : 'l'}" style="left:${Math.min(at(v), 50)}%;width:${Math.abs(at(v) - 50)}%"></span></span><b class="${v >= 0.5 ? 'pos' : 'neg'}">${c.pct(v)}</b></span>`;
+    return `<ul class="splits">
+      <li class="dv-head small"><span>${src('yours', `Win rate in your last ${rows[0].n} games with match detail, split by whether you passed each check. These are measured before the game is decided, unless marked “follows result”.`)}</span>
+        <span class="dv-scale"><span class="neg">◀ Losing</span><span class="muted">50%</span><span class="pos">Winning ▶</span></span></li>
+      ${rows.map(x => `<li><span class="sp-lab">${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}<span class="muted small" title="How often you do it">${c.pct(x.passRate)} of games</span></span>
+        <span class="dv" role="img" aria-label="Win rate ${c.pct(x.wrPass)} when you do it, ${c.pct(x.wrFail)} when you skip it">${lane('Do it', x.wrPass)}${lane('Skip it', x.wrFail)}</span></li>`).join('')}</ul>`;
   }
 
   /* After a session: record, the habit row and the biggest swing, once. */

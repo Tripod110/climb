@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 34, date: '2026-11-02', title: 'Scouting reads left to right',
+      items: [
+        'What wins you games now has 50% win rate in the middle: a red bar to the left is a losing record, a green bar to the right is a winning one.',
+        'Each habit gets two bars, Do it and Skip it, with the win rate at the end, so you can see at a glance which habits turn losses into wins.',
+      ],
+    },
+    {
       v: 33, date: '2026-11-02', title: 'Form now counts your farm',
       items: [
         'Form (how you played vs your usual on that hero) now includes your farm: lane, camp and box souls by 12:00 against your lane opponents, next to souls, damage, kills + assists and staying alive.',
