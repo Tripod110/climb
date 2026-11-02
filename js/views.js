@@ -216,6 +216,7 @@
         ${sh('The climb · season rank points')}
         ${projRow(c)}
         <div id="rank-chart" class="chart"></div>
+        <div class="chart-key small"><span class="pos">▲</span> ranked up <span class="neg">▼</span> ranked down</div>
       </section>`;
 
     const pts = E.rankSeries(M.season);
@@ -224,7 +225,10 @@
     c.C.rankLine(host.querySelector('#rank-chart'), pts, {
       hiFrom: hiFrom < 0 ? null : hiFrom,
       label: 'Cumulative rank points across the season',
-      tipHtml: p => `<b>${c.signed(p.cum)} pts</b> · ${c.esc(E.badgeName(p.badge, c.tiers()))}<br>${p.won ? 'Win' : 'Loss'} on ${c.esc(c.heroName(p.hero))} (${c.signed(p.delta)})`,
+      tipHtml: (p, i) => {
+        const was = i > 0 ? pts[i - 1].badge : null, moved = p.badge != null && was != null && p.badge !== was;
+        return `${moved ? `<b class="${p.badge > was ? 'pos' : 'neg'}">${p.badge > was ? '▲ Ranked up' : '▼ Ranked down'} to ${c.esc(E.badgeName(p.badge, c.tiers()))}</b><br>` : ''}<b>${c.signed(p.cum)} pts</b>${moved ? '' : ' · ' + c.esc(E.badgeName(p.badge, c.tiers()))}<br>${p.won ? 'Win' : 'Loss'} on ${c.esc(c.heroName(p.hero))} (${c.signed(p.delta)})`;
+      },
     });
     bindSeg(host, '#win', v2 => { S.window = v2; c.save(); c.render(); });
     bindSeg(host, '#scope', v2 => { S.games = v2; c.save(); c.render(); });

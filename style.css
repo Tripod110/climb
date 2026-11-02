@@ -660,6 +660,8 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
 .chart .mk.up { fill: var(--good); }
 .chart .mk.down { fill: var(--bad); }
 .chart .mk.end { fill: var(--accent); }
+.chart-key { display: flex; justify-content: center; align-items: center; gap: 6px; color: var(--muted); margin-top: 4px; }
+.chart-key .neg { margin-left: 12px; }
 .tip {
   position: absolute; z-index: 5; pointer-events: none; max-width: 240px;
   background: var(--raised); color: var(--ink); border: 1px solid var(--border-2); border-radius: 8px;

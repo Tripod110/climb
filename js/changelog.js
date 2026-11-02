@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 37, date: '2026-11-02', title: 'Rank-ups on the climb chart',
+      items: [
+        'The marks on the season chart are the games where your rank changed: ▲ when you ranked up, ▼ when you ranked down, with a key under the chart.',
+        'Hover one to see the rank you moved to.',
+      ],
+    },
+    {
       v: 36, date: '2026-11-02', title: 'What wins you games, in one bar',
       items: [
         'Each habit is now one bar. Green to the right is how often you won when it happened; a quiet grey to the left is how often you lost when it didn’t.',

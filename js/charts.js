@@ -74,10 +74,11 @@
     const d = pts.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.cum).toFixed(1)).join(' ');
     el('path', { d: d + ` L${x(pts.length - 1)} ${y(Math.max(lo, 0))} L${x(0)} ${y(Math.max(lo, 0))} Z`, class: 'wash' }, svg);
     el('path', { d, class: 'line' }, svg);
-    // badge changes
+    // badge changes: ▲ ranked up, ▼ ranked down, on the line at that game
     for (let i = 1; i < pts.length; i++) {
       if (pts[i].badge != null && pts[i - 1].badge != null && pts[i].badge !== pts[i - 1].badge) {
-        el('circle', { cx: x(i), cy: y(pts[i].cum), r: 4, class: pts[i].badge > pts[i - 1].badge ? 'mk up' : 'mk down' }, svg);
+        const up = pts[i].badge > pts[i - 1].badge, cx = x(i), cy = y(pts[i].cum), s = 6;
+        el('path', { d: up ? `M${cx} ${cy - s}L${cx + s} ${cy + s * .7}L${cx - s} ${cy + s * .7}Z` : `M${cx} ${cy + s}L${cx + s} ${cy - s * .7}L${cx - s} ${cy - s * .7}Z`, class: up ? 'mk up' : 'mk down' }, svg);
       }
     }
     // end label (selective: only the latest value)

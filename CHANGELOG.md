@@ -4,6 +4,10 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.37 (2026-11-02): Rank-ups on the climb chart
+- `Charts.rankLine` draws badge changes as ▲/▼ paths instead of circles (they read as W/L). Overview adds a `.chart-key`
+  and the tooltip leads with "▲ Ranked up to X" / "▼ Ranked down to X" on those games.
+
 ## 0.36 (2026-11-02): What wins you games, in one bar
 - `splitTable` is one bar per habit (`.dv*`, replacing the `.db*` dumbbell), split at centre, each half 0–100%: green right =
   win rate with it (wrPass), muted grey left = loss rate without it (1 − wrFail). Worded "with / without it", not "do / skip",
