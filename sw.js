@@ -2,11 +2,11 @@
    - Navigations are NETWORK-FIRST, so index.html (which carries the ?v=N references) is never stale.
    - Versioned assets are CACHE-FIRST, matched exactly including the query (never ignoreSearch).
    - deadlock-api.com and helper (127.0.0.1) requests are not touched. Freshness lives in the app's own localStorage cache. */
-const CACHE = 'climb-v40';
+const CACHE = 'climb-v41';
 const SHELL = [
-  './', 'index.html', 'style.css?v=40',
-  'js/changelog.js?v=40', 'js/engine.js?v=40', 'js/store.js?v=40', 'js/api.js?v=40', 'js/play.js?v=40', 'js/charts.js?v=40', 'js/wpmodel.js?v=40', 'js/coach.js?v=40', 'js/views.js?v=40', 'js/app.js?v=40',
-  'ingest.html', 'js/guide.js?v=40', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png',
+  './', 'index.html', 'style.css?v=41',
+  'js/changelog.js?v=41', 'js/engine.js?v=41', 'js/store.js?v=41', 'js/api.js?v=41', 'js/play.js?v=41', 'js/charts.js?v=41', 'js/wpmodel.js?v=41', 'js/coach.js?v=41', 'js/views.js?v=41', 'js/app.js?v=41',
+  'ingest.html', 'js/guide.js?v=41', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
 self.addEventListener('install', e => {

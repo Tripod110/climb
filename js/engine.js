@@ -410,6 +410,32 @@
     }).sort((a, b) => b.games - a.games);
   }
 
+  /* Heroes tab topline: your best hero, the one to park while you climb, and a few tidbits, over the
+     last HERO_INS_DAYS days. Win rates are shrunk toward your overall rate by HERO_INS_K games
+     ((wins + K·overall) / (games + K)), so a 4–0 hero can't top a 30–20 one. A hero needs
+     HERO_INS_MIN games to be named best or avoid. ms: matches (any mode), perf: perfScores map. */
+  const HERO_INS_DAYS = 90, HERO_INS_MIN = 10, HERO_INS_K = 10, HERO_INS_GAP = 0.05;
+  function heroInsights(ms, perf, now) {
+    const recent = (ms || []).filter(m => now - m.t <= HERO_INS_DAYS * 86400);
+    const n = recent.length;
+    if (!n) return { n, days: HERO_INS_DAYS, base: null, rows: [], best: null, avoid: null, mostPts: null, drain: null, rising: null, most: null };
+    const base = recent.filter(m => m.won).length / n;
+    const rows = heroBreakdown(recent, perf || new Map()).map(h => Object.assign(h, { adj: (h.wins + HERO_INS_K * base) / (h.games + HERO_INS_K) }));
+    const pool = rows.filter(h => h.games >= HERO_INS_MIN);
+    const top = (xs, f) => xs.length ? xs.reduce((a, b) => f(b) > f(a) ? b : a) : null;
+    const bestC = top(pool, h => h.adj), best = bestC && bestC.adj > base ? bestC : null;
+    const avoidC = top(pool.filter(h => h !== best), h => -h.adj);
+    const avoid = avoidC && avoidC.winRate <= base - HERO_INS_GAP && avoidC.adj < base ? avoidC : null;
+    const ranked = rows.filter(h => h.hasDelta >= 5);
+    const mp = top(ranked, h => h.net), dr = top(ranked, h => -h.net);
+    const rs = top(rows.filter(h => h.trend != null), h => h.trend);
+    return { n, days: HERO_INS_DAYS, base, rows, best, avoid,
+      mostPts: mp && mp.net > 0 ? mp : null,
+      drain: dr && dr.net < 0 && dr !== avoid ? dr : null,
+      rising: rs && rs.trend >= 0.2 ? rs : null,
+      most: top(rows, h => h.games) };
+  }
+
   function badgeName(badge, tiers) {
     if (badge == null) return 'Unranked';
     const tier = Math.floor(badge / 10), sub = badge % 10;
@@ -1824,7 +1850,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, matchTotals, matchDays, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

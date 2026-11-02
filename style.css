@@ -936,3 +936,27 @@ a.mr2.gold::before { background: var(--gold); }
   .duel-row { grid-template-columns: minmax(0, 1fr) 70px 70px; }
   .duel-row b { font-size: 18px; }
 }
+
+/* ---------------------------------------------------------------- Heroes topline (0.41) */
+.ins-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--brass-lo); border-bottom: 1px solid var(--brass-lo); }
+.ins { display: grid; justify-items: center; align-content: start; gap: 6px; padding: 14px 10px 12px; text-align: center; color: inherit; position: relative; }
+.ins + .ins { border-left: 1px solid var(--border); }
+.ins:hover { background: var(--hover); }
+.ins::before { content: ''; position: absolute; left: 30%; right: 30%; top: -1px; height: 2px; background: var(--brass); }
+.ins.good::before { background: var(--good); }
+.ins.bad::before { background: var(--bad); }
+.ins-h { display: grid; justify-items: center; gap: 4px; }
+.ins-h b { font: 600 15px/1.1 var(--display); letter-spacing: .03em; }
+.ins-v { font: 600 26px/1 var(--display); font-variant-numeric: tabular-nums; }
+.ins.good .ins-v { color: var(--good-text); }
+.ins.bad .ins-v { color: var(--bad-text); }
+.hero-pick { display: flex; overflow-x: auto; gap: 6px; padding: 2px 2px 10px; margin: 18px 0 6px; scrollbar-width: thin; }
+.hero-pick .hp { flex: 0 0 132px; }
+.hero-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 10px 0 12px; }
+@media (max-width: 640px) {
+  .ins-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ins:nth-child(odd) { border-left: 0; }
+  .ins:nth-child(n + 3) { border-top: 1px solid var(--border); }
+  .ins-v { font-size: 22px; }
+  .hero-pick .hp { flex-basis: 76px; }
+}

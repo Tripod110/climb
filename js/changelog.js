@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 41, date: '2026-11-02', title: 'Your best hero, and the one to park',
+      items: [
+        'Heroes now opens with a scouting row over your last 90 days: your best hero, the one to park while you climb, most rank points, biggest drain, the hero on the rise and your most played. Tap one to open it.',
+        'A small sample can’t win “best”: each hero’s win rate is weighed against your overall win rate, and best or park-it need 10+ games.',
+        'Every hero is now in one scrolling strip, and the folded comparison tables are gone.',
+      ],
+    },
+    {
       v: 40, date: '2026-11-02', title: 'Heroes and Friends, redesigned',
       items: [
         'Heroes now matches the rest of Climb: your eight busiest heroes in a strip (every hero folds below), five numbers for the picked hero, and the road to the next rank as you → their average figures with a Train it button.',

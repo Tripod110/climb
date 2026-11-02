@@ -4,6 +4,13 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.41 (2026-11-02): Your best hero, and the one to park
+- `Engine.heroInsights(ms, perf, now)`: last `HERO_INS_DAYS` (90) days, per-hero win rate shrunk toward your overall by
+  `HERO_INS_K` (10) games. best = top shrunk rate above overall; avoid = lowest, 5+ pts under overall; both need
+  `HERO_INS_MIN` (10) games. Plus mostPts / drain (5+ ranked), rising (form trend ≥ 0.2), most played. 5 new tests.
+- Heroes: `heroScout` cards on top, every hero in one scrolling strip (no "All heroes" fold), picked-hero header below.
+  `ladderHtml` (the two folded comparison tables) removed.
+
 ## 0.40 (2026-11-02): Heroes and Friends, redesigned
 - Shared helpers: `matchRow`/`matchHead` (Matches + friend page) and `wlFig` (Coach + Heroes).
 - `heroes()`: masthead with the Rank road / Coach me toggle, an 8-hero strip plus a folded full grid, a 5-figure `.ledger.l5`.

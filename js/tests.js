@@ -459,6 +459,14 @@
     eq('matchTotals: empty list', [E.matchTotals([]).n, E.matchTotals([]).winRate], [0, null]);
     const days = E.matchDays(mt);
     eq('matchDays: grouped by local day, newest first, with totals', days.map(g => [g.games.length, g.tot.wins, g.tot.net]), [[2, 1, 0], [1, 1, 0]]);
+    // heroInsights: shrunk win rates pick the best hero and the one to park; tidbits from rank points.
+    const NOW = 1e9, hg = (hero, w, l, delta) => [...Array(w).fill(true), ...Array(l).fill(false)].map((won, i) => ({ id: hero * 1000 + i, t: NOW - 86400 * (i + 1), hero, won, delta: delta == null ? null : won ? delta : -delta }));
+    const hi = E.heroInsights([...hg(1, 18, 8, 300), ...hg(2, 4, 0, 300), ...hg(3, 5, 9, 300), ...hg(4, 10, 10, null), { id: 9, t: NOW - 200 * 86400, hero: 5, won: false }], new Map(), NOW);
+    eq('heroInsights: best is the solid record, not the 4–0', hi.best && hi.best.hero, 1);
+    eq('heroInsights: avoid is the clearly-below-your-average hero', hi.avoid && hi.avoid.hero, 3);
+    eq('heroInsights: most rank points, and no drain when it is the avoid hero', [hi.mostPts && hi.mostPts.hero, hi.drain], [1, null]);
+    eq('heroInsights: games older than the window are left out', [hi.n, hi.rows.some(h => h.hero === 5)], [64, false]);
+    eq('heroInsights: nobody below average = no avoid', E.heroInsights([...hg(1, 10, 10), ...hg(2, 10, 10)], new Map(), NOW).avoid, null);
     // rankProjection: fc above is 31 games, +5 divisions from Acolyte 1 → Acolyte 6 (6 games/division).
     const pj = E.rankProjection(fc, [12, 30]);
     eq('projection: pace carried forward', pj.steps.map(s => s.badge), [42, 45]);

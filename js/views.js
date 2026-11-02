@@ -1081,6 +1081,25 @@
         ${d.killers.length ? `<div class="num-line killers"><span class="t-label">Killed most by</span>${d.killers.slice(0, 3).map(k => `<span>${icon(c, k.hero, 18)} ${c.esc(k.name)} <b>${k.n}</b></span>`).join('')}${d.zones.length ? `<span class="t-label">Where</span><span>${c.esc(d.zones[0].zone)} <b>${c.pct(d.zones[0].share)}</b></span>` : ''}</div>` : ''}
       </section>`;
   }
+  /* Heroes topline (Engine.heroInsights): best hero, the one to park, and tidbits, as cards that open the hero. */
+  function heroScout(c, ins) {
+    const E = c.E;
+    if (!ins.rows.length) return '';
+    const wl = h => `${h.wins}–${h.losses}`;
+    const card = (k, h, value, sub, cls) => !h ? '' : `<a class="ins ${cls || ''}" href="#/heroes/${h.hero}"><span class="t-label">${k}</span>
+      <span class="ins-h">${icon(c, h.hero, 34)}<b>${c.esc(c.heroName(h.hero))}</b></span><span class="ins-v">${value}</span><span class="t-sub">${sub}</span></a>`;
+    const cards = [
+      card('Your best', ins.best, c.pct(ins.best && ins.best.winRate), ins.best && `${wl(ins.best)} · ${ins.best.games} games`, 'good'),
+      card('Park it for now', ins.avoid, c.pct(ins.avoid && ins.avoid.winRate), ins.avoid && `${wl(ins.avoid)} · ${ins.avoid.games} games`, 'bad'),
+      card('Most rank points', ins.mostPts, ins.mostPts && c.signed(ins.mostPts.net), ins.mostPts && `${ins.mostPts.hasDelta} ranked`, 'good'),
+      card('Biggest drain', ins.drain, ins.drain && c.signed(ins.drain.net), ins.drain && `${ins.drain.hasDelta} ranked`, 'bad'),
+      card('On the rise', ins.rising, ins.rising && '▲ +' + ins.rising.trend.toFixed(1), 'form, last 5 vs before', 'good'),
+      card('Most played', ins.most, ins.most && String(ins.most.games), ins.most && `games · ${c.pct(ins.most.winRate)}`),
+    ].filter(Boolean);
+    return `<section class="ov-sec">${sh('Scouting · last ' + ins.days + ' days', src('yours', `Over your games in the last ${ins.days} days. A hero’s win rate is weighed against your overall ${c.pct(ins.base)} by ${E.HERO_INS_K} games, so a 4–0 hero can’t beat a 30–20 one; best and park-it need ${E.HERO_INS_MIN}+ games, and park-it must sit 5+ points under your overall. Rank points count ranked games only (5+). On the rise compares the form of your last 5 games on a hero with the ones before.`))}
+      <div class="ins-row">${cards.join('')}</div></section>`;
+  }
+
   function heroes(host, c) {
     const M = c.M, E = c.E, S = c.settings;
     const now = Date.now() / 1000;
@@ -1114,17 +1133,20 @@
     const window = !plan.widened ? `games since the ${new Date(plan.from * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} patch`
       : `the last ${E.BENCH_WIDE_DAYS} days` + (plan.spansPatch ? ' (spans a patch)' : '');
 
-    // The strip: your 8 busiest heroes lately (plus the picked one); every hero folds below.
-    const strip = busiest.slice(0, 8);
-    if (!strip.includes(hero)) strip.push(hero);
+    // Every hero in one strip, busiest lately first (scrolls sideways).
+    const strip = busiest;
+    const ins = E.heroInsights(M.all, M.perf, now);
     const hp = h => `<a href="#/heroes/${h}" class="hp${h === hero ? ' on' : ''}" role="tab" aria-selected="${h === hero}" title="${c.esc(c.heroName(h))}">${icon(c, h, 36)}<span>${c.esc(c.heroName(h))}</span><span class="muted small">${counts.get(h)}</span></a>`;
     const fig = (label, value, sub, badge) => `<div class="fig"><div class="fig-v">${value}</div><div class="t-label">${label}${badge ? ' ' + badge : ''}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
     host.innerHTML = `
-      <div class="masthead"><div class="ident">${icon(c, hero, 56)}<div><div class="rank-name">${c.esc(c.heroName(hero))}</div>
-        <div class="muted small num-line"><span>${games.length} games</span><span>${sum.wins}–${sum.losses}</span>${sum.hasDelta ? `<span>${c.signed(sum.net)} pts</span>` : ''}</div></div></div>
-        <div class="ctl-row">${seg('Hero view', [['road', 'Rank road'], ['coach', 'Coach me']], heroTab).replace('class="seg-ctl"', 'class="seg-ctl" id="ht"')}</div></div>
+      <div class="masthead"><div class="ident"><div><div class="rank-name">Heroes</div>
+        <div class="muted small num-line"><span>${list.length} heroes</span><span>${ins.n} games in ${ins.days} days</span>${ins.base != null ? `<span>${c.pct(ins.base)} overall</span>` : ''}</div></div></div></div>
+      ${heroScout(c, ins)}
       <div class="hero-pick" role="tablist" aria-label="Hero" data-keep-x="heroes">${strip.map(hp).join('')}</div>
-      <details class="fold hero-all"><summary>All heroes (${list.length})</summary><div class="hero-pick wrap">${list.map(hp).join('')}</div></details>
+
+      <div class="hero-head"><div class="ident">${icon(c, hero, 48)}<div><div class="rank-name">${c.esc(c.heroName(hero))}</div>
+        <div class="muted small num-line"><span>${games.length} games</span><span>${sum.wins}–${sum.losses}</span>${sum.hasDelta ? `<span>${c.signed(sum.net)} pts</span>` : ''}</div></div></div>
+        ${seg('Hero view', [['road', 'Rank road'], ['coach', 'Coach me']], heroTab).replace('class="seg-ctl"', 'class="seg-ctl" id="ht"')}</div>
 
       <div class="ledger l5">
         ${fig('Win rate', c.pct(sum.winRate), `${sum.wins}–${sum.losses}`)}
@@ -1164,43 +1186,7 @@
           <div class="t-sub"><span class="neg">${g.rel > 0 ? '+' : '−'}${Math.abs(Math.round(g.rel * 100))}%</span> vs ${c.esc(nextName)}</div>${habitBtn}</div>`;
       }).join('')}</div>`
       : `<p class="muted small">Nothing clearly below the ${c.esc(nextName)} average at ${T / 60}:00. ${src('ranks', why + ' When nothing shows, the gap is in what these numbers can’t see (decisions, timing, positioning): the win-chance card on your matches finds the moments that cost you.')}</p>`}
-      ${plan.strengths.length ? `<div class="num-line strengths"><span class="t-label">At ${c.esc(nextName)} level</span>${plan.strengths.map(x => `<span class="pos">${c.esc(x.label)}</span>`).join('')}</div>` : ''}
-      ${ladderHtml(c, lad, yourTier, nextTier, fmt, tn, T)}`;
-  }
-
-  const SHADE_OK = new Set(['acc', 'souls', 'lane', 'jungle', 'dmg', 'obj']);   // stats where beating a rank's average means playing like them
-  function ladderHtml(c, lad, yourTier, nextTier, fmt, tn, T) {
-    const E = c.E;
-    const yours = yourTier ? tn(yourTier) : 'your rank';
-    const nextName = tn(nextTier);
-    const gapTxt = (r, cmp) => cmp && cmp.rel != null ? (cmp.rel > 0 ? '+' : '−') + Math.abs(Math.round(cmp.rel * 100)) + '%' : '';
-    const verdict = cmp => !cmp || !cmp.status ? '<span class="muted">—</span>'
-      : cmp.status === 'par' ? '<span class="muted" title="Within your normal game-to-game swing">≈ on par</span>'
-      : `<span class="${cmp.status === 'ahead' ? 'pos' : 'neg'}">${cmp.status === 'ahead' ? '▲' : '▼'} ${gapTxt(null, cmp)}</span>`;
-    const levelCell = r => r.noLevel || r.level == null ? '<span class="muted">—</span>'
-      : r.level === 'flat' ? '<span class="muted" title="Varies less than 8% between Initiate and Eternus">same at every rank</span>'
-      : `<span class="${r.level > yourTier ? 'pos' : r.level < yourTier ? 'neg' : ''}">${c.esc(tn(r.level))}</span>`;
-    const table = `<details class="full-ladder"><summary>Compare with your rank and the next</summary>
-      <div class="table-wrap"><table class="tbl ladder">
-        <thead><tr><th>Stat</th><th class="n">You</th><th class="n">${c.esc(yours)}</th><th class="n">${c.esc(nextName)}</th><th>vs ${c.esc(yours)}</th><th>vs ${c.esc(nextName)}</th><th>Plays like</th></tr></thead>
-        <tbody>${lad.rows.map(r => `<tr>
-          <td>${r.label}</td><td class="n"><b>${fmt(r, r.you)}</b></td>
-          <td class="n muted">${fmt(r, r.own && r.own.v)}</td><td class="n muted">${fmt(r, r.next && r.next.v)}</td>
-          <td>${verdict(r.own)}</td><td>${verdict(r.next)}</td><td>${levelCell(r)}</td></tr>`).join('')}</tbody>
-      </table></div></details>`;
-    const tiers = E.LADDER_TIERS;
-    const full = `
-      <details class="full-ladder"><summary>Every rank, Initiate to Eternus (lobby averages at ${T / 60}:00)</summary>
-        <div class="table-wrap"><table class="tbl ladder-full">
-          <thead><tr><th>Stat</th><th class="n you-col">You</th>${tiers.map(t => `<th class="n${t === yourTier ? ' cur' : ''}">${c.esc(tn(t))}</th>`).join('')}</tr></thead>
-          <tbody>${lad.rows.map(r => `<tr><td>${r.label}</td><td class="n you-col"><b>${fmt(r, r.you)}</b></td>${r.ladder.map(L => {
-            const beat = SHADE_OK.has(r.key) && r.you != null && L.v != null && r.you >= L.v;
-            return `<td class="n${L.tier === yourTier ? ' cur' : ''}${beat ? ' beat' : ''}">${fmt(r, L.v)}</td>`;
-          }).join('')}</tr>`).join('')}</tbody>
-        </table></div>
-        <p class="muted small">Each column is the average game in that rank’s lobbies; win rate and accuracy are whole-game, the rest are at ${T / 60}:00. Shaded cells are ranks whose average you match or beat, only for farm, damage, objectives and accuracy. Deaths, kills and assists aren’t shaded: higher ranks fight more, so those rise with rank for reasons that aren’t “better”. Win rate sits near 50% at every rank by design of matchmaking.</p>
-      </details>`;
-    return table + full;
+      ${plan.strengths.length ? `<div class="num-line strengths"><span class="t-label">At ${c.esc(nextName)} level</span>${plan.strengths.map(x => `<span class="pos">${c.esc(x.label)}</span>`).join('')}</div>` : ''}`;
   }
 
   // ---------------------------------------------------------------- play time
