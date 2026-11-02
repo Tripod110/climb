@@ -256,8 +256,8 @@ p .more { white-space: normal; }
 .rung { display: grid; justify-items: center; gap: 4px; padding: 12px 6px; text-align: center; min-width: 0; position: relative; }
 .rung + .rung { border-left: 1px solid var(--border); }
 .rung + .rung::before { content: '›'; position: absolute; left: -6px; top: 50%; transform: translateY(-50%); color: var(--brass); background: var(--page); line-height: 1; padding: 2px 0; font-size: 14px; }
-.rung-k { font: 600 18px/1 var(--display); color: var(--brass-hi); font-variant-numeric: tabular-nums; }
-.rung:first-child .rung-k { color: var(--muted); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; line-height: 18px; }
+.rung-k { font: 600 13px/18px var(--display); color: var(--brass-hi); letter-spacing: .1em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.rung:first-child .rung-k { color: var(--muted); }
 .rung.neg .rung-k { color: var(--bad-text); }
 .rung img { width: 44px; height: 44px; }
 .rung b { font: 600 15px/1.1 var(--display); letter-spacing: .03em; }
@@ -737,6 +737,7 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
   .rung { padding: 10px 2px; }
   .rung img { width: 34px; height: 34px; }
   .rung b { font-size: 12px; }
+  .rung-k { font-size: 10.5px; letter-spacing: .04em; line-height: 14px; }
   .rung-r { font-size: 9.5px; }
   .fig { border-top: 1px solid var(--border); }
   .fig:nth-child(-n+2) { border-top: 0; }

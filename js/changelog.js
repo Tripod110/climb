@@ -8,7 +8,7 @@
     {
       v: 32, date: '2026-11-02', title: 'Rank projection',
       items: [
-        'The climb now shows where your current pace lands you: your rank now, then after 20, 50 and 100 more ranked games, with a low–high range under each.',
+        'The climb now shows where your current pace takes you: your rank today, then in 20, 50 and 100 more ranked games, with the best-to-worst range under each.',
         'When you’re climbing it also says how many games until the next tier. It projects divisions, not rank points, and only shows when your last 40 ranked games agree on a direction.',
       ],
     },

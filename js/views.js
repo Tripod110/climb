@@ -108,10 +108,12 @@
     const E = c.E, fc = E.rankForecast(c.M.all.filter(m => m.mode === 'ranked')), pj = E.rankProjection(fc);
     if (!pj) return '';
     const nm = b => c.esc(E.badgeName(b, c.tiers()));
+    // "Mystic 2 – Mystic 5" reads as "Mystic 2–5" when both ends are in one tier.
+    const span = (lo, hi) => Math.floor(lo / 10) === Math.floor(hi / 10) ? `${nm(lo)}–${hi % 10}` : `${nm(lo)} – ${nm(hi)}`;
     const rung = (k, b, sub, cls) => `<li class="rung ${cls || ''}"><span class="rung-k">${k}</span><img src="${c.A.rankImage(b)}" alt="" width="44" height="44"><b>${nm(b)}</b><span class="rung-r">${sub || '&nbsp;'}</span></li>`;
     const info = src('rule', `Your last ${fc.n} ranked games moved you ${Math.abs(fc.gain)} division${Math.abs(fc.gain) === 1 ? '' : 's'} (${pj.per.toFixed(1)} games each). This carries that pace forward; the small range under each badge uses the fastest and slowest half of that stretch. Rank points are not projected, because Valve’s points don’t convert to divisions at a fixed rate.`);
-    return `<div class="proj ${pj.dir < 0 ? 'down' : 'up'}"><div class="t-label">Projection ${info}</div>
-      <ol class="rungs">${rung('Now', fc.now, `${fc.n} games`)}${pj.steps.map(s => rung('+' + s.games, s.badge, s.lo === s.hi ? '' : `${nm(s.lo)} – ${nm(s.hi)}`, pj.dir < 0 ? 'neg' : '')).join('')}</ol>
+    return `<div class="proj ${pj.dir < 0 ? 'down' : 'up'}"><div class="t-label">Where this pace takes you ${info}</div>
+      <ol class="rungs">${rung('Today', fc.now, '')}${pj.steps.map(s => rung(`in ${s.games} games`, s.badge, s.lo === s.hi ? '' : 'range ' + span(s.lo, s.hi), pj.dir < 0 ? 'neg' : '')).join('')}</ol>
       ${pj.tierUp && pj.tierUp.badge !== fc.next ? `<div class="muted small num-line"><span><b>${nm(pj.tierUp.badge)}</b> in ~${pj.tierUp.games} games</span></div>` : ''}</div>`;
   }
 
