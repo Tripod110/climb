@@ -1,10 +1,16 @@
 /* changelog.js — what changed in each release, newest first. The app shows entries newer than
    the last one you dismissed as a "What's new" card, and the full list in the footer.
-   Every deploy that bumps ?v=N adds an entry here with the same v, and the same text goes in
+   Every deploy that bumps ?v=N adds an entry here with the same v (shown to users as 0.v), and the same text goes in
    CHANGELOG.md. */
 (function (root) {
   'use strict';
   root.CHANGELOG = [
+    {
+      v: 29, date: '2026-11-02', title: 'Version numbers are 0.x',
+      items: [
+        'Releases are now numbered 0.N (this is 0.29) instead of vN, since Climb is not 1.0 yet. Earlier releases keep their numbers: v28 is now 0.28.',
+      ],
+    },
     {
       v: 28, date: '2026-11-01', title: 'Lane colours',
       items: [

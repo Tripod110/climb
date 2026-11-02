@@ -6,6 +6,7 @@
   const E = window.Engine, A = window.Api, S = window.Store, C = window.Charts, P = window.Play, V = window.Views, K = window.Coach;
   const LOG = window.CHANGELOG || [];
   const VERSION = LOG.length ? LOG[0].v : 0;
+  const verName = v => '0.' + v;   // shown as 0.N: pre-1.0; the integer N stays the ?v= cache key
   const HISTORY_TTL = 3 * 60 * 1000;
   const ASSET_TTL = 7 * 86400 * 1000;
   const PROFILE_TTL = 86400 * 1000;
@@ -90,7 +91,7 @@
   const heroName = id => (state.assets && state.assets.heroes[id] && state.assets.heroes[id].name) || 'Hero ' + id;
   const heroIcon = id => (state.assets && state.assets.heroes[id] && state.assets.heroes[id].icon) || '';
   const ctx = {
-    E, A, C, P, S, state, settings, LOG, VERSION,
+    E, A, C, P, S, state, settings, LOG, VERSION, verName,
     heroName, heroIcon,
     tiers: () => state.assets && state.assets.tiers,
     tierName: t => E.badgeName(t * 10, state.assets && state.assets.tiers),

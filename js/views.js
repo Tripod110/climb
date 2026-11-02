@@ -125,7 +125,7 @@
 
     host.innerHTML = `
       ${fresh.length ? `<section class="card whatsnew"><div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="btn ghost-btn" type="button">Got it</button></div>
-        ${fresh.map(e => `<h3>v${e.v} · ${c.esc(e.title)}</h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>` : ''}
+        ${fresh.map(e => `<h3>${c.verName(e.v)} · ${c.esc(e.title)}</h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>` : ''}
       ${missingCard(c)}
       ${recapCard(c)}
       ${focusCard(c, false)}
@@ -1232,7 +1232,7 @@
         <li><b>Form</b> scores a game against your other games on the same hero, using your share of the lobby’s souls, damage, kills + assists and deaths.</li>
         <li><b>Rank comparison</b> (Heroes tab): for the hero you pick, your average against the average game in each rank’s lobbies, over the same dates: games since the last big patch, or the last 60 days if you have fewer than 8. A gap is only called when it’s bigger than your normal game-to-game swing.</li>
       </ul></section>
-      <section class="card how"><h2>Changelog</h2>${c.LOG.map(e => `<h3>v${e.v} · ${c.esc(e.title)} <span class="muted small">${c.esc(e.date)}</span></h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>`;
+      <section class="card how"><h2>Changelog</h2>${c.LOG.map(e => `<h3>${c.verName(e.v)} · ${c.esc(e.title)} <span class="muted small">${c.esc(e.date)}</span></h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>`;
     host.querySelector('#acct-form').addEventListener('submit', async e => {
       e.preventDefault();
       const q = host.querySelector('#acct-in').value;

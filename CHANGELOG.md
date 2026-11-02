@@ -1,14 +1,17 @@
 # Changelog
 
-What changed in each release. The version is the `?v=N` in `index.html`. The app shows the same
+What changed in each release. The version is the `?v=N` in `index.html`, shown to users as `0.N`. The app shows the same
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
-## v28 (2026-11-01): Lane colours
+## 0.29 (2026-11-02): Version numbers are 0.x
+- Releases display as `0.N` (pre-1.0). `?v=N`, `CACHE = climb-vN` and `changelog.js` `v: N` stay plain integers; `App.verName(v)` adds the `0.` for display only.
+
+## 0.28 (2026-11-01): Lane colours
 - `Engine.laneColor(lane)`: assigned_lane 1/4/6 = Yellow/Blue/Green (confirmed with in-game setpos: x -8302 / 129 / 6979).
   Fixed on the map for both teams; `laneSide` still flips left/right. `laneName` reads "Yellow lane (left)".
 
-## v27 (2026-11-01): Farm: tabs and named lanes
+## 0.27 (2026-11-01): Farm: tabs and named lanes
 - `FARM_SRC` is lane, camps, boxes (treasure dropped). `Engine.laneSide(lane, team)`: assigned_lane 1/4/6 sit at
   x ~ -7k / 0 / +7k for both teams (25 games of early deaths), shown as left/centre/right from your own base.
   Colours are not in the data. `farmLanes(D, t, key)` takes one source and returns who was in each lane;
@@ -16,7 +19,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - Match Farm card: Summary / Lane creeps / Jungle / Boxes (module state `farmTab`), "usual for you" line from
   `farmProfile`, deaths before 12:00 beside the gaps. 5 new tests (238 total).
 
-## v26 (2026-11-01): Farm analyzer
+## 0.26 (2026-11-01): Farm analyzer
 - `DETAIL_V` 4: compact snapshots gain boxes (`gold_source_breakable_gold`), treasure and `possible_creeps`
   (12 columns). Lane souls were `gold_lane_creep + gold_lane_creep_orbs`, which double counted: orbs are a
   subset of lane gold (<= in every snapshot sampled). Cached v3 details re-fetch through the usual path.
@@ -26,7 +29,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   Coach tab farm profile. The API has no per-camp or per-box timing or movement, so nothing claims that.
 - 13 new tests (233 total).
 
-## v25 (2026-10-28): Proof your habit works, and your climb pace
+## 0.25 (2026-10-28): Proof your habit works, and your climb pace
 - `Engine.focusImpact(goal, all, progress)`: win rate over the 30 games before the goal vs every non-added game since,
   called up/down only past 2 standard errors and only with 15+ games each side; `held` = pass rate above baseline in
   both halves of the games since. Shown in `focusCard` (Overview one line, Coach tab with the pass/fail split).
@@ -35,13 +38,13 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   `ranked_delta` points, so points do not map to divisions at a fixed rate. Overview "Your climb" card.
 - 15 new tests (220 total).
 
-## v24 (2026-10-28): Coaching first
+## 0.24 (2026-10-28): Coaching first
 - Friends renders only the leaderboard (`friendBoard`) and the `#/friend/<id>` pages. `weekCard`, `bindWeek`
   and `squadRecord` are no longer called from it but stay in the code, ready to bring back.
 - Play time is removed from the nav only; the `#/play` route still works.
 - Overview: MVP awards tile and Heroes-in-this-window card removed. Match page: `tagChips` row removed.
 
-## v23 (2026-10-28): Clearer matches, tidier Friends
+## 0.23 (2026-10-28): Clearer matches, tidier Friends
 - `game_mode === 4` is Street Brawl (checked against /v1/matches/metadata): `normalizeMatch` and
   `matchFromMeta` give it mode `other`, so it is dropped like other modes. Tests added.
 - `Engine.gameNotes(L, max)`: up to two chips with numbers (few/many deaths vs the lobby average,
@@ -50,14 +53,14 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   card is unchanged. The Matches role filter changed to match.
 - Friends: removed the "Everyone you queue with" list. The friend pages are still reached from the leaderboard.
 
-## v22 (2026-10-28): Coach me on Heroes
+## 0.22 (2026-10-28): Coach me on Heroes
 - Heroes gets a "Rank road | Coach me" switch (`heroTab` in `views.js`, a module variable). Coach me is
   `heroCoachPanel`, fed by `Engine.heroCoach`: the habit catalog and `aggregateGames` over the hero's
   last 30 games that have match detail (fetched with `ensureDetailsFor`), plus `nextRankPlan` gaps.
   Needs 8 games with detail; under 15 it is flagged thin. The suggested habit uses `suggestHabit`'s rule
   (5+ games each side, 10+ point win-rate split), computed on that hero only. No AI.
 
-## v21 (2026-10-28): Bug fixes
+## 0.21 (2026-10-28): Bug fixes
 - From a code review. `focusProgress` ignores `m.added` games (backfill from "add match by id"); test added.
 - `loadLobbies`: a cached `null` lobby for a game under 3 days old is retried once per page visit.
 - `refresh`: assets, profile and patch lookups are best-effort, so a failure no longer skips history,
@@ -67,7 +70,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - Not fixed yet (review findings 5–10): model() recomputation, squad-row pruning, stale helper
   session, silent storage failures, unescaped icon URL, hero-ladder concurrency.
 
-## v20 (2026-10-26): Setup guide for faster match updates
+## 0.20 (2026-10-26): Setup guide for faster match updates
 - New static page `ingest.html` (+ `js/guide.js` for its Copy buttons). It's a deadlock-api-ingest
   setup guide built from the tool's README on 2026-10-26: the installer and the PowerShell
   install, the launch-option setup (with the "cannot find the path specified" failure seen on
@@ -80,10 +83,10 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   would have replaced the offline app with it. Only `/` and `/index.html` are cached as the app
   now; `ingest.html` is in the shell.
 
-## v19 (2026-10-26): Rolled back v18
+## 0.19 (2026-10-26): Rolled back v18
 - Reverted the Today redesign and hero pool (v18, d1e0dcf). The code is still in git history; v18's notes on why there is no stop-loss line are in that commit's CHANGELOG.md.
 
-## v17 (2026-10-26): Smoother Heroes tab
+## 0.17 (2026-10-26): Smoother Heroes tab
 - The hero picker is sorted A–Z: a wrapping grid on wide screens, and a sideways strip on phones
   (≤640px) that scrolls the picked hero into view. With no hero in the URL, it still opens your
   most-played hero of the last 60 days.
@@ -94,7 +97,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - The match id field sits at the top of Matches, always visible, replacing v16's "+ Add match"
   toggle.
 
-## v16 (2026-10-26): Squads
+## 0.16 (2026-10-26): Squads
 - Scoped with proper-plan against 266 games (90 days). What the data said:
   - A friend's early deaths and caught-outs barely move your result, but yours do. So there are
     no shared "squad rules".
@@ -113,7 +116,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   cross-origin images would block the export).
 - "+ Add match" moved to the top of the Matches tab.
 
-## v15 (2026-10-26): Add a match by id
+## 0.15 (2026-10-26): Add a match by id
 - Valve's match history (`/v1/players/{id}/match-history`, even with `force_refetch`) can leave
   out a game that deadlock-api has full metadata for. Found with match 125201309.
 - An "Add a match by id" form at the bottom of Matches and in the "Missing games?" card. It
@@ -123,7 +126,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - `Engine.mergeAdded` merges these into the history everywhere. Once Valve's history lists a game,
   its row wins. Added games are marked "added by id" on the match page.
 
-## v14 (2026-10-25): Missing games, explained
+## 0.14 (2026-10-25): Missing games, explained
 - A freshness line under your rank: when your newest match on deadlock-api ended
   (`Engine.freshness`).
 - With the Climb helper, Climb knows if you played after that (it allows a 10-minute grace
@@ -138,7 +141,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - Climb will not read Steam login tokens or game memory itself. Those were the "gold standard"
   ideas in a friend's write-up; checked against the ingest tool's README 2026-10-25.
 
-## v13 (2026-10-23): Road to the next rank, friends, receipts
+## 0.13 (2026-10-23): Road to the next rank, friends, receipts
 - **Roles retired as verdicts.** On the user's last 400 games, Climb's impact score had AUC
   0.49 against winning, and being team #1 won only 49%. A share of your own team's stats can't
   predict a result the whole team shares. Games now show a neutral **team share** (Top / Mid /
@@ -162,7 +165,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   Climb rule / AI) open a short explanation. The Coach tab checks the win model on your own
   games: when the side it favoured at 20:00 won.
 
-## v12 (2026-10-23): Win chance, how each game swung
+## 0.12 (2026-10-23): Win chance, how each game swung
 - `model/train.py` reads recent matches from deadlock-api's public data lake (DuckDB over HTTPS,
   only the needed Parquet columns) and writes `js/wpmodel.js`. It contains:
   - a per-minute logistic win model on the souls, kills, objectives-destroyed and mid-boss gaps;
@@ -177,7 +180,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - Match details now keep objectives and mid-boss (`DETAIL_V` 2), and older cached details are
   re-fetched. The coach's debrief brief gets the timeline, swings and death costs.
 
-## v11 (2026-10-22): Gold for 1st in the lobby
+## 0.11 (2026-10-22): Gold for 1st in the lobby
 - Valve's post-game MVP #1 (`mvp_rank` 1, i.e. 1st of all 12) is marked gold everywhere a game
   appears: a ★ 1st chip, a gold left edge in the Matches list, a gold match-page role card, and
   ★ MVP on the scoreboard. `gameRole().lobbyFirst` carries it.
@@ -185,7 +188,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   lobby. On 60 real games the two "#1"s never agreed (6 Valve MVPs, 3 impact #1s, 0 overlap).
   Gold is the only place that colour is used.
 
-## v10 (2026-10-22): Focus loop
+## 0.10 (2026-10-22): Focus loop
 - One habit at a time, chosen from a fixed catalog (`Engine.HABITS`) of things Climb can check per
   game. Examples: no deaths before 10:00, never caught out, ahead of lane opponents at 12:00,
   25 CS by 12:00, tier 4 by 24:00. Habits that partly follow the result (late deaths, death rate)
@@ -202,14 +205,14 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - Why habits and not averaged targets: on 60 real games, a 1-death change in late deaths needed
   ~60 games to detect. A pass-rate change shows in ~15.
 
-## v9 (2026-10-21): Fix for the deadlock-api 404
+## 0.9 (2026-10-21): Fix for the deadlock-api 404
 - deadlock-api answers 404 "No matches found" when none of a batch's matches exist on its side.
   That happens for the oldest 2024 matches. Since v6 fetches lobbies for every match, this stopped
   loading with "Couldn't reach deadlock-api: deadlock-api 404 on /v1/matches/metadata". Bulk and
   single metadata calls now treat that 404 as empty, so those matches are recorded as having no
   lobby data.
 
-## v8 (2026-10-21): Coach tab, your last 30 games read together
+## 0.8 (2026-10-21): Coach tab, your last 30 games read together
 - New **Coach** tab. Climb counts patterns across your last 30 games, wins vs losses, using
   `Engine.aggregateGames`:
   - deaths per game, deaths before 10:00, deaths per phase, and caught-out deaths (died within 5s);
@@ -226,7 +229,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - Debriefs retry when Gemini is busy (3 tries, 45s limit each), then fall back to another Flash
   model.
 
-## v7 (2026-10-21): AI coach, match debriefs
+## 0.7 (2026-10-21): AI coach, match debriefs
 - Each match page has a "Coach me" button. Gemini gets a ~5 KB brief of that game and returns three
   specific points (strengths and mistakes, each tied to a number) plus one focus for your next game.
   The brief covers:
@@ -239,7 +242,7 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   to Google. Debriefs are cached per match.
 - The coach is told to use only facts in the brief and never to invent hero, item or patch details.
 
-## v6 (2026-10-21): Rebuilt with tabs, any Steam account, and a rank ladder
+## 0.6 (2026-10-21): Rebuilt with tabs, any Steam account, and a rank ladder
 - The single long page is replaced by four tabs: Overview, Matches, Heroes and Play time. Account
   and About open from the avatar.
 - Works for any account: paste a Steam profile link, SteamID64, [U:1:n] or STEAM_0 id, or search
@@ -259,11 +262,11 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
     each stat plays like.
 - Lobby data is now kept for every match, not just this season's.
 
-## v5 (2026-10-21): What's new + changelog
+## 0.5 (2026-10-21): What's new + changelog
 - After each update, a "What's new" card says once what changed. Dismiss it with "Got it".
 - The full changelog is at the bottom of the page, under "Changelog".
 
-## v4 (2026-10-21): Benchmark, you vs Phantom+ on your heroes
+## 0.4 (2026-10-21): Benchmark, you vs Phantom+ on your heroes
 - New card below "Heroes this season". For each of your most-played heroes it shows:
   - your average souls (lane and jungle), objective damage, hero damage and deaths at 15, 20 or
     30 min;
@@ -275,13 +278,13 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 - The play-time heatmap now labels every weekday.
 - Under the hood: the pre-queue briefing engine and its tests. Nothing shows it yet.
 
-## v3 (2026-10-07): Play time + Ranked / All games
+## 0.3 (2026-10-07): Play time + Ranked / All games
 - Play time card: today vs your usual, a 12-week heatmap, and the hours you usually play. It counts
   real time in game when the Climb helper runs on your PC, and match times otherwise.
 - Ranked / All games switch (default All). Unranked games join form, consistency, the game list and
   heroes. Rank points stay ranked-only.
 
-## v1 (2026-10-04): Climb v1
+## 0.1 (2026-10-04): Climb v1
 - One verdict (Improving, Holding or Slipping) for last session, last 20 and season, built from rank
   points, form on each hero and consistency.
 - Games are classed as Earned win, Passenger win, Unlucky loss or Rough game, with lobby tags on
