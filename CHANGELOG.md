@@ -4,6 +4,12 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.30 (2026-11-02): A new look for Overview
+- Overview rebuilt as an editorial page, not a card stack: masthead, `.ov-hero` verdict, `.ledger` figures, then `.ov-sec`
+  sections (Training, Scouting, Film room, The climb) with `sh()` gilded headers. `splitTable` is a dumbbell on a 0–100%
+  win-rate track; recent matches are a `.reel` of frames. The baseline sentence moved to the Coach-tab focus card only.
+- Tokens: `--brass*` for structure only (never scores), `--display` = Bahnschrift / condensed system faces, `--radius` 4px.
+
 ## 0.29 (2026-11-02): Version numbers are 0.x
 - Releases display as `0.N` (pre-1.0). `?v=N`, `CACHE = climb-vN` and `changelog.js` `v: N` stay plain integers; `App.verName(v)` adds the `0.` for display only.
 

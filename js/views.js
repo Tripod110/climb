@@ -101,8 +101,12 @@
       : fc.call === 'sliding' ? ['Sliding at the moment', `${span}. Both halves of that stretch went down, so the quickest fix is the focus habit below.`]
       : fc.call === 'flat' ? ['Holding your rank', `${span}. No movement in either half of that stretch.`]
       : ['No steady direction yet', `${span}. The first and second halves of that stretch disagree, so Climb won’t call a pace.`];
-    return `<section class="card forecast"><div class="t-label">Pace ${info}</div><h2>${head}</h2><p class="muted small">${body}</p></section>`;
+    return `<div class="forecast"><div class="t-label">Pace ${info}</div><div class="fc-habit">${head}</div><p class="muted small">${body}</p></div>`;
   }
+
+  /* Overview section header: small-caps kicker between gilded rules, then the title. */
+  const sh = (kicker, title, more) => `<header class="sh"><div class="sh-k"><span>${kicker}</span></div>
+    <div class="sh-row"><h2>${title}</h2>${more || ''}</div></header>`;
 
   function overview(host, c) {
     const M = c.M, E = c.E, S = c.settings;
@@ -118,25 +122,25 @@
       const d = a - b; if (Math.abs(d) < 0.02) return '<span class="muted">same as before</span>';
       const up = d > 0; return `<span class="${up === good ? 'pos' : 'neg'}">${up ? '▲' : '▼'} ${Math.abs(Math.round(d * 100))} pts</span>`;
     })();
-    const tile = (label, value, sub, badge) => `<div class="tile"><div class="t-label">${label}${badge ? ' ' + badge : ''}</div><div class="t-val">${value}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
+    const fig = (label, value, sub, badge) => `<div class="fig"><div class="fig-v">${value}</div><div class="t-label">${label}${badge ? ' ' + badge : ''}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
     const R = M.curRanked;
     const fresh = c.LOG.filter(e => e.v > S.seenV).slice(0, 2);
     const recent = M.all.slice(-8).reverse();
+    const pace = forecastCard(c);
 
     host.innerHTML = `
-      ${fresh.length ? `<section class="card whatsnew"><div class="wn-head"><h2>What’s new</h2><button id="wn-ok" class="btn ghost-btn" type="button">Got it</button></div>
-        ${fresh.map(e => `<h3>${c.verName(e.v)} · ${c.esc(e.title)}</h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>` : ''}
+      ${fresh.length ? `<div class="dispatch"><details><summary><span class="t-label">New in ${c.verName(fresh[0].v)}</span> ${c.esc(fresh[0].title)}</summary>
+        ${fresh.map(e => `<h3>${c.verName(e.v)} · ${c.esc(e.title)}</h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</details>
+        <button id="wn-ok" class="btn ghost-btn sm" type="button">Got it</button></div>` : ''}
       ${missingCard(c)}
       ${recapCard(c)}
-      ${focusCard(c, false)}
-      ${forecastCard(c)}
 
-      <div class="page-head">
+      <div class="masthead">
         <div class="ident">
           ${M.badge ? `<img class="badge" src="${c.A.rankImage(M.badge)}" alt="" width="64" height="64">` : ''}
           <div>
             <div class="rank-name">${c.esc(E.badgeName(M.badge, c.tiers()))}</div>
-            <div class="muted">Season ${M.seasonSum.wins}–${M.seasonSum.losses}${M.seasonSum.hasDelta ? ' · ' + c.signed(M.seasonSum.net) + ' rank pts' : ''} · ${M.all.length} matches tracked</div>
+            <div class="muted small">Season ${M.seasonSum.wins}–${M.seasonSum.losses}${M.seasonSum.hasDelta ? ' · ' + c.signed(M.seasonSum.net) + ' rank pts' : ''} · ${M.all.length} matches</div>
             ${freshLine(c)}
           </div>
         </div>
@@ -146,43 +150,46 @@
         </div>
       </div>
 
-      <div class="grid-ov">
-        <section class="card verdict v-${v.call}">
-          <div class="v-head"><span class="v-icon" aria-hidden="true">${ICONV[v.call]}</span>
-            <div><div class="v-word">${WORD[v.call]}</div>
-            <div class="muted small">${c.esc(M.w.label)} · ${M.cur.n} games${M.prev ? ' vs ' + c.esc(M.w.prevLabel) : ''}${v.confidence === 'low' && M.cur.n ? ' · small sample' : ''}</div></div></div>
-          <ul class="signals">${v.signals.map(s => signalLine(c, s)).join('')}</ul>
-        </section>
-        <div class="tiles">
-          ${tile('Win rate', c.pct(M.cur.winRate), `${M.cur.wins}–${M.cur.losses}`, src('yours', `Wins ÷ games in this window (${M.cur.n} games), from your match history on deadlock-api.`))}
-          ${tile('Rank points', R.hasDelta ? c.signed(R.net) : '—', R.n ? `${R.n} ranked games` : 'no ranked games', src('valve', 'The sum of Valve’s own rank-point change for each ranked game in this window.'))}
-          ${tile('Ahead of lane at 12:00', early.nAhead ? c.pct(early.ahead12) : '—', earlyPrev && earlyPrev.nAhead ? delta(early.ahead12, earlyPrev.ahead12, true) : `${early.nAhead} games with detail`, src('yours', `Games where your souls at 12:00 beat your lane opponents’ average, out of ${early.nAhead} games in this window with match detail.` + splitNote('ahead12')))}
-          ${tile('No deaths before 10:00', early.nClean ? c.pct(early.clean10) : '—', earlyPrev && earlyPrev.nClean ? delta(early.clean10, earlyPrev.clean10, true) : `${early.nClean} games with detail`, src('yours', `Games with zero deaths in the first 10 minutes, out of ${early.nClean} games in this window with match detail.` + splitNote('early0')))}
-          ${tile('Deaths per game', M.cur.n ? (M.w.cur.reduce((s, m) => s + m.d, 0) / M.cur.n).toFixed(1) : '—', M.prev && M.prev.n ? `${(M.w.prev.reduce((s, m) => s + m.d, 0) / M.prev.n).toFixed(1)} before` : '', src('yours', 'Average deaths per game in this window, from your match history.'))}
-        </div>
+      <section class="ov-hero v-${v.call}">
+        <div class="kicker">The verdict · ${c.esc(M.w.label)} · ${M.cur.n} games${M.prev ? ' vs ' + c.esc(M.w.prevLabel) : ''}${v.confidence === 'low' && M.cur.n ? ' · small sample' : ''}</div>
+        <div class="v-line"><span class="v-icon" aria-hidden="true">${ICONV[v.call]}</span><h1 class="v-word">${WORD[v.call]}</h1></div>
+        <ul class="signals">${v.signals.map(s => signalLine(c, s)).join('')}</ul>
+      </section>
+      <div class="ledger">
+        ${fig('Win rate', c.pct(M.cur.winRate), `${M.cur.wins}–${M.cur.losses}`, src('yours', `Wins ÷ games in this window (${M.cur.n} games), from your match history on deadlock-api.`))}
+        ${fig('Rank points', R.hasDelta ? c.signed(R.net) : '—', R.n ? `${R.n} ranked games` : 'no ranked games', src('valve', 'The sum of Valve’s own rank-point change for each ranked game in this window.'))}
+        ${fig('Ahead at 12:00', early.nAhead ? c.pct(early.ahead12) : '—', earlyPrev && earlyPrev.nAhead ? delta(early.ahead12, earlyPrev.ahead12, true) : `${early.nAhead} games with detail`, src('yours', `Games where your souls at 12:00 beat your lane opponents’ average, out of ${early.nAhead} games in this window with match detail.` + splitNote('ahead12')))}
+        ${fig('Clean to 10:00', early.nClean ? c.pct(early.clean10) : '—', earlyPrev && earlyPrev.nClean ? delta(early.clean10, earlyPrev.clean10, true) : `${early.nClean} games with detail`, src('yours', `Games with zero deaths in the first 10 minutes, out of ${early.nClean} games in this window with match detail.` + splitNote('early0')))}
+        ${fig('Deaths a game', M.cur.n ? (M.w.cur.reduce((s, m) => s + m.d, 0) / M.cur.n).toFixed(1) : '—', M.prev && M.prev.n ? `${(M.w.prev.reduce((s, m) => s + m.d, 0) / M.prev.n).toFixed(1)} before` : '', src('yours', 'Average deaths per game in this window, from your match history.'))}
       </div>
 
-      <section class="card">
-        <div class="card-head"><h2>What separates your wins from your losses</h2><a href="#/coach" class="more">Pick a habit to work on →</a></div>
+      <section class="ov-sec">
+        ${sh('Training', 'Focus and pace','<a href="#/coach" class="more">Coach →</a>')}
+        <div class="train${pace ? '' : ' solo'}">${focusCard(c, false)}${pace}</div>
+      </section>
+
+      <section class="ov-sec">
+        ${sh('Scouting', 'What wins you games', '<a href="#/coach" class="more">Pick a habit →</a>')}
         ${splitTable(c, cat)}
       </section>
 
-      <div>
-        <section class="card">
-          <div class="card-head"><h2>Recent matches</h2><a href="#/matches" class="more">See all →</a></div>
-          <ul class="mini-list">${recent.map(m => {
-            const g = E.gameRole(c.state.lobbies[m.id], m.won);
-            return `<li><a href="#/match/${m.id}">${icon(c, m.hero, 30)}
-              <span class="ml-main"><b>${c.esc(c.heroName(m.hero))}</b> <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'W' : 'L'}</span> ${roleChip(c, g, m.id)}</span>
-              <span class="ml-kda">${kda(m)}</span><span class="ml-d">${deltaHtml(c, m)}</span><span class="muted small ml-t">${c.ago(m.t)}</span></a></li>`;
-          }).join('')}</ul>
-        </section>
-      </div>
+      <section class="ov-sec">
+        ${sh('Film room', 'Recent matches', '<a href="#/matches" class="more">All matches →</a>')}
+        <ol class="reel">${recent.map(m => {
+          const g = E.gameRole(c.state.lobbies[m.id], m.won);
+          return `<li><a class="frame ${m.won ? 'w' : 'l'}" href="#/match/${m.id}">
+            <span class="fm-res">${m.won ? 'Win' : 'Loss'}</span>${icon(c, m.hero, 52)}
+            <b class="fm-hero">${c.esc(c.heroName(m.hero))}</b>
+            <span class="fm-kda">${kda(m)}</span>
+            <span class="fm-foot">${deltaHtml(c, m)}<span class="muted">${c.ago(m.t)}</span></span>
+            ${g ? `<span class="fm-chips">${roleChip(c, g, m.id)}</span>` : ''}</a></li>`;
+        }).join('')}</ol>
+      </section>
 
-      <section class="card">
-        <h2>Rank points this season</h2>
-        <p class="muted small">Running total of points gained and lost. The shaded area is the window you’re looking at.</p>
+      <section class="ov-sec">
+        ${sh('The climb', 'Rank points this season')}
         <div id="rank-chart" class="chart"></div>
+        <p class="muted small">Running total. The lit stretch is the window you’re looking at.</p>
       </section>`;
 
     const pts = E.rankSeries(M.season);
@@ -214,10 +221,17 @@
   function splitTable(c, cat) {
     const rows = cat.filter(x => x.eligible).slice(0, 4);
     if (!rows.length) return '<p class="muted small">Counting once match details for your recent games have loaded…</p>';
-    return `<ul class="splits">${rows.map(x => `<li><span>${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}</span>
-      <span class="sp-bars"><span class="sp-w" style="width:${Math.round(x.wrPass * 100)}%"></span></span>
-      <span class="sp-num"><b class="pos">${c.pct(x.wrPass)}</b> when you do · <span class="neg">${c.pct(x.wrFail)}</span> when you don’t · you do it in ${c.pct(x.passRate)}</span></li>`).join('')}</ul>
-      <p class="muted small">${src('yours', `Win rate in your last ${rows[0].n} games with match detail, split by whether you passed each check. These are measured before the game is decided, unless marked “follows result”.`)} Win rate when you pass each check vs when you don’t, over your last ${rows[0].n} games.</p>`;
+    /* A dumbbell per habit on a 0–100% win-rate track: red = when you don't, green = when you do. */
+    const at = v => Math.round(Math.max(0, Math.min(1, v)) * 1000) / 10;
+    return `<div class="db-key small"><span class="muted">Win rate</span><span><i class="db-dot y"></i>when you do</span><span><i class="db-dot n"></i>when you don’t</span>${src('yours', `Win rate in your last ${rows[0].n} games with match detail, split by whether you passed each check. These are measured before the game is decided, unless marked “follows result”.`)}</div>
+      <ul class="splits">${rows.map(x => {
+        const lo = Math.min(x.wrPass, x.wrFail), hi = Math.max(x.wrPass, x.wrFail);
+        return `<li><span class="sp-lab">${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}<span class="muted small">you do it in ${c.pct(x.passRate)}</span></span>
+        <span class="db" role="img" aria-label="${c.pct(x.wrPass)} when you do, ${c.pct(x.wrFail)} when you don’t"><span class="db-mid"></span>
+          <span class="db-span" style="left:${at(lo)}%;width:${at(hi) - at(lo)}%"></span>
+          <span class="db-dot n" style="left:${at(x.wrFail)}%"></span><span class="db-dot y" style="left:${at(x.wrPass)}%"></span></span>
+        <span class="sp-num"><b class="pos">${c.pct(x.wrPass)}</b><span class="neg">${c.pct(x.wrFail)}</span></span></li>`;
+      }).join('')}</ul>`;
   }
 
   /* After a session: record, the habit row and the biggest swing, once. */
@@ -513,8 +527,8 @@
       <div class="fc-habit">${c.esc(h.label)}</div></div>${dots(p.recent)}</div>
       <p class="fc-line">${verdictLine(c, p)}</p>
       ${impactBlock(c, f, p, full)}
-      <p class="muted small">Before you started: you passed it in ${pc0(f.baseline.rate)} of your last ${f.baseline.n} games, and won ${pc0(f.baseline.wrPass)} of those vs ${pc0(f.baseline.wrFail)} of the rest.</p>`;
-    if (!full) return `<section class="card focus-card${p.graduated ? ' done' : ''}">${head}<a class="more" href="#/coach">Details →</a></section>`;
+      ${full ? `<p class="muted small">Before you started: you passed it in ${pc0(f.baseline.rate)} of your last ${f.baseline.n} games, and won ${pc0(f.baseline.wrPass)} of those vs ${pc0(f.baseline.wrFail)} of the rest.</p>` : ''}`;
+    if (!full) return `<section class="card focus-card${p.graduated ? ' done' : ''}">${head}</section>`;
     const res = p.results.slice().reverse().slice(0, 15);
     return `<section class="card focus-card${p.graduated ? ' done' : ''}">${head}
       ${f.why ? `<p class="fc-why">${c.esc(f.why)}</p>` : ''}

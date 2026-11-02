@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 30, date: '2026-11-02', title: 'A new look for Overview',
+      items: [
+        'Overview is redesigned to read like a scouting report: the verdict up top, your key numbers in one row, then Training (your focus habit and pace), Scouting (what wins you games), Film room (your last 8 matches) and The climb (rank points).',
+        'What wins you games now shows each habit as two markers on a win-rate line: red for when you skip it, green for when you do it. The wider the gap, the more that habit matters.',
+        'A Deadlock-style brass and condensed-type finish across the app. Green and red still only ever mean good and bad.',
+      ],
+    },
+    {
       v: 29, date: '2026-11-02', title: 'Version numbers are 0.x',
       items: [
         'Releases are now numbered 0.N (this is 0.29) instead of vN, since Climb is not 1.0 yet. Earlier releases keep their numbers: v28 is now 0.28.',
