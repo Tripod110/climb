@@ -247,22 +247,24 @@
     return h.trend >= 0.2 ? '<span class="pos small">▲ rising</span>' : h.trend <= -0.2 ? '<span class="neg small">▼ dipping</span>' : '<span class="muted small">■ steady</span>';
   }
 
+  /* One bar per habit, split at the centre. The point is the right half, green: how often you WIN with
+     it. The left half is a quiet grey reference, how often you lost without it. Not "skipped": some of
+     these (an early death) aren't fully up to you. Each half is 0–100%. Shared by Overview and Coach. */
+  const splitHead = (c, n) => `<li class="dv-head small"><span>${src('yours', `From your last ${n} games with match detail. Right: the share of games you won when it happened. Left: the share you lost when it didn’t. These are measured before the game is decided, unless marked “follows result”.`)}</span>
+    <span class="dv-scale"><span class="muted">◀ Lost without it</span><span class="pos">Won with it ▶</span></span></li>`;
+  const splitLab = (c, x) => `<span class="sp-lab">${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}<span class="muted small" title="How often it happens">${c.pct(x.passRate)} of games</span></span>`;
+  function splitBar(c, x) {
+    const lose = 1 - x.wrFail, win = x.wrPass;
+    return `<span class="dv" role="img" aria-label="You won ${c.pct(win)} of games with it and lost ${c.pct(lose)} without it">
+      <b class="dv-off">${c.pct(lose)}</b><span class="dv-track"><span class="dv-bar l" style="right:50%;width:${(lose * 50).toFixed(1)}%"></span><span class="dv-bar w" style="left:50%;width:${(win * 50).toFixed(1)}%"></span></span><b class="pos">${c.pct(win)}</b></span>`;
+  }
+
   /* The habits that split YOUR wins from losses most, from your last 30 games. Plain counts. */
   function splitTable(c, cat) {
     const rows = cat.filter(x => x.eligible).slice(0, 4);
     if (!rows.length) return '<p class="muted small">Counting once match details for your recent games have loaded…</p>';
-    /* One bar per habit, split at the centre. The point is the right half, green: how often you WIN with
-       it. The left half is a quiet grey reference, how often you lost without it. Not "skipped": some of
-       these (an early death) aren't fully up to you. Each half is 0–100%. */
-    return `<ul class="splits">
-      <li class="dv-head small"><span>${src('yours', `From your last ${rows[0].n} games with match detail. Right: the share of games you won when it happened. Left: the share you lost when it didn’t. These are measured before the game is decided, unless marked “follows result”.`)}</span>
-        <span class="dv-scale"><span class="muted">◀ Lost without it</span><span class="pos">Won with it ▶</span></span></li>
-      ${rows.map(x => {
-        const lose = 1 - x.wrFail, win = x.wrPass;
-        return `<li><span class="sp-lab">${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}<span class="muted small" title="How often it happens">${c.pct(x.passRate)} of games</span></span>
-        <span class="dv" role="img" aria-label="You won ${c.pct(win)} of games with it and lost ${c.pct(lose)} without it">
-          <b class="dv-off">${c.pct(lose)}</b><span class="dv-track"><span class="dv-bar l" style="right:50%;width:${(lose * 50).toFixed(1)}%"></span><span class="dv-bar w" style="left:50%;width:${(win * 50).toFixed(1)}%"></span></span><b class="pos">${c.pct(win)}</b></span></li>`;
-      }).join('')}</ul>`;
+    return `<ul class="splits">${splitHead(c, rows[0].n)}
+      ${rows.map(x => `<li>${splitLab(c, x)}${splitBar(c, x)}</li>`).join('')}</ul>`;
   }
 
   /* After a session: record, the habit row and the biggest swing, once. */
@@ -378,19 +380,19 @@
     </section>`;
   }
 
+  /* Coach's farm section: per source, the gap to your lane opponents at 12:00 as a figure (you vs them
+     under it), plus lane creeps killed. A gap is coloured only when Engine.farmProfile calls it. */
   function farmProfileCard(c) {
     const E = c.E, P = E.farmProfile(c.analysisEntries());
-    const head = `<div class="card-head"><div><div class="t-label">Farm habits ${src('yours', FARM_INFO + ' A gap is only called when it is 150+ souls and shows in both halves of your games.')}</div><h2>How you farm against your lane</h2></div></div>`;
-    if (!P.ready) return `<section class="card farm-card">${head}<p class="muted">Needs ${P.need} more game${P.need === 1 ? '' : 's'} with farm detail (${P.n} so far, read at ${clk(E.FARM_T)} against your lane opponents). Older games reload in the background.</p></section>`;
-    const call = { ahead: '<span class="pos">ahead</span>', behind: '<span class="neg">behind</span>', even: '<span class="muted">even</span>' };
-    const h = P.headline;
-    const line = h ? `You trail your lane on <b>${c.esc(h.label.toLowerCase())}</b> by about ${c.fmtInt(Math.round(-h.gap))} souls at ${clk(E.FARM_T)}, in both halves of your last ${P.n} games.`
-      : `No source where you trail your lane by 150+ souls in both halves of your last ${P.n} games.`;
-    return `<section class="card farm-card">${head}<p>${line}</p>
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>Source at ${clk(E.FARM_T)}</th><th class="n">You</th><th class="n">Lane opponents</th><th class="n">Gap</th><th></th></tr></thead>
-      <tbody>${P.src.map(x => `<tr><td>${c.esc(x.label)}</td><td class="n">${c.fmtInt(Math.round(x.me))}</td><td class="n">${c.fmtInt(Math.round(x.opp))}</td><td class="n">${gapHtml(c, x.gap)}</td><td>${call[x.call]}</td></tr>`).join('')}</tbody></table></div>
-      ${P.eff ? `<p class="muted small">Lane creeps killed by ${clk(E.FARM_T)}: you ${Math.round(P.eff.me * 100)}%, lane opponents ${Math.round(P.eff.opp * 100)}%.</p>` : ''}
-      <p class="muted small">The farm habits in the list above (“More camp + box souls…”, “Kill 80%+ of the lane creeps…”) can be your focus once they split your wins from your losses.</p></section>`;
+    if (!P.ready) return `<p class="muted small">${P.n}/${P.n + P.need} games with farm detail</p>`;
+    const info = src('yours', FARM_INFO + ' A gap is coloured only when it is 150+ souls and shows in both halves of your games.');
+    const cls = { ahead: 'pos', behind: 'neg', even: '' };
+    const sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + c.fmtInt(Math.abs(Math.round(v)));
+    const fig = (label, v, cl, sub, badge) => `<div class="fig"><div class="fig-v ${cl}">${v}</div><div class="t-label">${label}${badge ? ' ' + badge : ''}</div><div class="t-sub">${sub}</div></div>`;
+    return `<div class="ledger">
+      ${P.src.map((x, i) => fig(x.label, sgn(x.gap), cls[x.call], `${c.fmtInt(Math.round(x.me))} vs ${c.fmtInt(Math.round(x.opp))}`, i ? '' : info)).join('')}
+      ${P.eff ? fig('Lane creeps killed', Math.round(P.eff.me * 100) + '%', P.eff.me - P.eff.opp >= 0.05 ? 'pos' : P.eff.opp - P.eff.me >= 0.05 ? 'neg' : '', `lane ${Math.round(P.eff.opp * 100)}%`) : ''}
+    </div>`;
   }
 
   function wpCard(c, m) {
@@ -496,30 +498,6 @@
   const pc0 = v => v == null ? '—' : Math.round(v * 100) + '%';
   const dots = recent => `<span class="dots" aria-label="${recent.filter(Boolean).length} of last ${recent.length} passed">${recent.map(x => `<span class="dot ${x ? 'y' : 'n'}">${x ? '✓' : '✗'}</span>`).join('')}${'<span class="dot e"></span>'.repeat(Math.max(0, 10 - recent.length))}</span>`;
 
-  function verdictLine(c, p) {
-    const E = c.E;
-    if (p.graduated) return `<span class="pos"><b>Mastered.</b> ${p.recent.filter(Boolean).length} of your last 10 passed. Time for the next habit.</span>`;
-    if (p.verdict === 'early') return `<span class="muted">${p.n ? `${p.passes} of ${p.n} so far. ` : 'No games since you started. '}Climb can call it after ${E.FOCUS_MIN_GAMES} games (${p.needed} to go).</span>`;
-    const from = `${pc0(p.baseline)} → ${pc0(p.rate)} over ${p.n} games`;
-    return p.verdict === 'improved' ? `<span class="pos"><b>It’s working:</b> ${from}.</span>`
-      : p.verdict === 'worse' ? `<span class="neg"><b>Slipping:</b> ${from}.</span>`
-      : `<span><b>No real change yet:</b> ${from}. Keep at it, or try a different habit.</span>`;
-  }
-
-  /* Did the habit pay off in wins? Win rate before vs since, called only when it clears chance. */
-  function impactBlock(c, f, p, full) {
-    const E = c.E, imp = E.focusImpact(f, c.M.all, p);
-    if (!imp) return '';
-    if (imp.call === 'early') return full ? `<p class="muted small">Win rate: Climb compares your last ${E.IMPACT_BEFORE_N} games before you started with the games since once you have ${E.FOCUS_MIN_GAMES} since.</p>` : '';
-    const note = imp.call === 'up' ? '<span class="pos">Up by more than normal swing.</span>'
-      : imp.call === 'down' ? '<span class="neg">Down by more than normal swing.</span>'
-      : '<span class="muted">Within normal swing, so not a real change yet.</span>';
-    const sp = imp.split, both = sp.nPass >= 3 && sp.nFail >= 3;
-    const slip = p.verdict === 'improved' && !imp.held ? '<p class="muted small">Your pass rate is up, but only in one half of the games since you started, so it could be a streak.</p>' : '';
-    return `<p class="fc-impact small"><b>Win rate</b> ${pc0(imp.wrBefore)} → ${pc0(imp.wrAfter)} <span class="muted">(${imp.nBefore} games before, ${imp.nAfter} since)</span> ${note}</p>${slip}
-      ${full && both ? `<p class="muted small">Since you started: ${pc0(sp.wrPass)} wins when you passed it (${sp.nPass} games), ${pc0(sp.wrFail)} when you didn’t (${sp.nFail}).</p>` : ''}`;
-  }
-
   /* The Overview's focus: the habit, its ✓/✗ run, then pass rate and win rate as before → now figures. */
   function focusBrief(c, f, h, p) {
     const E = c.E, imp = E.focusImpact(f, c.M.all, p);
@@ -533,7 +511,8 @@
         ${imp && imp.call !== 'early' ? pair('Win rate', imp.wrBefore, imp.wrAfter, wrCls, imp.call === 'same' ? 'within normal swing' : `${imp.nAfter} games`) : ''}</div></section>`;
   }
 
-  /* full = the Coach tab version (why/how, games since start, controls); otherwise the Overview card. */
+  /* full = the Coach tab version: the Overview brief, then the controls, with why/how and the games
+     since you started folded away. Otherwise the Overview card. */
   function focusCard(c, full) {
     const E = c.E, st = c.state, f = st.focus.active;
     if (!f) {
@@ -543,52 +522,47 @@
     const h = E.habitById(f.habit), p = c.focusNow();
     if (!h || !p) return '';
     if (!full) return focusBrief(c, f, h, p);
-    const head = `<div class="fc-head"><div><div class="t-label">Your focus${f.by === 'coach' ? ' · picked by the coach' : f.by === 'climb' ? ' · Climb’s pick' : ''}</div>
-      <div class="fc-habit">${c.esc(h.label)}</div></div>${dots(p.recent)}</div>
-      <p class="fc-line">${verdictLine(c, p)}</p>
-      ${impactBlock(c, f, p, full)}
-      ${full ? `<p class="muted small">Before you started: you passed it in ${pc0(f.baseline.rate)} of your last ${f.baseline.n} games, and won ${pc0(f.baseline.wrPass)} of those vs ${pc0(f.baseline.wrFail)} of the rest.</p>` : ''}`;
     const res = p.results.slice().reverse().slice(0, 15);
-    return `<section class="card focus-card${p.graduated ? ' done' : ''}">${head}
-      ${f.why ? `<p class="fc-why">${c.esc(f.why)}</p>` : ''}
-      ${f.how && f.how.length ? `<div class="t-label">How to pass it</div><ul class="fc-how">${f.how.map(x => `<li>${c.esc(x)}</li>`).join('')}</ul>` : ''}
-      ${res.length ? `<div class="t-label">Games since you started</div><ul class="fc-games">${res.map(r => `<li><a href="#/match/${r.m.id}">
+    const more = (f.why ? `<p class="fc-why">${c.esc(f.why)}</p>` : '')
+      + (f.how && f.how.length ? `<div class="t-label">How to pass it</div><ul class="fc-how">${f.how.map(x => `<li>${c.esc(x)}</li>`).join('')}</ul>` : '')
+      + (res.length ? `<div class="t-label">Games since you started</div><ul class="fc-games">${res.map(r => `<li><a href="#/match/${r.m.id}">
         <span class="dot ${r.pass ? 'y' : 'n'}">${r.pass ? '✓' : '✗'}</span>${icon(c, r.m.hero, 22)}<span>${c.esc(c.heroName(r.m.hero))}</span>
-        <span class="${r.m.won ? 'win' : 'loss'}">${r.m.won ? 'W' : 'L'}</span><span class="muted small">${c.ago(r.m.t)}</span></a></li>`).join('')}</ul>` : ''}
+        <span class="${r.m.won ? 'win' : 'loss'}">${r.m.won ? 'W' : 'L'}</span><span class="muted small">${c.ago(r.m.t)}</span></a></li>`).join('')}</ul>` : '');
+    return `${focusBrief(c, f, h, p)}
       <div class="fc-actions">
         ${p.graduated ? '<button type="button" class="btn" data-focus="graduate">Mark mastered, pick the next</button>' : ''}
-        <button type="button" class="btn ghost-btn" data-focus="drop">Drop this habit</button>
-      </div></section>`;
+        <button type="button" class="btn ghost-btn sm" data-focus="drop">Drop this habit</button>
+        <span class="muted small">before: ${pc0(f.baseline.rate)} of ${f.baseline.n} games${f.by === 'coach' ? ' · coach’s pick' : f.by === 'climb' ? ' · Climb’s pick' : ''}</span>
+      </div>
+      ${more ? `<details class="fold"><summary>How to pass it · games since you started</summary>${more}</details>` : ''}`;
   }
 
-  /* The Coach tab's habit picker: every habit with your pass rate and win-rate split. */
-  function habitPicker(c) {
-    const E = c.E, st = c.state;
-    const cat = c.focusCatalog();
-    const rows = cat.filter(x => x.n);
-    const busy = st.analyzing;
-    const hasKey = !!st.coach.key;
-    return `<section class="card">
-      <div class="card-head"><div><div class="t-label">Focus loop</div><h2>Pick one habit to work on</h2>
-        <p class="muted small">Every game gets a ✓ or ✗. After ${E.FOCUS_MIN_GAMES} games Climb says whether your pass rate really moved, and a habit is mastered at ${E.FOCUS_GRAD[0]} of your last ${E.FOCUS_GRAD[1]}. Only habits that split <i>your</i> wins from your losses can be picked.</p></div>
-        <button type="button" class="btn" data-focus="coach"${busy ? ' disabled' : ''}>${hasKey ? 'Let the coach pick' : 'Pick for me'}</button></div>
-      ${busy ? `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(busy)}</p>` : ''}
-      ${st.focusError ? `<p class="neg small">${c.esc(st.focusError)}</p>` : ''}
-      <div class="table-wrap"><table class="tbl habits"><thead><tr><th>Habit</th><th class="n">You pass it</th><th class="n">Win rate passed</th><th class="n">Not passed</th><th></th></tr></thead>
+  /* Coach, no habit yet: the three habits that split your wins from losses most, as the Overview's
+     split bars with a Pick button; every habit folds below. */
+  function habitPicks(c) {
+    const rows = c.focusCatalog().filter(x => x.eligible).slice(0, 3);
+    if (!rows.length) return '<p class="muted small">Counting once match details for your recent games have loaded…</p>';
+    return `<ul class="splits picks">${splitHead(c, rows[0].n)}
+      ${rows.map(x => `<li>${splitLab(c, x)}${splitBar(c, x)}<button type="button" class="btn sm" data-pick="${x.id}">Pick</button></li>`).join('')}</ul>`;
+  }
+  /* Every habit with your pass rate and win-rate split, folded. */
+  function habitPicker(c, title) {
+    const E = c.E, rows = c.focusCatalog().filter(x => x.n);
+    if (!rows.length) return '';
+    return `<details class="fold"><summary>${title} (${rows.length}) ${src('rule', `Every game gets a ✓ or ✗. After ${E.FOCUS_MIN_GAMES} games Climb says whether your pass rate really moved, and a habit is mastered at ${E.FOCUS_GRAD[0]} of your last ${E.FOCUS_GRAD[1]}. Only habits that split your wins from your losses can be picked. From your last ${rows[0].n} games with match detail.`)}</summary>
+      <div class="table-wrap"><table class="tbl habits"><thead><tr><th>Habit</th><th class="n">Happens</th><th class="n">Won with it</th><th class="n">Won without</th><th></th></tr></thead>
       <tbody>${rows.map(x => `<tr class="${x.eligible ? '' : 'dim'}"><td>${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result: losing games also causes this">follows result</span>' : ''}</td>
-        <td class="n">${pc0(x.passRate)}</td><td class="n pos">${pc0(x.wrPass)}</td><td class="n neg">${pc0(x.wrFail)}</td>
-        <td class="n">${x.eligible ? `<button type="button" class="btn ghost-btn sm" data-pick="${x.id}">Pick</button>` : `<span class="muted small" title="Passing it made no clear difference to your win rate">no difference</span>`}</td></tr>`).join('')}</tbody></table></div>
-      <p class="muted small">From your last ${rows.length ? rows[0].n : 0} games with match detail.</p>
-    </section>`;
+        <td class="n">${pc0(x.passRate)}</td><td class="n pos">${pc0(x.wrPass)}</td><td class="n muted">${pc0(x.wrFail)}</td>
+        <td class="n">${x.eligible ? `<button type="button" class="btn ghost-btn sm" data-pick="${x.id}">Pick</button>` : '<span class="muted small" title="Made no clear difference to your win rate">no difference</span>'}</td></tr>`).join('')}</tbody></table></div></details>`;
   }
 
   function focusHistory(c) {
     const E = c.E, H = c.state.focus.history;
     if (!H.length) return '';
     const OUT = { graduated: 'Mastered', dropped: 'Dropped', switched: 'Switched' };
-    return `<section class="card"><h2>Past habits</h2><ul class="fc-hist">${H.map(x => `<li>
+    return `<section class="ov-sec">${sh('Past habits')}<ul class="fc-hist">${H.map(x => `<li>
       <span>${c.esc((E.habitById(x.habit) || { label: x.habit }).label)}</span>
-      <span class="muted small">${pc0(x.baseline)} → ${pc0(x.rate)} over ${x.n} games</span>
+      <b>${pc0(x.baseline)} <span class="muted">→</span> ${pc0(x.rate)}</b><span class="muted small">${x.n} games</span>
       <span class="role ${x.outcome === 'graduated' ? 'good' : ''}">${OUT[x.outcome] || x.outcome}</span></li>`).join('')}</ul></section>`;
   }
 
@@ -612,53 +586,67 @@
     const mmss = s => s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
     const one = v => v == null ? '—' : v.toFixed(1);
     const sgn = v => v == null ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '±') + c.fmtInt(Math.abs(v));
-    // A wins-vs-losses tile. better: 'lower' | 'higher' decides which side is coloured good.
-    const wl = (label, x, fmt, better, sub) => {
+    /* A wins-vs-losses figure: the number in your wins beside the number in your losses. better:
+       'lower' | 'higher' decides which side is coloured good. */
+    const wl = (label, x, fmt, better, sub, info) => {
       const gap = x.win != null && x.loss != null ? x.win - x.loss : null;
       const cls = side => gap == null || gap === 0 ? '' : ((side === 'win') === ((better === 'lower') === (gap < 0))) ? 'pos' : 'neg';
-      return `<div class="tile wl"><div class="t-label">${label}</div>
-        <div class="wl-row"><span class="wl-k">Wins</span><b class="${cls('win')}">${fmt(x.win)}</b></div>
-        <div class="wl-row"><span class="wl-k">Losses</span><b class="${cls('loss')}">${fmt(x.loss)}</b></div>
-        <div class="t-sub">${sub || ''}</div></div>`;
+      return `<div class="fig wlf"><div class="wl-pair"><span><b class="fig-v ${cls('win')}">${fmt(x.win)}</b><span class="t-sub">wins</span></span>
+        <span><b class="fig-v ${cls('loss')}">${fmt(x.loss)}</b><span class="t-sub">losses</span></span></div>
+        <div class="t-label">${label}${info ? ' ' + info : ''}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
     };
-    const head = `<div class="page-head"><div><h1 class="page-title">Coach</h1>
-      <p class="muted small">Your last ${games.length} games read together: ${A.n ? `${A.wins} wins, ${A.losses} losses` : 'loading'}. The numbers are counted exactly from your match data; the analysis below them is Gemini’s read of those numbers.</p></div></div>`;
+    const busy = st.analyzing;
+    const mast = `<div class="masthead"><div class="ident"><div><div class="rank-name">Coach</div>
+      <div class="muted small num-line"><span>Last ${games.length} games</span>${A.n ? `<span>${A.wins}–${A.losses}</span>` : ''}<span>${have} with detail</span></div></div></div></div>`;
     if (!A.n) {
-      host.innerHTML = head + `<section class="card"><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading match details for your last ${games.length} games… ${have}/${games.length}</p></section>`;
+      host.innerHTML = mast + `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading match details… ${have}/${games.length}</p>`;
       return;
     }
     const econ12 = A.economy.find(e => e.t === 720), econ20 = A.economy.find(e => e.t === 1200);
     const maxPhase = Math.max(0.1, ...A.deaths.byPhase.flatMap(p => [p.win || 0, p.loss || 0]));
     const bar = (v, cls) => `<span class="pbar"><span class="${cls}" style="width:${v == null ? 0 : Math.round(100 * v / maxPhase)}%"></span></span>`;
+    const pickBtn = `<button type="button" class="btn ghost-btn sm" data-focus="coach"${busy ? ' disabled' : ''}>${st.coach.key ? 'Let the coach pick' : 'Pick for me'}</button>`;
+    const active = !!st.focus.active;
 
-    host.innerHTML = head + `
-      ${c.state.focus.active ? focusCard(c, true) : habitPicker(c)}
-      ${calibrationCard(c)}
+    host.innerHTML = mast + `
+      <section class="ov-sec coach-train">
+        ${sh(active ? 'Training' : 'Training · pick one habit', active ? '' : pickBtn)}
+        ${busy ? `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(busy)}</p>` : ''}
+        ${st.focusError ? `<p class="neg small">${c.esc(st.focusError)}</p>` : ''}
+        ${active ? focusCard(c, true) : habitPicks(c)}
+        ${habitPicker(c, active ? 'Switch habit' : 'All habits')}
+      </section>
+
+      <section class="ov-sec">
+        ${sh('Wins vs losses')}
+        <div class="ledger l3">
+          ${wl('Deaths a game', A.deaths.perGame, one, 'lower')}
+          ${wl('Deaths before 10:00', A.deaths.before10, one, 'lower')}
+          ${wl('Souls vs lane · 12:00', econ12 ? econ12.diff : {}, sgn, 'higher', econ12 && econ12.aheadRate.all != null ? `ahead in ${c.pct(econ12.aheadRate.all)}` : '')}
+          ${wl('Souls vs lane · 20:00', econ20 ? econ20.diff : {}, sgn, 'higher', econ20 && econ20.aheadRate.all != null ? `ahead in ${c.pct(econ20.aheadRate.all)}` : '')}
+          ${wl('Souls vs lane · 20–30 min', A.lateSwing, sgn, 'higher', A.lateSwing.n ? `${A.lateSwing.n} games` : '', src('yours', 'Souls you gained between 20:00 and 30:00 minus your lane opponents’, in games that reached 30:00.'))}
+          ${wl('First tier-4 item', A.items.tier4, mmss, 'lower', `tier-3 at ${mmss(A.items.tier3.all)}`)}
+        </div>
+      </section>
+
+      <section class="ov-sec">
+        ${sh('Farm · at ' + clk(E.FARM_T) + ' vs your lane')}
+        ${farmProfileCard(c)}
+      </section>
+
+      <section class="ov-sec">
+        ${sh('Deaths')}
+        <div class="num-line deaths-line"><span><b>${A.deaths.total}</b> deaths</span><span>${A.n} games</span>${A.deaths.fastShare != null ? `<span><b>${c.pct(A.deaths.fastShare)}</b> caught out ${src('yours', `Deaths that came within ${E.FAST_DEATH_S}s of first taking damage.`)}</span>` : ''}</div>
+        <div class="death-grid">
+          <div><div class="t-label">A game, by phase · <span class="pos">wins</span> / <span class="neg">losses</span></div>
+            <div class="phases">${A.deaths.byPhase.map(p => `<div class="ph"><span class="ph-l">${p.label}</span>
+            <span class="ph-bars">${bar(p.win, 'w')}${bar(p.loss, 'l')}</span><span class="ph-v"><span class="pos">${one(p.win)}</span> / <span class="neg">${one(p.loss)}</span></span></div>`).join('')}</div></div>
+          <div><div class="t-label">Where ${src('yours', 'Coarse zones, from your side of the map.')}</div><ol class="plain">${A.deaths.zones.map(z => `<li><span>${c.esc(z.zone)}</span><b>${c.pct(z.share)}</b></li>`).join('')}</ol></div>
+          <div><div class="t-label">Killed most by</div><ol class="plain">${A.deaths.killers.map(k => `<li><span>${icon(c, k.hero, 20)}${c.esc(k.name)}</span><b>${k.n}</b></li>`).join('')}</ol></div>
+        </div>
+      </section>
+
       ${aiCard(c, A)}
-      ${farmProfileCard(c)}
-      <div class="t-label sec">The numbers · wins vs losses</div>
-      <div class="tiles tiles-6">
-        ${wl('Deaths per game', A.deaths.perGame, one, 'lower')}
-        ${wl('Deaths before 10:00', A.deaths.before10, one, 'lower')}
-        ${wl('Souls vs lane opp. at 12:00', econ12 ? econ12.diff : {}, sgn, 'higher', econ12 && econ12.aheadRate.all != null ? `ahead in ${Math.round(econ12.aheadRate.all * 100)}% of games` : '')}
-        ${wl('Souls vs lane opp. at 20:00', econ20 ? econ20.diff : {}, sgn, 'higher', econ20 && econ20.aheadRate.all != null ? `ahead in ${Math.round(econ20.aheadRate.all * 100)}% of games` : '')}
-        ${wl('Souls gained 20–30 min vs lane opp.', A.lateSwing, sgn, 'higher', A.lateSwing.n ? `${A.lateSwing.n} games reached 30:00` : '')}
-        ${wl('First tier-4 item', A.items.tier4, mmss, 'lower', `first tier-3: ${mmss(A.items.tier3.all)}`)}
-      </div>
-      <div class="grid-2">
-        <section class="card"><h2>When you die</h2><p class="muted small">Deaths per game in each phase. ${A.deaths.fastShare != null ? `${Math.round(A.deaths.fastShare * 100)}% of all deaths came within ${E.FAST_DEATH_S}s of taking damage (caught out).` : ''}</p>
-          <div class="phases">${A.deaths.byPhase.map(p => `<div class="ph"><span class="ph-l">${p.label}</span>
-            <span class="ph-bars">${bar(p.win, 'w')}${bar(p.loss, 'l')}</span><span class="ph-v"><span class="pos">${one(p.win)}</span> / <span class="neg">${one(p.loss)}</span></span></div>`).join('')}</div>
-          <p class="muted small"><span class="key r-carried"></span> wins <span class="key r-dragged"></span> losses</p></section>
-        <section class="card"><h2>Where and to whom</h2>
-          <div class="two-lists"><div><div class="t-label">Zones</div><ol class="plain">${A.deaths.zones.map(z => `<li><span>${c.esc(z.zone)}</span><b>${Math.round(z.share * 100)}%</b></li>`).join('')}</ol></div>
-          <div><div class="t-label">Killed most by</div><ol class="plain">${A.deaths.killers.map(k => `<li><span>${icon(c, k.hero, 20)}${c.esc(k.name)}</span><b>${k.n}</b></li>`).join('')}</ol></div></div>
-          <p class="muted small">Zones are coarse and from your side of the map. ${A.deaths.total} deaths in ${A.n} games.</p></section>
-      </div>
-      <section class="card flush"><div class="pad"><h2>Heroes in these games</h2></div>
-        <div class="table-wrap"><table class="tbl"><thead><tr><th>Hero</th><th class="n">Games</th><th class="n">Win rate</th><th class="n">Deaths / game</th><th class="n">Before 10:00</th></tr></thead>
-        <tbody>${A.heroes.map(h => `<tr><td><a class="mh" href="#/heroes/${h.hero}">${icon(c, h.hero, 24)}<span>${c.esc(h.name)}</span></a></td><td class="n">${h.n}</td><td class="n">${Math.round(h.winRate * 100)}%</td><td class="n">${one(h.deathsPerGame)}</td><td class="n">${one(h.before10PerGame)}</td></tr>`).join('')}</tbody></table></div></section>
-      ${c.state.focus.active ? habitPicker(c).replace('Pick one habit to work on', 'Switch habit') : ''}
       ${focusHistory(c)}`;
     bindFocus(host, c);
     const go = host.querySelector('[data-analyze]');
@@ -850,33 +838,29 @@
     host.querySelectorAll('[data-duo]').forEach(b => b.addEventListener('click', () => c.runDuoCoach(acct)));
   }
 
+  /* Coach's notes: Gemini's read, the one part of Coach that is sentences. The headline shows; each
+     pattern and the plan fold open. */
   function aiCard(c, A) {
     const st = c.state, a = st.analysis;
-    const head = `<div class="card-head"><div><div class="t-label">AI coach ${src('ai', 'Gemini reads only the counted numbers shown on this tab (your last 30 games, wins vs losses) plus your gaps vs the next rank, and writes the patterns and plan. The numbers are Climb’s; the wording and advice are Gemini’s.')}</div><h2>State of your game</h2></div>`;
-    if (!st.coach.key) return `<section class="card coach">${head}</div><p class="muted">Add your Gemini key in <a class="more" href="#/about">Account & about</a> to get the three patterns costing you the most games, and a plan for your next sessions.</p></section>`;
-    if (st.analyzing) return `<section class="card coach">${head}</div><p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(st.analyzing)}</p></section>`;
+    const info = src('ai', 'Gemini reads only the counted numbers on this tab (your last 30 games, wins vs losses) plus your gaps vs the next rank, and writes the patterns and plan. The numbers are Climb’s; the wording and advice are Gemini’s.');
+    const wrap = (more, body) => `<section class="ov-sec coach-notes">${sh('Coach’s notes · Gemini', more)}${body}</section>`;
+    if (!st.coach.key) return wrap('', `<p class="muted small">Add a Gemini key in <a class="more" href="#/about">Account & about</a> ${info}</p>`);
+    if (st.analyzing) return wrap('', `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(st.analyzing)}</p>`);
     const lastId = c.M.all.length ? c.M.all[c.M.all.length - 1].id : null;
     const stale = a && a.data && a.lastId !== lastId;
-    if (!a || !a.data) {
-      return `<section class="card coach">${head}<button type="button" class="btn" data-analyze="go">Analyze my last ${A.n} games</button></div>
-        <p class="muted small">One Gemini call (${c.esc(st.coach.model)}) with the numbers below: about 3 KB, nothing else.</p>
-        ${a && a.error ? `<p class="neg">${c.esc(a.error)}</p>` : ''}</section>`;
-    }
+    if (!a || !a.data) return wrap('', `<button type="button" class="btn" data-analyze="go">Analyze my last ${A.n} games</button> ${info}${a && a.error ? `<p class="neg small">${c.esc(a.error)}</p>` : ''}`);
     const x = a.data;
-    return `<section class="card coach">${head}<button type="button" class="btn ${stale ? '' : 'ghost-btn'}" data-analyze="again">${stale ? 'Update with new games' : '↻ Redo'}</button></div>
-      <p class="coach-sum">${c.esc(x.headline)}</p>
-      <ol class="coach-pts">${(x.patterns || []).map((p, i) => `<li class="bad">
-        <div class="cp-title">${i + 1}. ${c.esc(p.title)}</div>
+    return wrap(`<button type="button" class="btn ${stale ? '' : 'ghost-btn'} sm" data-analyze="again">${stale ? 'Update with new games' : '↻ Redo'}</button>`, `
+      <p class="coach-sum">${c.esc(x.headline)} ${info}</p>
+      <ol class="coach-pts">${(x.patterns || []).map((p, i) => `<li><details class="fold"><summary><b>${i + 1}.</b> ${c.esc(p.title)}</summary>
         <div class="cp-ev muted">${c.esc(p.evidence)}</div>
         <div class="cp-fix muted">${c.esc(p.why_it_costs_games)}</div>
-        <div class="cp-fix"><b>Practice:</b> ${c.esc(p.practice)}</div></li>`).join('')}</ol>
-      <div class="grid-2 coach-foot">
-        <div class="focus good"><div class="t-label">Keep doing</div><ul class="plain-ul">${(x.strengths || []).map(s => `<li><b>${c.esc(s.title)}</b> <span class="muted small">${c.esc(s.evidence)}</span></li>`).join('')}</ul></div>
-        <div class="coach-focus"><span class="t-label">Next few sessions</span><ol class="plan">${(x.next_sessions_plan || []).map(s => `<li>${c.esc(s)}</li>`).join('')}</ol></div>
-      </div>
+        <div class="cp-fix"><b>Practice:</b> ${c.esc(p.practice)}</div></details></li>`).join('')}
+        <li><details class="fold"><summary>Keep doing · next sessions</summary>
+          <ul class="plain-ul">${(x.strengths || []).map(s => `<li><b class="pos">${c.esc(s.title)}</b> <span class="muted small">${c.esc(s.evidence)}</span></li>`).join('')}</ul>
+          <ol class="plan">${(x.next_sessions_plan || []).map(s => `<li>${c.esc(s)}</li>`).join('')}</ol></details></li></ol>
       ${a.error ? `<p class="neg small">Last update failed: ${c.esc(a.error)}</p>` : ''}
-      <p class="muted small">Gemini ${c.esc(a.model)} · ${a.n} games · ${c.ago(a.at / 1000)}${a.tokens ? ' · ' + c.fmtInt(a.tokens) + ' tokens' : ''}${stale ? ' · you’ve played since, so this is out of date' : ''}.</p>
-    </section>`;
+      <div class="muted small num-line"><span>${c.esc(a.model)}</span><span>${a.n} games</span><span>${c.ago(a.at / 1000)}</span>${stale ? '<span>out of date</span>' : ''}</div>`);
   }
 
   // ---------------------------------------------------------------- matches list
@@ -1245,6 +1229,7 @@
               <button type="submit" class="btn">Save</button>
             </form><p id="coach-msg" class="small"></p>`}
         </section>
+        ${calibrationCard(c)}
         <section class="card"><h2>Missing games?</h2>
           <p class="muted small">${freshLine(c)}</p>
           <p class="muted small">Climb shows what deadlock-api has. A game reaches deadlock-api once someone sends it the game’s key from Valve, which can take hours. To get yours there within minutes:</p>

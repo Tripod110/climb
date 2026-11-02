@@ -4,6 +4,13 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.38 (2026-11-02): Coach, redesigned
+- `coach()` rebuilt on the Overview's parts: masthead, `sh()` kickers, `.ledger` figures. Sections: Training, Wins vs losses
+  (`.ledger.l3`, wins beside losses per stat), Farm (`farmProfileCard` as gap figures), Deaths (`.death-grid`), Coach's notes.
+- No focus: `habitPicks` (top 3 eligible, shared `splitHead`/`splitLab`/`splitBar` with Overview) + folded `habitPicker`.
+  With focus: `focusCard(c, true)` = `focusBrief` + controls, why/how and games folded. `verdictLine`/`impactBlock` removed.
+- `aiCard` folds each pattern (`details.fold`). `calibrationCard` moved to About. Heroes table removed.
+
 ## 0.37 (2026-11-02): Rank-ups on the climb chart
 - `Charts.rankLine` draws badge changes as ▲/▼ paths instead of circles (they read as W/L). Overview adds a `.chart-key`
   and the tooltip leads with "▲ Ranked up to X" / "▼ Ranked down to X" on those games.

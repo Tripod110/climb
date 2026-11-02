@@ -797,3 +797,52 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
 .fl-who { display: flex; align-items: center; gap: 4px; flex: 1; }
 .fl-h { display: inline-flex; border-radius: 50%; }
 .fl-h.you { outline: 2px solid #e8e8ea; outline-offset: 1px; }
+
+/* ---------------------------------------------------------------- Coach, in the Overview's style (0.38) */
+.coach-train > .card { background: none; border: 0; border-radius: 0; padding: 0; margin: 0; }
+.coach-train .fc-habit { font: 600 26px/1.15 var(--display); letter-spacing: .03em; margin: 6px 0 2px; }
+.coach-train .dots .dot { border-radius: 0; transform: rotate(45deg); width: 16px; height: 16px; font-size: 0; margin: 3px; }
+.coach-train .dots { gap: 6px; padding-top: 8px; }
+.coach-train .fc-actions { align-items: center; margin-top: 16px; }
+.splits.picks li { grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) auto; }
+.splits.picks li.dv-head { grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) 58px; }
+.fold { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.fold > summary { cursor: pointer; color: var(--ink-2); font-size: 13px; letter-spacing: .04em; list-style: none; display: flex; align-items: center; gap: 6px; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: '▸'; color: var(--brass); }
+.fold[open] > summary::before { content: '▾'; }
+.fold[open] > summary { margin-bottom: 10px; }
+.ledger.l3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ledger.l3 .fig:nth-child(n + 4) { border-top: 1px solid var(--border); }
+.ledger.l3 .fig:nth-child(4) { border-left: 0; }
+.wl-pair { display: flex; justify-content: center; gap: 22px; margin-bottom: 8px; }
+.wl-pair > span { display: grid; justify-items: center; gap: 4px; }
+.wl-pair .fig-v { font-size: 28px; margin: 0; }
+.wl-pair .t-sub { margin: 0; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.deaths-line { margin: 0 0 12px; color: var(--muted); }
+.deaths-line b { color: var(--ink); font: 600 18px/1 var(--display); }
+.death-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); gap: 28px; }
+.death-grid > div + div { border-left: 1px solid var(--border); padding-left: 24px; }
+.death-grid .plain b { font: 600 15px/1 var(--display); font-variant-numeric: tabular-nums; }
+.coach-notes .coach-pts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.coach-notes .coach-pts li { background: none; border-radius: 0; padding: 0; }
+.coach-notes .coach-pts .fold > summary { color: var(--ink); font-size: 14px; letter-spacing: 0; }
+.coach-notes .coach-sum { font: 600 18px/1.35 var(--display); letter-spacing: .02em; }
+.coach-notes .plan { margin: 10px 0 0; }
+.fc-hist li { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.fc-hist b { font: 600 16px/1 var(--display); font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .splits.picks li { grid-template-columns: minmax(0, 1fr) auto; }
+  .splits.picks li .dv { grid-column: 1 / -1; grid-row: 2; }
+  .splits.picks li.dv-head { grid-template-columns: minmax(0, 1fr); }
+  .ledger.l3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ledger.l3 .fig:nth-child(4) { border-left: 1px solid var(--border); }
+  .ledger.l3 .fig:nth-child(odd) { border-left: 0; }
+  .wl-pair { gap: 14px; }
+  .wl-pair .fig-v { font-size: 22px; }
+  .death-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+  .death-grid > div:first-child { grid-column: 1 / -1; }
+  .death-grid > div + div { border-left: 0; padding-left: 0; }
+  .death-grid > div:last-child { border-left: 1px solid var(--border); padding-left: 16px; }
+  .fc-hist li { grid-template-columns: minmax(0, 1fr) auto; }
+}

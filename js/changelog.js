@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 38, date: '2026-11-02', title: 'Coach, redesigned',
+      items: [
+        'Coach now matches Overview: five sections (Training, Wins vs losses, Farm, Deaths, Coach’s notes), numbers first, with the explanations behind the small i.',
+        'With no habit picked, the three habits that win you the most games sit at the top with their won-with-it bars and a Pick button; the rest fold under “All habits”.',
+        'Your wins and losses are side by side for each stat. Farm shows your gap to your lane opponents at 12:00 for lane creeps, camps and boxes, plus creep kill %.',
+        'Gemini’s notes show the headline; each pattern and the plan open on tap. The win-model check moved to Account & about, and the heroes table is gone (it’s on Heroes).',
+      ],
+    },
+    {
       v: 37, date: '2026-11-02', title: 'Rank-ups on the climb chart',
       items: [
         'The marks on the season chart are the games where your rank changed: ▲ when you ranked up, ▼ when you ranked down, with a key under the chart.',
