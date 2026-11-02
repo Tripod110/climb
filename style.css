@@ -285,17 +285,15 @@ a.rf:hover .t-label { color: var(--ink); }
 .sp-lab { display: grid; gap: 2px; }
 /* diverging win-rate bars: 50% in the middle, losing record to the left, winning to the right */
 .splits li.dv-head { border-top: 0; padding: 0 0 6px; }
-.dv-scale { display: grid; grid-template-columns: 1fr auto 1fr; margin: 0 48px 0 52px; letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
-.dv-scale > :first-child { text-align: left; } .dv-scale > :last-child { text-align: right; }
-.dv { display: grid; gap: 5px; }
-.dv-lane { display: grid; grid-template-columns: 44px minmax(0, 1fr) 40px; gap: 8px; align-items: center; }
-.dv-k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
-.dv-track { position: relative; height: 12px; background: var(--shade); }
-.dv-track::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--brass); }
+.dv-scale { display: flex; justify-content: space-between; margin: 0 48px; letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
+.dv { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 8px; align-items: center; }
+.dv > b { font: 600 16px/1 var(--display); font-variant-numeric: tabular-nums; }
+.dv > b:first-child { text-align: right; }
+.dv-track { position: relative; height: 14px; background: var(--shade); }
+.dv-track::after { content: ''; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--brass); }
 .dv-bar { position: absolute; top: 0; bottom: 0; }
 .dv-bar.w { background: var(--good); }
 .dv-bar.l { background: var(--bad); }
-.dv-lane b { font: 600 15px/1 var(--display); font-variant-numeric: tabular-nums; text-align: right; }
 
 /* film room: a strip of frames, newest first */
 .reel { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
@@ -730,6 +728,7 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
   .coach-pts { grid-template-columns: minmax(0, 1fr); }
   .targets { grid-template-columns: minmax(0, 1fr); }
   .splits li { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .dv-scale { margin: 0; font-size: 9.5px; letter-spacing: .04em; }
   .sig { padding: 0 6px; }
   .sig-v { font-size: 21px; }
   .sig-k { font-size: 10px; letter-spacing: .08em; }
