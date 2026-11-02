@@ -865,6 +865,7 @@
 
   // ---------------------------------------------------------------- matches list
   const matchFilter = { hero: 'all', result: 'all', role: 'all', mode: 'all' };
+  let matchLimit = 60;   // games listed; "Show more" adds 60. Module state so a redraw keeps it
   function matches(host, c) {
     const M = c.M, E = c.E;
     const heroes = [...new Set(M.all.map(m => m.hero))].sort((a, b) => c.heroName(a).localeCompare(c.heroName(b)));
@@ -874,41 +875,68 @@
         && (matchFilter.mode === 'all' || m.mode === matchFilter.mode)
         && (matchFilter.role === 'all' || (g && (matchFilter.role === 'first' ? g.lobbyFirst
           : matchFilter.role === 'above' ? (c.M.perf.get(m.id) || { score: 0 }).score >= FORM_GAME : (c.M.perf.get(m.id) || { score: 0 }).score <= -FORM_GAME))));
-    const shown = rows.slice(0, 150);
+    const shown = rows.slice(0, matchLimit);
     const fp = c.state.focus.active ? c.focusNow() : null;
     const fpass = new Map(fp ? fp.results.map(r => [r.m.id, r.pass]) : []);
     const fh = fp ? c.E.habitById(c.state.focus.active.habit) : null;
     const fmark = id => fpass.has(id) ? `<span class="dot ${fpass.get(id) ? 'y' : 'n'}" title="${c.esc(fh.label)}: ${fpass.get(id) ? 'passed' : 'missed'}">${fpass.get(id) ? '✓' : '✗'}</span>` : '';
     const opt = (v, l, cur) => `<option value="${v}"${String(v) === String(cur) ? ' selected' : ''}>${c.esc(l)}</option>`;
+    // Numbers first: totals for what the filters show, then the games by day, each day with its record.
+    const T = E.matchTotals(rows.map(r => r.m)), days = E.matchDays(shown.map(r => r.m));
+    const byId = new Map(shown.map(r => [r.m.id, r]));
+    const fig = (label, value, sub, cls) => `<div class="fig${cls ? ' ' + cls : ''}"><div class="fig-v">${value}</div><div class="t-label">${label}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
+    const one = v => v == null ? '—' : v.toFixed(1);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dayName = t => { const d = new Date(t * 1000); d.setHours(0, 0, 0, 0); const ago = Math.round((today - d) / 864e5);
+      return ago === 0 ? 'Today' : ago === 1 ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }); };
+    const clock = t => new Date(t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    const form = id => { const p = c.M.perf.get(id); if (!p) return '<span class="muted">—</span>';
+      return `<span class="${p.score >= 0.2 ? 'pos' : p.score <= -0.2 ? 'neg' : 'muted'}">${(p.score >= 0 ? '+' : '−') + Math.abs(p.score).toFixed(1)}</span>`; };
+    const row = ({ m, g, L }) => {
+      const me = L && L.p[L.me];
+      return `<a class="mr2 ${m.won ? 'w' : 'l'}${g && g.lobbyFirst ? ' gold' : ''}" href="#/match/${m.id}">
+        <span class="mh">${icon(c, m.hero, 30)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
+        <span class="mr-marks">${fmark(m.id)}${firstChip(g)}</span>
+        <span class="mr-res ${m.won ? 'win' : 'loss'}">${m.won ? 'W' : 'L'}</span>
+        <span class="n mr-kda">${kda(m)}</span>
+        <span class="n hide-s">${c.kfmt(m.souls)}</span>
+        <span class="n hide-s">${me ? c.kfmt(me[5]) : '—'}</span>
+        <span class="n mr-form">${form(m.id)}</span>
+        <span class="n mr-pts">${deltaHtml(c, m)}</span>
+        <span class="n muted small hide-s">${clock(m.t)}</span></a>`;
+    };
     host.innerHTML = `
-      <div class="page-head"><div><h1 class="page-title">Matches</h1><p class="muted small">${rows.length} of ${M.all.length} matches. Click one for the full lobby.</p></div>
-        <div class="filters">
-          <select id="f-hero" aria-label="Hero">${opt('all', 'All heroes', matchFilter.hero)}${heroes.map(h => opt(h, c.heroName(h), matchFilter.hero)).join('')}</select>
-          <select id="f-result" aria-label="Result">${opt('all', 'Wins and losses', matchFilter.result)}${opt('win', 'Wins', matchFilter.result)}${opt('loss', 'Losses', matchFilter.result)}</select>
-          <select id="f-role" aria-label="How you played">${opt('all', 'Any performance', matchFilter.role)}${opt('first', '★ 1st in the lobby', matchFilter.role)}${opt('above', 'Above your usual', matchFilter.role)}${opt('below', 'Below your usual', matchFilter.role)}</select>
-          <select id="f-mode" aria-label="Mode">${opt('all', 'Ranked + unranked', matchFilter.mode)}${opt('ranked', 'Ranked', matchFilter.mode)}${opt('unranked', 'Unranked', matchFilter.mode)}</select>
-        </div></div>
-      <div class="add-bar"><span class="add-lab">Missing a game? ${src('rule', 'Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here and Climb adds it.')}</span>
-        ${addMatchForm(c)}
-        <a class="more small add-faster" href="ingest.html">Make new games show up faster →</a></div>
-      <section class="card flush">
-        <div class="mrow mhead"><span>Hero</span><span>Result</span><span>Team share</span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="hide-s">Impact</span><span class="n">Rank</span><span class="n">When</span></div>
-        ${shown.length ? shown.map(({ m, g, L }) => {
-          const me = L && L.p[L.me];
-          return `<a class="mrow ${m.won ? 'w' : 'l'}${g && g.lobbyFirst ? ' gold' : ''}" href="#/match/${m.id}">
-            <span class="mh">${icon(c, m.hero, 32)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
-            <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span>
-            <span class="mrole">${fmark(m.id)}${roleChip(c, g, m.id)}<span class="tags">${noteChips(c, L, 2)}</span></span>
-            <span class="n">${kda(m)}</span>
-            <span class="n hide-s">${c.kfmt(m.souls)}</span>
-            <span class="n hide-s">${me ? c.kfmt(me[5]) : '—'}</span>
-            <span class="hide-s">${g ? impactBar(g.impact) : ''}</span>
-            <span class="n">${deltaHtml(c, m)}</span>
-            <span class="n muted small">${c.ago(m.t)}</span></a>`;
-        }).join('') : '<p class="empty-state">No matches with these filters.</p>'}
-        ${rows.length > shown.length ? `<p class="muted small pad">Showing the latest ${shown.length}. Narrow the filters to see older ones.</p>` : ''}
+      <div class="masthead"><div class="ident"><div><div class="rank-name">Matches</div>
+        <div class="muted small num-line"><span>${rows.length === M.all.length ? `${M.all.length} games` : `${rows.length} of ${M.all.length} games`}</span></div></div></div>
+        <div class="ctl-row">
+          ${seg('Result', [['all', 'All'], ['win', 'Wins'], ['loss', 'Losses']], matchFilter.result).replace('class="seg-ctl"', 'class="seg-ctl" id="f-result"')}
+          ${seg('Mode', [['all', 'All modes'], ['ranked', 'Ranked'], ['unranked', 'Unranked']], matchFilter.mode).replace('class="seg-ctl"', 'class="seg-ctl" id="f-mode"')}
+          <div class="filters">
+            <select id="f-hero" aria-label="Hero">${opt('all', 'All heroes', matchFilter.hero)}${heroes.map(h => opt(h, c.heroName(h), matchFilter.hero)).join('')}</select>
+            <select id="f-role" aria-label="How you played">${opt('all', 'Any form', matchFilter.role)}${opt('first', '★ 1st in the lobby', matchFilter.role)}${opt('above', 'Above your usual', matchFilter.role)}${opt('below', 'Below your usual', matchFilter.role)}</select>
+          </div></div></div>
+
+      <div class="ledger">
+        ${fig('Win rate', T.n ? c.pct(T.winRate) : '—', `${T.wins}–${T.losses}`)}
+        ${fig('K / D / A a game', T.n ? `${one(T.k)}<span class="sl">/</span>${one(T.d)}<span class="sl">/</span>${one(T.a)}` : '—', `${T.n} games`, 'kda-fig')}
+        ${fig('Souls a game', T.n ? c.kfmt(T.souls) : '—')}
+        ${fig('Rank points', T.ranked ? c.signed(T.net) : '—', `${T.ranked} ranked`)}
+      </div>
+
+      <details class="fold add-fold"${addState.msg || addState.busy ? ' open' : ''}><summary>Missing a game? ${src('rule', 'Climb lists what Valve’s match history returns, and that sometimes leaves a game out. If deadlock-api has the game (open it in Deadlock’s match history while the ingest tool runs), paste its match id here and Climb adds it.')}</summary>
+        <div class="add-bar">${addMatchForm(c)}<a class="more small add-faster" href="ingest.html">Make new games show up faster →</a></div></details>
+
+      <section class="ov-sec mlist">
+        <div class="mr2 mhead"><span>Hero</span><span></span><span></span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="n">Form ${src('yours', 'How you played vs your usual on that hero: souls, farm by 12:00 vs your lane, damage, kills + assists and staying alive, against your other games on it. 0 is a normal game for you; +1 is about one standard deviation better.')}</span><span class="n">Pts</span><span class="n hide-s">Time</span></div>
+        ${days.length ? days.map(dg => `<div class="mday"><span class="mday-k">${dayName(dg.t)}</span><span class="num-line"><span>${dg.tot.wins}–${dg.tot.losses}</span>${dg.tot.ranked ? `<span class="${dg.tot.net > 0 ? 'pos' : dg.tot.net < 0 ? 'neg' : ''}">${c.signed(dg.tot.net)} pts</span>` : ''}</span></div>
+          ${dg.games.map(m => row(byId.get(m.id))).join('')}`).join('') : '<p class="empty-state">No matches with these filters.</p>'}
+        ${rows.length > shown.length ? `<div class="more-row"><button type="button" class="btn ghost-btn sm" id="m-more">Show ${Math.min(60, rows.length - shown.length)} more</button><span class="muted small">${shown.length} of ${rows.length}</span></div>` : ''}
       </section>`;
-    ['hero', 'result', 'role', 'mode'].forEach(k => host.querySelector('#f-' + k).addEventListener('change', e => { matchFilter[k] = e.target.value; matches(host, c); }));
+    ['hero', 'role'].forEach(k => host.querySelector('#f-' + k).addEventListener('change', e => { matchFilter[k] = e.target.value; matches(host, c); }));
+    bindSeg(host, '#f-result', v => { matchFilter.result = v; matches(host, c); });
+    bindSeg(host, '#f-mode', v => { matchFilter.mode = v; matches(host, c); });
+    const more = host.querySelector('#m-more');
+    if (more) more.addEventListener('click', () => { matchLimit += 60; const y = scrollY; matches(host, c); scrollTo(0, y); });
     bindAddMatch(host, c);
   }
 

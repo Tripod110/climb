@@ -4,6 +4,13 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.39 (2026-11-02): Matches, redesigned
+- `Engine.matchTotals(ms)` (record, win rate, average K/D/A and souls, net over ranked) and `Engine.matchDays(ms)` (local-day
+  groups with totals). 3 new tests.
+- `matches()`: masthead with seg toggles for result and mode, a 4-figure `.ledger`, day headers (`.mday`), rows as `.mr2`
+  (W/L, KDA, souls, damage, Form score, pts, clock time). Note chips and the impact bar are gone (they stay on the match page).
+  Lists 60 at a time (`matchLimit`, Show more). `.mrow` is kept for the friend page.
+
 ## 0.38 (2026-11-02): Coach, redesigned
 - `coach()` rebuilt on the Overview's parts: masthead, `sh()` kickers, `.ledger` figures. Sections: Training, Wins vs losses
   (`.ledger.l3`, wins beside losses per stat), Farm (`farmProfileCard` as gap figures), Deaths (`.death-grid`), Coach's notes.

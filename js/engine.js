@@ -372,6 +372,24 @@
     return { dir, per, steps, tierUp };
   }
 
+  /* Matches tab: totals for a list of matches (any order). net/ranked only count games with a rank delta. */
+  function matchTotals(ms) {
+    const n = ms.length, wins = ms.filter(m => m.won).length, rk = ms.filter(m => m.delta != null);
+    const avg = k => n ? ms.reduce((s, m) => s + (m[k] || 0), 0) / n : null;
+    return { n, wins, losses: n - wins, winRate: n ? wins / n : null, k: avg('k'), d: avg('d'), a: avg('a'), souls: avg('souls'),
+      ranked: rk.length, net: rk.reduce((s, m) => s + m.delta, 0) };
+  }
+  /* Matches grouped by local calendar day, newest day first, each with its totals. ms: newest first. */
+  function matchDays(ms) {
+    const out = [], key = t => { const d = new Date(t * 1000); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
+    for (const m of ms) {
+      const k = key(m.t), last = out[out.length - 1];
+      if (last && last.key === k) last.games.push(m); else out.push({ key: k, t: m.t, games: [m] });
+    }
+    for (const g of out) g.tot = matchTotals(g.games);
+    return out;
+  }
+
   function heroBreakdown(games, perf) {
     const by = new Map();
     for (const m of games) {
@@ -1806,7 +1824,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, matchTotals, matchDays, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

@@ -448,6 +448,17 @@
     eq('forecast: sliding', E.rankForecast(rk(Array.from({ length: 30 }, (_, i) => 44 - Math.floor(i / 10)))).call, 'sliding');
     const wobble = rk([...Array(10).fill(41), ...Array(10).fill(43), ...Array(10).fill(41)]);
     eq('forecast: up then down is mixed, not a trend', E.rankForecast(wobble).call, 'mixed');
+    // matchTotals / matchDays: the Matches tab's figures and day headers.
+    const day = (d, h) => new Date(2026, 9, d, h).getTime() / 1000;
+    const mt = [
+      { t: day(2, 20), won: true, k: 10, d: 2, a: 8, souls: 40000, delta: 300 },
+      { t: day(2, 18), won: false, k: 4, d: 6, a: 6, souls: 30000, delta: -300 },
+      { t: day(1, 22), won: true, k: 7, d: 4, a: 10, souls: 35000, delta: null }];
+    const tot = E.matchTotals(mt);
+    eq('matchTotals: record, averages, net over ranked only', [tot.wins, tot.losses, Math.round(tot.winRate * 100), tot.k, tot.d, tot.souls, tot.ranked, tot.net], [2, 1, 67, 7, 4, 35000, 2, 0]);
+    eq('matchTotals: empty list', [E.matchTotals([]).n, E.matchTotals([]).winRate], [0, null]);
+    const days = E.matchDays(mt);
+    eq('matchDays: grouped by local day, newest first, with totals', days.map(g => [g.games.length, g.tot.wins, g.tot.net]), [[2, 1, 0], [1, 1, 0]]);
     // rankProjection: fc above is 31 games, +5 divisions from Acolyte 1 → Acolyte 6 (6 games/division).
     const pj = E.rankProjection(fc, [12, 30]);
     eq('projection: pace carried forward', pj.steps.map(s => s.badge), [42, 45]);

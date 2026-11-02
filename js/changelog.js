@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 39, date: '2026-11-02', title: 'Matches, redesigned',
+      items: [
+        'Matches now opens with four numbers for whatever you’ve filtered: win rate, average K/D/A, souls a game and rank points.',
+        'Games are grouped by day, each day with its record and rank points, and each game shows a Form number (how you played vs your usual) in place of the text chips.',
+        'Wins/Losses and Ranked/Unranked are quick toggles, the list shows 60 games with a Show more button, and “Missing a game?” folds away.',
+      ],
+    },
+    {
       v: 38, date: '2026-11-02', title: 'Coach, redesigned',
       items: [
         'Coach now matches Overview: five sections (Training, Wins vs losses, Farm, Deaths, Coach’s notes), numbers first, with the explanations behind the small i.',
