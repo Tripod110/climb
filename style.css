@@ -200,15 +200,19 @@ p .more { white-space: normal; }
   list-style: none; margin: 0 auto; padding: 0; max-width: 860px; font-size: 13.5px;
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-.sig { display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: baseline; color: var(--ink-2); text-align: left; padding: 0 18px; }
+.sig { display: grid; grid-template-columns: auto auto; justify-content: center; align-items: baseline; gap: 2px 8px; color: var(--ink-2); padding: 0 18px; }
 .sig + .sig { border-left: 1px solid var(--border); }
-.sig b { color: var(--ink); }
+.sig-k { font: 600 11px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.sig-v { grid-column: 1 / -1; font: 600 26px/1.1 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; }
+.sig-was { grid-column: 1 / -1; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sig.up .sig-v { color: var(--good-text); }
+.sig.down .sig-v { color: var(--bad-text); }
 .sig-icon { font-size: 11px; text-align: center; color: var(--neutral); }
 .sig.up .sig-icon { color: var(--good); }
 .sig.down .sig-icon { color: var(--bad); }
 
 /* the figures: one ruled row, no boxes */
-.ledger { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-bottom: 1px solid var(--brass-lo); margin-bottom: 8px; }
+.ledger { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--brass-lo); margin-bottom: 8px; }
 .fig { padding: 18px 16px 16px; text-align: center; min-width: 0; }
 .fig + .fig { border-left: 1px solid var(--border); }
 .fig-v { font: 600 34px/1 var(--display); letter-spacing: .02em; font-variant-numeric: tabular-nums; margin-bottom: 8px; }
@@ -224,8 +228,8 @@ p .more { white-space: normal; }
 .sh-k::after { background: linear-gradient(90deg, var(--brass-lo), transparent); }
 .sh-k span { display: flex; align-items: center; gap: 10px; }
 .sh-k span::before, .sh-k span::after { content: ''; width: 5px; height: 5px; background: var(--brass); transform: rotate(45deg); }
-.sh-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 12px; }
-.sh-row h2 { font: 600 22px/1.1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.sh-row { display: flex; justify-content: flex-end; margin-top: 8px; }
+.sh { margin-bottom: 10px; }
 .more { font: 600 12px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; }
 
 /* training: focus habit + pace side by side, unboxed */
@@ -234,7 +238,30 @@ p .more { white-space: normal; }
 .train > .card { background: none; border: 0; border-radius: 0; padding: 0 24px 0 0; margin: 0; }
 .train > .forecast { padding-left: 24px; border-left: 1px solid var(--border); }
 .train .fc-habit { font: 600 24px/1.15 var(--display); letter-spacing: .03em; margin: 6px 0 2px; }
-.train .forecast p { margin: 6px 0 0; }
+.pace { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 6px; }
+.pace-n { font: 600 44px/1 var(--display); color: var(--brass-hi); font-variant-numeric: tabular-nums; }
+.pace-w { font: 600 26px/1.1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+.pace-sub { display: flex; flex-wrap: wrap; gap: 2px 0; color: var(--muted); }
+.pace-sub > span + span::before, .num-line > span + span::before { content: '·'; margin: 0 7px; color: var(--axis); }
+.pace-sub b { color: var(--ink-2); font-weight: 600; }
+.fb-row { display: flex; flex-wrap: wrap; gap: 14px 36px; margin-top: 14px; }
+.fb { display: grid; gap: 3px; }
+.fb b { font: 600 26px/1 var(--display); font-variant-numeric: tabular-nums; }
+.num-line { display: flex; flex-wrap: wrap; margin-top: 3px; }
+/* source badges on Overview shrink to a ring: the note is one tap away, the label isn't needed */
+.ov-hero .src, .ledger .src, .ov-sec .src, .masthead .src, .dispatch .src {
+  width: 15px; height: 15px; padding: 0; border-radius: 50%; justify-content: center; font-size: 0; vertical-align: 1px;
+}
+.ov-hero .src::after, .ledger .src::after, .ov-sec .src::after, .masthead .src::after, .dispatch .src::after { content: 'i'; font: italic 700 10px/1 Georgia, serif; }
+/* last session: one ruled band of figures */
+.recap-band { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 0; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--border-2); border-left: 2px solid var(--brass); background: var(--shade); }
+.rb-k { margin-right: 18px; color: var(--brass-hi); }
+.rf { display: grid; justify-items: start; gap: 2px; padding: 0 18px; border-left: 1px solid var(--border); }
+.rf b { font: 600 22px/1 var(--display); font-variant-numeric: tabular-nums; }
+.rf .t-label { font-size: 10px; }
+a.rf:hover .t-label { color: var(--ink); }
+.recap-band .ghost-btn { margin-left: auto; }
+.recap-band .dot { width: 14px; height: 14px; font-size: 0; border-radius: 0; transform: rotate(45deg); margin: 3px; }
 .train .dots .dot { border-radius: 0; transform: rotate(45deg); width: 16px; height: 16px; font-size: 0; margin: 3px; }
 .train .dots { gap: 6px; padding-top: 8px; }
 
@@ -521,7 +548,7 @@ table.score td.best { color: var(--good-text); font-weight: 700; }
 .wp-when { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; }
 
 /* data freshness / missing games */
-.fresh { color: var(--muted); margin-top: 2px; }
+.fresh { color: var(--muted); }
 .fresh.behind { color: var(--warn); }
 .fresh a { color: inherit; text-decoration: underline; }
 .missing { border-left: 3px solid var(--warn); }
@@ -688,23 +715,25 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
   .targets { grid-template-columns: minmax(0, 1fr); }
   .splits li { grid-template-columns: minmax(0, 1fr) 84px; gap: 6px 12px; }
   .splits .db { grid-column: 1 / -1; grid-row: 2; }
-  .signals { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .sig { padding: 0; }
-  .sig + .sig { border-left: 0; }
+  .sig { padding: 0 6px; }
+  .sig-v { font-size: 21px; }
+  .sig-k { font-size: 10px; letter-spacing: .08em; }
   .ov-hero { padding: 28px 16px 22px; }
   .ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fig { border-top: 1px solid var(--border); }
   .fig:nth-child(-n+2) { border-top: 0; }
   .fig + .fig { border-left: 0; }
   .fig:nth-child(even) { border-left: 1px solid var(--border); }
-  .fig:last-child { grid-column: 1 / -1; border-left: 0; }
   .fig-v { font-size: 30px; }
   .train { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .train > .card { padding: 0; }
   .train > .forecast { padding: 18px 0 0; border-left: 0; border-top: 1px solid var(--border); }
   .reel { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
   .reel li { flex: 0 0 104px; scroll-snap-align: start; }
-  .sh-row h2 { font-size: 19px; }
+  .recap-band .ghost-btn { margin-left: 0; }
+  .rf { padding: 0 12px; }
+  .rb-k { flex-basis: 100%; }
+  .sh-k { letter-spacing: .14em; gap: 8px; }
   .friends a { grid-template-columns: 36px minmax(0, 1fr) 70px; }
   .b-row { grid-template-columns: 18px 28px minmax(0, 1fr) 56px; gap: 8px; }
   .b-call { grid-column: 3; grid-row: 2; margin-top: -6px; }

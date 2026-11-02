@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 31, date: '2026-11-02', title: 'Overview: numbers, not sentences',
+      items: [
+        'The verdict’s three reasons are now figures: rank points, form (with what it was before) and rough games (with what it was before).',
+        'Your focus habit, pace and last session show as numbers: pass rate and win rate before → now, games per division with the range and next rank, and your last session as record, points, early deaths and the biggest swing.',
+        'The longer explanations are one tap away: the small i next to a number, or the folded “Missing games” notice.',
+      ],
+    },
+    {
       v: 30, date: '2026-11-02', title: 'A new look for Overview',
       items: [
         'Overview is redesigned to read like a scouting report: the verdict up top, your key numbers in one row, then Training (your focus habit and pace), Scouting (what wins you games), Film room (your last 8 matches) and The climb (rank points).',
