@@ -6,6 +6,12 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 28, date: '2026-11-01', title: 'Lane colours',
+      items: [
+        'Lanes now use the in-game colours: Yellow, Blue and Green, with where each sits from your base in brackets, e.g. Yellow lane (left). The colours are fixed places on the map, so a team swap only changes left and right.',
+      ],
+    },
+    {
       v: 27, date: '2026-11-01', title: 'Farm: tabs and named lanes',
       items: [
         'The match Farm card now says who you are compared with: your own souls against the average of the player(s) against you in the same lane as you (their heroes are named), not the whole enemy team.',

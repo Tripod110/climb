@@ -395,6 +395,7 @@
     eq('farmAt: game shorter than 12:00 has no checkpoint', E.farmAt({ ...fg(sn(1, 1, 1, 1, 1, 1), sn(1, 1, 1, 1, 1, 1), sn(1, 1, 1, 1, 1, 1)).D, dur: 600 }), null);
     const lanes = E.farmLanes(fg(sn(2400, 300, 100, 0, 32, 36), sn(2400, 700, 900, 0, 30, 36), sn(2400, 500, 700, 0, 34, 36)).D);
     eq('farmLanes: per-player souls per lane (both sides present only), flags your lane', lanes.map(l => [l.lane, l.yours, Math.round(l.mine), Math.round(l.theirs)]), [[2, true, 2900, 3800]]);
+    eq('laneColor: 1/4/6 are Yellow/Blue/Green whichever team you are on', [E.laneColor(1), E.laneColor(4), E.laneColor(6), E.laneColor(2)], ['Yellow', 'Blue', 'Green', null]);
     eq('laneSide: ids 1/4/6 are fixed places, flipped for the other team', [E.laneSide(1, 0), E.laneSide(4, 0), E.laneSide(6, 0), E.laneSide(1, 1), E.laneSide(6, 1), E.laneSide(4, 1), E.laneSide(2, 0)], ['left', 'centre', 'right', 'right', 'left', 'centre', null]);
     const gd = { dur: 1800, players: [
       { team: 0, lane: 6, hero: 11, acct: 1, items: [], snaps: [[720, 0, 0, 0, 0, 0, 1000, 200, 20, 100, 0, 30]] },

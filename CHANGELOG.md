@@ -4,6 +4,10 @@ What changed in each release. The version is the `?v=N` in `index.html`. The app
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## v28 (2026-11-01): Lane colours
+- `Engine.laneColor(lane)`: assigned_lane 1/4/6 = Yellow/Blue/Green (confirmed with in-game setpos: x -8302 / 129 / 6979).
+  Fixed on the map for both teams; `laneSide` still flips left/right. `laneName` reads "Yellow lane (left)".
+
 ## v27 (2026-11-01): Farm: tabs and named lanes
 - `FARM_SRC` is lane, camps, boxes (treasure dropped). `Engine.laneSide(lane, team)`: assigned_lane 1/4/6 sit at
   x ~ -7k / 0 / +7k for both teams (25 games of early deaths), shown as left/centre/right from your own base.

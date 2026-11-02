@@ -1583,6 +1583,8 @@
      at ~ +7,000 on BOTH teams' players, so they are fixed places on the map. Seen from your own base (team 0 at
      -y looks towards +y, team 1 the other way) that is left, centre or right. Colours aren't in the data. */
   const LANE_X = { 1: -1, 4: 0, 6: 1 };
+  const LANE_COLOR = { 1: 'Yellow', 4: 'Blue', 6: 'Green' };   // fixed on the map: x ~ -8.3k / 0 / +7k
+  const laneColor = lane => LANE_COLOR[lane] || null;
   function laneSide(lane, team) {
     if (!(lane in LANE_X)) return null;
     const x = LANE_X[lane] * (team === 0 ? 1 : -1);
@@ -1772,7 +1774,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, farmAt, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

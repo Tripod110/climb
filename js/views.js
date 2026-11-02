@@ -302,7 +302,10 @@
 
   let farmTab = 'sum';   // 'sum' | 'lane' | 'camps' | 'boxes'; module state because the page redraws as data loads
   const FARM_TABS = [['sum', 'Summary'], ['lane', 'Lane creeps'], ['camps', 'Jungle'], ['boxes', 'Boxes']];
-  const laneName = l => l.side ? l.side[0].toUpperCase() + l.side.slice(1) + ' lane' : 'Lane ' + l.lane;
+  const laneName = l => {
+    const c = Engine.laneColor(l.lane), pos = l.side ? l.side[0].toUpperCase() + l.side.slice(1) : null;
+    return c ? c + ' lane' + (pos ? ' (' + pos.toLowerCase() + ')' : '') : 'Lane ' + l.lane;
+  };
   const sgnN = (c, v) => (v > 0 ? '+' : v < 0 ? '−' : '±') + c.fmtInt(Math.abs(Math.round(v)));
   /* Named lanes, with who stood in them: the same lane you were in is the one your numbers are compared in. */
   function lanesList(c, lanes) {
