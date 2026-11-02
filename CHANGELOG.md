@@ -4,6 +4,14 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.40 (2026-11-02): Heroes and Friends, redesigned
+- Shared helpers: `matchRow`/`matchHead` (Matches + friend page) and `wlFig` (Coach + Heroes).
+- `heroes()`: masthead with the Rank road / Coach me toggle, an 8-hero strip plus a folded full grid, a 5-figure `.ledger.l5`.
+  `roadHtml` gaps are figures (`.targets2`, you → target, gap %, Train it). `heroCoachPanel` uses the split bars (`.splits.picks`)
+  and a wins-vs-losses deaths ledger; its rank-gap list is dropped (Rank road has it).
+- `friends()`: masthead + `.board2` bars. `friend()`: masthead, 3-figure ledger, `.duel` scorecard, `.catch` plan with folded
+  how-tos, Gemini notes as a section, recent games as `.mr2` rows.
+
 ## 0.39 (2026-11-02): Matches, redesigned
 - `Engine.matchTotals(ms)` (record, win rate, average K/D/A and souls, net over ranked) and `Engine.matchDays(ms)` (local-day
   groups with totals). 3 new tests.

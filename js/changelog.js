@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 40, date: '2026-11-02', title: 'Heroes and Friends, redesigned',
+      items: [
+        'Heroes now matches the rest of Climb: your eight busiest heroes in a strip (every hero folds below), five numbers for the picked hero, and the road to the next rank as you → their average figures with a Train it button.',
+        'Coach me on Heroes shows that hero’s habits as won-with-it bars with the suggested one first, and its deaths in wins vs losses.',
+        'Friends shows the leaderboard as bars: win chance lost to each person’s own deaths, lower is better, you highlighted.',
+        'A friend’s page is numbers first: win rate together vs without them, a side-by-side scorecard, the catch-up targets, and your recent games together as match rows.',
+      ],
+    },
+    {
       v: 39, date: '2026-11-02', title: 'Matches, redesigned',
       items: [
         'Matches now opens with four numbers for whatever you’ve filtered: win rate, average K/D/A, souls a game and rank points.',
