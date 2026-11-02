@@ -680,14 +680,19 @@
     if (!st.friends) { host.innerHTML = mast + '<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Finding the people you queue with…</p>'; return; }
     if (!list.length) { host.innerHTML = mast + `<p class="muted small">0 people with ${E.FRIEND_MIN}+ games together</p>`; return; }
     c.ensureSquad();
-    const me = st.settings.account, rows = c.squadRows();
-    const board = E.friendBoard(rows, me, list);
-    const max = Math.max(0.01, ...board.map(p => p.cost));
+    const me = st.settings.account;
+    const board = E.stackBoard(c.M.all, st.lobbies, me, list);
+    // Death cost (the old ranking) stays as a column, from the last 90 days of match detail.
+    const cost = new Map(E.friendBoard(c.squadRows(), me, list).map(p => [p.acct, p.cost]));
+    const best = {};
+    for (const k of STACK_COLS.map(x => x[0])) best[k] = Math.max(...board.map(p => p.stat[k]));
     host.innerHTML = mast + `
       <section class="ov-sec">
-        ${sh('Who costs the squad least', src('model', `Each person’s win chance lost to their own deaths per game, in games with you over the last ${E.SQUAD_DAYS} days (yours: all those games). Each death is priced by the trained win model as a TYPICAL cost for that minute and soul lead, not an exact one. It works across roles where kills and damage don’t. “Ahead of you” or “behind you” is only shown when the gap is 2+ points AND holds in both halves of your shared games; otherwise it’s even. Needs ${E.BOARD_MIN}+ shared games.`))}
-        <div class="board-key small"><span class="muted">Win chance lost to their own deaths, a game · lower is better</span></div>
-        ${board.length ? `<ol class="board2">${board.map((p, i) => boardRow(c, p, i, list, max)).join('')}</ol>` : `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games with friends…</p>`}
+        ${sh('How you stack up', src('yours', `You and each friend in the games you played together on the same team (${E.STACK_MIN}+ games), from the lobby stats Climb keeps for every game. Each stat is against the lobby’s average player in that game, so 100% is average: souls; damage or healing, whichever is higher, so supports aren’t sunk; kills + assists; and staying alive (fewer deaths than the lobby is over 100%). Overall combines the four and is pulled toward 100 by ${E.STACK_K} games, so a small sample can’t top the board. “Ahead of you / behind you” needs a 5%+ gap in your shared games that holds in both halves; otherwise it’s even. Death cost is the old ranking: win chance lost to their own deaths per game, last 90 days, lower is better.`))}
+        ${board.length ? `<div class="stk stk-head"><span></span><span></span><span></span><span></span>${STACK_COLS.map(x => `<span class="n">${x[1]}</span>`).join('')}<span class="n hide-s">Death cost</span><span class="n">Overall</span></div>
+          <div class="stk-key small muted">${STACK_COLS.map(x => `<span>${x[1]}</span>`).join('')}<span>Overall</span></div>
+          <ol class="board3">${board.map((p, i) => stackRow(c, p, i, list, best, cost)).join('')}</ol>`
+          : `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games with friends…</p>`}
       </section>`;
   }
 
@@ -695,15 +700,21 @@
   const ptsLost = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
   const nameIn = (c, list, acct) => acct === c.state.settings.account ? ((c.state.profile && c.state.profile.name) || 'You')
     : ((list.find(f => f.acct === acct) || {}).name || 'Player ' + acct);
-  // From the friend's side of the board: ahead of you (costs less), behind you, or too close to call.
+  // From the friend's side of the board: ahead of you, behind you, or too close to call.
   const CALL = { you: ['▼ behind you', 'muted'], them: ['▲ ahead of you', 'muted'], close: ['≈ even', 'muted'], self: ['you', 'brass'] };
-  function boardRow(c, p, i, list, max) {
+  const STACK_COLS = [['souls', 'Souls'], ['out', 'Dmg / heal'], ['ka', 'K + A'], ['alive', 'Alive']];
+  const stackPct = v => v == null ? '—' : Math.round(v * 100) + '%';
+  const stackIdx = v => `<span class="${v >= 1.05 ? 'pos' : v <= 0.95 ? 'neg' : ''}">${Math.round(v * 100)}</span>`;
+  function stackRow(c, p, i, list, best, cost) {
     const f = list.find(x => x.acct === p.acct) || {}, ca = CALL[p.call] || ['', ''];
-    const av = p.you ? (c.state.profile && c.state.profile.avatar) : f.avatar;
+    const av = p.self ? (c.state.profile && c.state.profile.avatar) : f.avatar;
     const inner = `<span class="b-rank">${i + 1}</span>${av ? `<img src="${c.esc(av)}" alt="" width="32" height="32">` : '<span class="av-ph"></span>'}
       <span class="fr-main"><b>${c.esc(nameIn(c, list, p.acct))}</b><span class="muted small">${p.n} games · <span class="${ca[1]}">${ca[0]}</span></span></span>
-      <span class="b-bar"><span style="width:${Math.round(p.cost / max * 100)}%"></span></span><span class="b-val">${ptsLost(p.cost)}</span>`;
-    return `<li class="${p.you ? 'me' : ''}">${p.you ? `<div class="b-row">${inner}</div>` : `<a class="b-row" href="#/friend/${p.acct}">${inner}</a>`}</li>`;
+      <span class="stk-heroes">${p.heroes.map(h => icon(c, h, 20)).join('')}</span>
+      ${STACK_COLS.map(([k], j) => `<span class="n stk-v s${j + 1}${p.stat[k] >= best[k] - 1e-9 ? ' best' : ''}">${stackPct(p.stat[k])}</span>`).join('')}
+      <span class="n stk-v hide-s muted">${cost.has(p.acct) ? ptsLost(cost.get(p.acct)) : '—'}</span>
+      <span class="n stk-o">${stackIdx(p.index)}</span>`;
+    return `<li class="${p.self ? 'me' : ''}">${p.self ? `<div class="b-row stk">${inner}</div>` : `<a class="b-row stk" href="#/friend/${p.acct}">${inner}</a>`}</li>`;
   }
 
   const fmtT = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
@@ -786,7 +797,7 @@
   function scoreCard(c, sc, f) {
     const st = c.state, me = c.esc((st.profile && st.profile.name) || 'You'), them = c.esc(f.name || 'Your friend');
     const info = src('model', `Your last ${c.E.SQUAD_DAYS} days of shared games. Only habits measured before the game is decided are used (tested on 266 games: caught-out deaths after 15:00 mostly reflect a game already being lost). Win chance lost to deaths is priced by the trained win model, a typical cost per death, and only called when the gap holds in both halves of your games.`);
-    if (!sc.n) return `<section class="ov-sec">${sh('Scorecard', info)}<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games together…</p></section>`;
+    if (!sc.n) return `<section class="ov-sec">${sh('Early game &amp; deaths · last ' + c.E.SQUAD_DAYS + ' days', info)}<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games together…</p></section>`;
     const val = (x, v) => v == null ? '—' : x.lowerBetter ? ptsLost(v) : c.pct(v);
     // The better side of each row is green (Engine.scorecard's call); the other stays plain.
     const rowsHtml = sc.metrics
@@ -798,7 +809,7 @@
         <span class="duel-k">${c.esc(p.label)}</span><b>${c.pct(p.from)} <span class="muted">→</span> <span class="brass">${c.pct(p.to)}</span></b>
         <span class="muted small">${leader}’s rate${p.wrPass != null && p.wrFail != null && p.nPass >= 5 && p.nFail >= 5 ? ` · together you won ${c.pct(p.wrPass)} with it, ${c.pct(p.wrFail)} without` : ''}</span>
         <details class="fold"><summary>How</summary><p class="small">${c.esc(p.how)}</p></details></li>`).join('')}</ol></section>` : '';
-    return `<section class="ov-sec">${sh('Scorecard', info)}
+    return `<section class="ov-sec">${sh('Early game &amp; deaths · last ' + c.E.SQUAD_DAYS + ' days', info)}
       <div class="duel"><div class="duel-row duel-head"><span></span><span>${me}</span><span>${them}</span></div>${rowsHtml}</div>
       ${sc.vs.call === 'few' ? `<p class="muted small">${sc.n}/${c.E.BOARD_MIN} shared games with full data to call it</p>` : ''}</section>${plan}`;
   }
@@ -826,6 +837,13 @@
     c.ensureSquad();
     const sc = E.scorecard(c.squadRows(), st.settings.account, acct);
     const name = c.esc(f.name || 'Player ' + acct);
+    const stk = E.stackBoard(c.M.all, st.lobbies, st.settings.account, [f]).find(p => p.acct === acct);
+    const meName = c.esc((st.profile && st.profile.name) || 'You');
+    const duel = (label, a, b, fmt) => `<div class="duel-row"><span class="duel-k">${label}</span><b class="${a > b + 0.02 ? 'pos' : ''}">${fmt(a)}</b><b class="${b > a + 0.02 ? 'pos' : ''}">${fmt(b)}</b></div>`;
+    const stackHtml = !stk ? '' : `<section class="ov-sec">${sh('How you stack up · ' + stk.n + ' games together', src('yours', `The same games, same team, against each lobby’s average player (100%). Damage / heal is whichever is higher. Overall combines the four, pulled toward 100 by ${E.STACK_K} games.`))}
+      <div class="duel"><div class="duel-row duel-head"><span></span><span>${meName}</span><span>${name}</span></div>
+        ${duel('Overall', stk.you.index, stk.index, v => Math.round(v * 100))}
+        ${STACK_COLS.map(([k, l]) => duel(l, stk.you.stat[k], stk.stat[k], stackPct)).join('')}</div></section>`;
     const fig = (label, value, sub) => `<div class="fig"><div class="fig-v">${value}</div><div class="t-label">${label}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
     const gap = f.wrTogether != null && f.wrApart != null ? f.wrTogether - f.wrApart : null;
     host.innerHTML = `<a href="#/friends" class="back">← Friends</a>
@@ -836,6 +854,7 @@
         ${fig(`You without ${name}`, c.pct(f.wrApart), 'your other games')}
         ${fig('Shared, last ' + E.SQUAD_DAYS + ' days', sc.n ? `${sc.wins}–${sc.n - sc.wins}` : '—', `${sc.n} games`)}
       </div>
+      ${stackHtml}
       ${scoreCard(c, sc, f)}
       ${sc.n ? duoCoachCard(c, f) : ''}
       <section class="ov-sec mlist">${sh('Recent games together')}

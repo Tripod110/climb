@@ -4,6 +4,14 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.43 (2026-11-02): Friends: how you really stack up
+- `Engine.stackBoard(matches, lobbies, me, friends)`: per shared game on the same team (cached `LOBBY_V` lobbies), four
+  lobby-relative ratios: souls, max(damage, healing), K+A, alive; log-clamped at ×4. Overall = geometric mean, averaged per
+  person and shrunk toward 1 by `STACK_K` (10) games; needs `STACK_MIN` (10). Ahead/behind needs a 5% log gap in both
+  halves. Your row covers every game with a qualifying friend. 5 new tests.
+- Friends board ranks on it (`.board3` / `.stk`), with death cost (`friendBoard`, 90 days) kept as a column. Friend page
+  gets a "How you stack up" duel; the old scorecard is relabelled "Early game & deaths".
+
 ## 0.42 (2026-11-02): Your hero pool, sorted
 - `heroInsights` rows carry `group`: climb (weighed rate 2+ pts over overall), park (5+ under, weighed under), steady, or
   few (< `HERO_INS_MIN` games); rows sorted by weighed rate. 3 new tests.

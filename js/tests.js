@@ -459,6 +459,23 @@
     eq('matchTotals: empty list', [E.matchTotals([]).n, E.matchTotals([]).winRate], [0, null]);
     const days = E.matchDays(mt);
     eq('matchDays: grouped by local day, newest first, with totals', days.map(g => [g.games.length, g.tot.wins, g.tot.net]), [[2, 1, 0], [1, 1, 0]]);
+    // stackBoard: you vs friends in shared lobbies, same team only, shrunk toward the lobby average.
+    const LV = E.LOBBY_V;
+    // seat: [team, souls, k, d, a, dmg, heal, hero, 0,0,0,0,0,0,0, acct]
+    const seatP = (team, souls, k, d, a, dmg, heal, hero, acct) => [team, souls, k, d, a, dmg, heal, hero, 0, 0, 0, 0, 0, 0, 0, acct];
+    const sLob = (fr, frTeam) => ({ v: LV, me: 0, p: [seatP(0, 30000, 5, 5, 5, 20000, 0, 7, 1), seatP(frTeam, fr[0], fr[1], fr[2], fr[3], fr[4], fr[5], 9, 2),
+      ...Array.from({ length: 10 }, (_, i) => seatP(i < 4 ? 0 : 1, 30000, 5, 5, 5, 20000, 0, 3, 100 + i))] });
+    const sMs = n => Array.from({ length: n }, (_, i) => ({ id: 500 + i, t: i * 100 }));
+    const strong = Object.fromEntries(sMs(30).map(m => [m.id, sLob([45000, 9, 3, 9, 30000, 0], 0)]));
+    const sb = E.stackBoard(sMs(30), strong, 1, [{ acct: 2, ids: sMs(30).map(m => m.id) }]);
+    eq('stackBoard: stronger friend ranks above you and is called ahead', sb.map(p => [p.acct, p.call]), [[2, 'them'], [1, 'self']]);
+    ok('stackBoard: per-stat ratios vs the lobby', sb[0].stat.souls > 1.3 && sb[0].stat.alive > 1.3 && Math.abs(sb[1].stat.souls - 0.98) < 0.05, [sb[0].stat, sb[1].stat]);
+    const few = E.stackBoard(sMs(10), strong, 1, [{ acct: 2, ids: sMs(10).map(m => m.id) }])[0];
+    ok('stackBoard: 10 games are pulled halfway to the lobby average', Math.abs(Math.log(few.index) - Math.log(few.raw) / 2) < 1e-9, [few.index, few.raw]);
+    const support = Object.fromEntries(sMs(12).map(m => [m.id, sLob([20000, 2, 3, 15, 8000, 30000], 0)]));
+    ok('stackBoard: a healer is scored on healing, not damage', E.stackBoard(sMs(12), support, 1, [{ acct: 2, ids: sMs(12).map(m => m.id) }]).find(p => p.acct === 2).stat.out > 3, null);
+    const foe = Object.fromEntries(sMs(12).map(m => [m.id, sLob([45000, 9, 3, 9, 30000, 0], 1)]));
+    eq('stackBoard: games on opposite teams and too-few games are left out', [E.stackBoard(sMs(12), foe, 1, [{ acct: 2, ids: sMs(12).map(m => m.id) }]).length, E.stackBoard(sMs(9), strong, 1, [{ acct: 2, ids: sMs(9).map(m => m.id) }]).length], [0, 0]);
     // heroInsights: shrunk win rates pick the best hero and the one to park; tidbits from rank points.
     const NOW = 1e9, hg = (hero, w, l, delta) => [...Array(w).fill(true), ...Array(l).fill(false)].map((won, i) => ({ id: hero * 1000 + i, t: NOW - 86400 * (i + 1), hero, won, delta: delta == null ? null : won ? delta : -delta }));
     const hi = E.heroInsights([...hg(1, 18, 8, 300), ...hg(2, 4, 0, 300), ...hg(3, 5, 9, 300), ...hg(4, 10, 10, null), { id: 9, t: NOW - 200 * 86400, hero: 5, won: false }], new Map(), NOW);

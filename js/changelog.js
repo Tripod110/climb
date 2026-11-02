@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 43, date: '2026-11-02', title: 'Friends: how you really stack up',
+      items: [
+        'The Friends board used to rank on deaths alone, so someone who played safe looked better than they were. It now ranks on souls, damage or healing, kills + assists and staying alive, each against the lobby average in the games you played together.',
+        'Small samples are pulled toward average, so 12 games can’t top 200. “Ahead of you” or “behind you” only shows when the gap holds across your games together.',
+        'Death cost is still there as a column, and a friend’s page shows the same four stats side by side.',
+      ],
+    },
+    {
       v: 42, date: '2026-11-02', title: 'Your hero pool, sorted',
       items: [
         'The scrolling hero bar is gone. Heroes are now grouped by how they do for you over the last 90 days: Climb on these, Steady, and Park for now, each best first, with win rate, record and rank points on every tile.',

@@ -1241,6 +1241,60 @@
     return people.sort((a, b) => a.cost - b.cost);
   }
 
+  /* "How you stack up": you and each friend in the games you played together on the same team, on four
+     lobby-relative stats (1 = the lobby's average player in that game): souls, damage or healing (whichever
+     is higher against the lobby, so supports aren't sunk), kills + assists, and staying alive. The overall
+     is their geometric mean, averaged on a log scale per person and shrunk toward the lobby average by
+     STACK_K games, so 12 games can't top 200. "Ahead / behind you" needs a STACK_GAP gap in your shared
+     games that points the same way in both halves; otherwise it's even. Uses only cached lobbies (LOBBY_V).
+     matches: your history; lobbies: { id: compactLobby }; friends: [{ acct, ids }]. */
+  const STACK_K = 10, STACK_MIN = 10, STACK_GAP = 0.05, STACK_CAP = Math.log(4);
+  const STACK_STATS = ['souls', 'out', 'ka', 'alive'];
+  function stackGame(L, i) {
+    const P = L.p, x = P[i], avg = k => mean(P.map(p => p[k]));
+    const heal = avg(6), r = {
+      souls: x[1] / Math.max(1, avg(1)),
+      out: Math.max(x[5] / Math.max(1, avg(5)), heal > 0 ? x[6] / Math.max(1, heal) : 0),
+      ka: (x[2] + x[4] + 1) / (mean(P.map(p => p[2] + p[4])) + 1),
+      alive: (avg(3) + 1) / (x[3] + 1),
+    };
+    const lg = {};
+    for (const k of STACK_STATS) lg[k] = Math.max(-STACK_CAP, Math.min(STACK_CAP, Math.log(Math.max(r[k], 0.01))));
+    return { lg, score: mean(STACK_STATS.map(k => lg[k])), hero: x[7] };
+  }
+  function stackSum(games) {
+    const n = games.length, stat = {};
+    for (const k of STACK_STATS) stat[k] = Math.exp(mean(games.map(g => g.lg[k])));
+    const sum = games.reduce((s, g) => s + g.score, 0);
+    const heroes = [...games.reduce((m, g) => m.set(g.hero, (m.get(g.hero) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]).slice(0, 3).map(h => h[0]);
+    return { n, stat, raw: n ? Math.exp(sum / n) : null, index: Math.exp(sum / (n + STACK_K)), heroes };
+  }
+  function stackBoard(matches, lobbies, me, friends) {
+    const byId = new Map(matches.map(m => [m.id, m]));
+    const mineAll = new Map();
+    const people = [];
+    for (const f of friends) {
+      const pairs = [];
+      for (const id of f.ids) {
+        const L = lobbies[id], m = byId.get(id);
+        if (!L || L.v !== LOBBY_V || !m) continue;
+        const j = L.p.findIndex(p => p[15] === f.acct);
+        if (j < 0 || L.p[j][0] !== L.p[L.me][0]) continue;
+        const a = stackGame(L, L.me), b = stackGame(L, j);
+        pairs.push({ id, t: m.t, a, b });
+      }
+      if (pairs.length < STACK_MIN) continue;
+      for (const p of pairs) mineAll.set(p.id, p.a);
+      pairs.sort((x, y) => x.t - y.t);
+      const gap = ps => mean(ps.map(p => p.b.score - p.a.score)), half = Math.floor(pairs.length / 2);
+      const g = gap(pairs), g1 = gap(pairs.slice(0, half)), g2 = gap(pairs.slice(half));
+      const call = Math.abs(g) >= STACK_GAP && Math.sign(g1) === Math.sign(g) && Math.sign(g2) === Math.sign(g) ? (g > 0 ? 'them' : 'you') : 'close';
+      people.push(Object.assign(stackSum(pairs.map(p => p.b)), { acct: f.acct, call, gap: g, you: stackSum(pairs.map(p => p.a)) }));
+    }
+    if (mineAll.size) people.push(Object.assign(stackSum([...mineAll.values()]), { acct: me, self: true, call: 'self' }));
+    return people.sort((a, b) => b.index - a.index);
+  }
+
   /* You vs one friend on the early-game habits + cost, and a catch-up plan for whoever trails.
      metrics: { id, label, me, them, better: 'me'|'them'|null } (rates 0–1; cost: lower is better).
      split: in your shared games, your team's win rate when the trailing player passed vs missed. */
@@ -1856,7 +1910,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

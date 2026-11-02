@@ -987,3 +987,28 @@ a.mr2.gold::before { background: var(--gold); }
 @media (max-width: 640px) {
   .pk-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---------------------------------------------------------------- How you stack up (0.43) */
+.board3 { list-style: none; margin: 0; padding: 0; }
+.stk { display: grid; grid-template-columns: 26px 32px minmax(0, 1.4fr) 70px repeat(4, 66px) 70px 64px; gap: 10px; align-items: center; padding: 9px 6px; border-top: 1px solid var(--border); color: inherit; }
+.stk-head { border-top: 0; padding-top: 0; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.board3 a.stk:hover { background: var(--hover); }
+.board3 img, .board3 .av-ph { border-radius: 50%; width: 32px; height: 32px; }
+.board3 .b-rank { font: 600 16px/1 var(--display); color: var(--muted); text-align: right; }
+.board3 li.me .stk { background: var(--shade); box-shadow: inset 2px 0 0 var(--brass); }
+.stk-heroes { display: flex; gap: 3px; }
+.stk-heroes .hero-ic { width: 20px; height: 20px; border-radius: 3px; }
+.stk-v { font: 600 15px/1 var(--display); font-variant-numeric: tabular-nums; }
+.stk-v.best { color: var(--brass-hi); }
+.stk-o { font: 600 22px/1 var(--display); font-variant-numeric: tabular-nums; }
+.stk-key { display: none; }
+@media (max-width: 640px) {
+  .board3 .stk { grid-template-columns: 20px 28px repeat(4, minmax(0, 1fr)) 46px; grid-template-areas: "r a n n n n o" ". . s1 s2 s3 s4 ."; row-gap: 6px; padding: 9px 4px; }
+  .stk > .b-rank { grid-area: r; } .stk > img, .stk > .av-ph { grid-area: a; } .stk > .fr-main { grid-area: n; } .stk > .stk-o { grid-area: o; }
+  .stk > .s1 { grid-area: s1; } .stk > .s2 { grid-area: s2; } .stk > .s3 { grid-area: s3; } .stk > .s4 { grid-area: s4; }
+  .stk > .stk-heroes, .stk > .hide-s { display: none; }
+  .stk-head { display: none; }
+  .stk-key { display: grid; grid-template-columns: 20px 28px repeat(4, minmax(0, 1fr)) 46px; gap: 10px; padding: 0 4px 4px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+  .stk-key > span:first-child { grid-column: 3; } .stk-key > span { text-align: center; } .stk-key > span:last-child { text-align: right; }
+  .board3 .stk > .stk-v { font-size: 13px; text-align: center; }
+}
