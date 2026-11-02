@@ -4,9 +4,10 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
-## 0.35 (2026-11-02): What wins you games, in one bar
-- `splitTable` is one bar per habit (`.dv*`, replacing the `.db*` dumbbell): split at centre, red left = loss rate when you
-  skip it (1 − wrFail), green right = win rate when you do it (wrPass), each half 0–100%. 0.34's two-lane version never shipped.
+## 0.36 (2026-11-02): What wins you games, in one bar
+- `splitTable` is one bar per habit (`.dv*`, replacing the `.db*` dumbbell), split at centre, each half 0–100%: green right =
+  win rate with it (wrPass), muted grey left = loss rate without it (1 − wrFail). Worded "with / without it", not "do / skip",
+  since some checks (early deaths) aren't fully the player's choice. 0.34 and 0.35 were interim versions that never shipped.
 
 ## 0.33 (2026-11-02): Form now counts your farm
 - `METRICS` gains `farm`: `Engine.farmRatio(D)` = (lane + camps + boxes souls at 12:00 + 100) ÷ (lane opponents' average + 100),

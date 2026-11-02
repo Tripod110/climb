@@ -293,7 +293,8 @@ a.rf:hover .t-label { color: var(--ink); }
 .dv-track::after { content: ''; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--brass); }
 .dv-bar { position: absolute; top: 0; bottom: 0; }
 .dv-bar.w { background: var(--good); }
-.dv-bar.l { background: var(--bad); }
+.dv-bar.l { background: var(--axis); }
+.dv > b.dv-off { color: var(--muted); font-size: 13px; font-weight: 500; }
 
 /* film room: a strip of frames, newest first */
 .reel { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }

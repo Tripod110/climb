@@ -6,9 +6,9 @@
   'use strict';
   root.CHANGELOG = [
     {
-      v: 35, date: '2026-11-02', title: 'What wins you games, in one bar',
+      v: 36, date: '2026-11-02', title: 'What wins you games, in one bar',
       items: [
-        'Each habit is now one bar split in the middle: red to the left is how often you lose when you skip it, green to the right is how often you win when you do it.',
+        'Each habit is now one bar. Green to the right is how often you won when it happened; a quiet grey to the left is how often you lost when it didn’t.',
       ],
     },
     {

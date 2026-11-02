@@ -247,16 +247,17 @@
   function splitTable(c, cat) {
     const rows = cat.filter(x => x.eligible).slice(0, 4);
     if (!rows.length) return '<p class="muted small">Counting once match details for your recent games have loaded…</p>';
-    /* One bar per habit, split at the centre: red grows left by how often you LOSE when you skip it,
-       green grows right by how often you WIN when you do it. Each half is 0–100%. */
+    /* One bar per habit, split at the centre. The point is the right half, green: how often you WIN with
+       it. The left half is a quiet grey reference, how often you lost without it. Not "skipped": some of
+       these (an early death) aren't fully up to you. Each half is 0–100%. */
     return `<ul class="splits">
-      <li class="dv-head small"><span>${src('yours', `From your last ${rows[0].n} games with match detail. Left: the share of games you lost when you didn’t do it. Right: the share you won when you did. These are measured before the game is decided, unless marked “follows result”.`)}</span>
-        <span class="dv-scale"><span class="neg">◀ Lose when you skip it</span><span class="pos">Win when you do it ▶</span></span></li>
+      <li class="dv-head small"><span>${src('yours', `From your last ${rows[0].n} games with match detail. Right: the share of games you won when it happened. Left: the share you lost when it didn’t. These are measured before the game is decided, unless marked “follows result”.`)}</span>
+        <span class="dv-scale"><span class="muted">◀ Lost without it</span><span class="pos">Won with it ▶</span></span></li>
       ${rows.map(x => {
         const lose = 1 - x.wrFail, win = x.wrPass;
-        return `<li><span class="sp-lab">${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}<span class="muted small" title="How often you do it">${c.pct(x.passRate)} of games</span></span>
-        <span class="dv" role="img" aria-label="You lose ${c.pct(lose)} of games when you skip it and win ${c.pct(win)} when you do it">
-          <b class="neg">${c.pct(lose)}</b><span class="dv-track"><span class="dv-bar l" style="right:50%;width:${(lose * 50).toFixed(1)}%"></span><span class="dv-bar w" style="left:50%;width:${(win * 50).toFixed(1)}%"></span></span><b class="pos">${c.pct(win)}</b></span></li>`;
+        return `<li><span class="sp-lab">${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result">follows result</span>' : ''}<span class="muted small" title="How often it happens">${c.pct(x.passRate)} of games</span></span>
+        <span class="dv" role="img" aria-label="You won ${c.pct(win)} of games with it and lost ${c.pct(lose)} without it">
+          <b class="dv-off">${c.pct(lose)}</b><span class="dv-track"><span class="dv-bar l" style="right:50%;width:${(lose * 50).toFixed(1)}%"></span><span class="dv-bar w" style="left:50%;width:${(win * 50).toFixed(1)}%"></span></span><b class="pos">${c.pct(win)}</b></span></li>`;
       }).join('')}</ul>`;
   }
 
