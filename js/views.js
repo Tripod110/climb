@@ -17,8 +17,8 @@
   const roleChip = (c, g, id) => {
     if (!g) return id != null && c.state.lobbies[id] === null ? '<span class="role pending">No lobby data</span>' : '<span class="role pending">Reading lobby…</span>';
     const p = c.M.perf.get(id);
-    const f = !p ? '' : p.score >= FORM_GAME ? '<span class="role good" title="You played above your usual on this hero (souls, damage, kills + assists, staying alive vs your other games on it).">Above your usual</span>'
-      : p.score <= -FORM_GAME ? '<span class="role bad" title="You played below your usual on this hero (souls, damage, kills + assists, staying alive vs your other games on it).">Below your usual</span>' : '';
+    const f = !p ? '' : p.score >= FORM_GAME ? '<span class="role good" title="You played above your usual on this hero (souls, farm by 12:00 vs your lane, damage, kills + assists, staying alive vs your other games on it).">Above your usual</span>'
+      : p.score <= -FORM_GAME ? '<span class="role bad" title="You played below your usual on this hero (souls, farm by 12:00 vs your lane, damage, kills + assists, staying alive vs your other games on it).">Below your usual</span>' : '';
     return firstChip(g) + f;
   };
   /* Short chips with the number in them (Engine.gameNotes): what stood out in this game. */
@@ -945,8 +945,8 @@
       return;
     }
     const imp = E.lobbyImpact(L);
-    const zs = p ? ['souls', 'dmg', 'ka', 'deaths'].filter(k => p.z[k] != null).map(k => {
-      const lab = { souls: 'Souls', dmg: 'Damage', ka: 'Kills + assists', deaths: 'Staying alive' }[k];
+    const zs = p ? ['souls', 'farm', 'dmg', 'ka', 'deaths'].filter(k => p.z[k] != null).map(k => {
+      const lab = { souls: 'Souls', farm: 'Farm by 12:00', dmg: 'Damage', ka: 'Kills + assists', deaths: 'Staying alive' }[k];
       return `<li><span>${lab}</span><span class="${p.z[k] >= 0.2 ? 'pos' : p.z[k] <= -0.2 ? 'neg' : 'muted'}">${(p.z[k] >= 0 ? '+' : '−') + Math.abs(p.z[k]).toFixed(1)}</span></li>`;
     }).join('') : '';
     const share = (k, lab, inv) => {
@@ -1257,7 +1257,7 @@
         <li><b>Team share</b> (Top / Mid / Low share) is your rank on your own team by impact. It describes your part and is kept neutral: tested on 400 games, it doesn’t predict whether you win, because a whole team wins or loses together. What does predict wins is early-game play, measured before the result is decided, which is what the habits and the Overview tiles use.</li>
         <li><b>Where numbers come from</b>: every key number has a small badge. <i>Your games</i> = counted from your matches. <i>Rank data</i> = averages of other players’ games by rank. <i>Trained model</i> = Climb’s win model. <i>Valve</i> = straight from the game. <i>Climb rule</i> = a rule of thumb, not proven. <i>AI</i> = Gemini’s wording. Tap one to see how it was worked out.</li>
         <li><b>Tags</b>: Valve’s MVP awards, then lobby bests (top farmer, top damage, most kills, playmaker, objectives, healer, frontline, survivor), plus Fed (10+ deaths), Stomp / Stomped (under 20 min) and Marathon (45+ min).</li>
-        <li><b>Form</b> scores a game against your other games on the same hero, using your share of the lobby’s souls, damage, kills + assists and deaths.</li>
+        <li><b>Form</b> scores a game against your other games on the same hero, using your share of the lobby’s souls, damage, kills + assists and deaths, plus your farm by 12:00 (lane, camps and boxes) against your lane opponents when the match has detail.</li>
         <li><b>Rank comparison</b> (Heroes tab): for the hero you pick, your average against the average game in each rank’s lobbies, over the same dates: games since the last big patch, or the last 60 days if you have fewer than 8. A gap is only called when it’s bigger than your normal game-to-game swing.</li>
       </ul></section>
       <section class="card how"><h2>Changelog</h2>${c.LOG.map(e => `<h3>${c.verName(e.v)} · ${c.esc(e.title)} <span class="muted small">${c.esc(e.date)}</span></h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>`;

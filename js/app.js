@@ -75,7 +75,7 @@
     const pool = allMode ? scope
       : settings.blend ? all.filter(m => m.mode === 'ranked' ? m.t >= since : m.t >= blendFrom)
       : season;
-    const perf = E.perfScores(pool, state.lobbies, scope);
+    const perf = E.perfScores(pool, state.lobbies, scope, state.details);
     const w = E.windowsFor(settings.window, allMode ? scope : ranked);
     const cur = E.summarize(w.cur, perf, state.lobbies);
     const prev = w.prev.length ? E.summarize(w.prev, perf, state.lobbies) : null;

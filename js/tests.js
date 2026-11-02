@@ -94,6 +94,19 @@
   const four = E.perfScores(games.slice(0, 4), lobbies, games.slice(0, 4));
   eq('hero with < 5 games has no baseline', four.size, 0);
   eq('a game with no lobby is skipped', E.perfScores(games, { 100: lobbies[100] }, games).size, 0);
+  // Farm: same five lobbies, plus detail where game 104 out-farmed its lane by 12:00 and the rest matched it.
+  const farmD = mine => ({ v: E.DETAIL_V, dur: 1800, players: [
+    { team: 0, lane: 4, items: [], snaps: [[720, 8000, 0, 0, 0, 0, mine, 400, 30, 300, 0, 36]] },
+    { team: 1, lane: 4, items: null, snaps: [[720, 8000, 0, 0, 0, 0, 2000, 400, 30, 300, 0, 36]] }] });
+  const details = Object.fromEntries(games.map((g, i) => [g.id, farmD(i === 4 ? 4000 : 2000)]));
+  const fGames = games.map((g, i) => ({ ...g, id: 200 + i }));
+  const flatLob = Object.fromEntries(fGames.map(g => [g.id, mkLobby(30000)]));
+  const flatDet = Object.fromEntries(fGames.map((g, i) => [g.id, details[100 + i]]));
+  const pf = E.perfScores(fGames, flatLob, fGames, flatDet);
+  ok('form: out-farming your lane scores above usual when nothing else differs', pf.get(204).score > 0 && pf.get(204).z.farm > 0, pf.get(204));
+  eq('form: no detail = no farm stat, other stats still score', [perf.get(104).z.farm, perf.get(104).score > 0], [null, true]);
+  near('farmRatio: farm souls vs lane opponent at 12:00', E.farmRatio(farmD(4000)), (4700 + 100) / (2700 + 100));
+  eq('farmRatio: null with no lane opponent or no detail', [E.farmRatio({ ...farmD(4000), players: farmD(4000).players.slice(0, 1) }), E.farmRatio(null)], [null, null]);
 
   // ---------------------------------------------------------------- windows
   const H = 3600, D = 86400;

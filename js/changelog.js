@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 33, date: '2026-11-02', title: 'Form now counts your farm',
+      items: [
+        'Form (how you played vs your usual on that hero) now includes your farm: lane, camp and box souls by 12:00 against your lane opponents, next to souls, damage, kills + assists and staying alive.',
+        'It applies to your recent games that have match detail; older games still score on the other four. A match’s page shows it as “Farm by 12:00”.',
+      ],
+    },
+    {
       v: 32, date: '2026-11-02', title: 'Rank projection',
       items: [
         'The climb now shows where your current pace takes you: your rank today, then in 20, 50 and 100 more ranked games, with the best-to-worst range under each.',

@@ -33,7 +33,7 @@
   const QUADS = ['earned', 'unlucky', 'passenger', 'rough'];
   const QUAD_LABEL = { earned: 'Earned win', unlucky: 'Unlucky loss', passenger: 'Passenger win', rough: 'Rough game' };
   const TAG_LABEL = { farmer: 'Farmer', damage: 'Damage', playmaker: 'Playmaker', survivor: 'Survivor', support: 'Support' };
-  const METRICS = ['souls', 'dmg', 'ka', 'deaths'];
+  const METRICS = ['souls', 'dmg', 'ka', 'deaths', 'farm'];   // farm needs match detail (see farmRatio)
 
   // ---------------------------------------------------------------- normalising API data
 
@@ -155,13 +155,15 @@
 
   /* Returns Map(matchId -> {score, z, base}) for every match in `targets` that has a lobby and
      enough other games on its hero in `pool`. Leave-one-out: a game is never part of its own
-     baseline, so a single monster game can't drag its own score toward zero. */
-  function perfScores(pool, lobbies, targets) {
+     baseline, so a single monster game can't drag its own score toward zero.
+     details (optional): { matchId: compactMatchDetail } adds 'farm' for the games that have one; the
+     rest just score on the four lobby stats, since a null stat is left out of the mean. */
+  function perfScores(pool, lobbies, targets, details) {
     const feat = new Map();
     for (const m of pool) {
       const L = lobbies[m.id];
       if (!L) continue;
-      const r = lobbyStats(L).ratio;
+      const r = Object.assign({ farm: farmRatio(details && details[m.id]) }, lobbyStats(L).ratio);
       const f = {};
       for (const k of METRICS) f[k] = r[k] == null ? null : Math.log(Math.max(r[k], 0.01));
       feat.set(m.id, { hero: m.hero, f });
@@ -930,7 +932,7 @@
         lane_opponents: laneOpp.map(p => nm(p.hero)),
       },
       vs_your_usual_on_this_hero: perf ? Object.assign({ games_compared: perf.base },
-        Object.fromEntries(Object.entries(perf.z).filter(([, v]) => v != null).map(([k, v]) => [{ souls: 'souls', dmg: 'damage', ka: 'kills_assists', deaths: 'staying_alive' }[k], Math.round(v * 10) / 10]))) : null,
+        Object.fromEntries(Object.entries(perf.z).filter(([, v]) => v != null).map(([k, v]) => [{ souls: 'souls', farm: 'farm_souls_by_12min_vs_lane', dmg: 'damage', ka: 'kills_assists', deaths: 'staying_alive' }[k], Math.round(v * 10) / 10]))) : null,
       economy_timeline: econ,
       deaths,
       item_buys: items,
@@ -1600,6 +1602,15 @@
       src: FARM_SRC.map(([key, label, i]) => ({ key, label, me: a[i], opp: avg(i) })),
       eff: { me: eff(a), opp: opps.length ? mean(opps.map(eff).filter(x => x != null)) : null } };
   }
+  /* Farm for the form score: your lane + camp + box souls at 12:00 over your lane opponents' average.
+     Null without detail, a game shorter than 12:00, or no lane opponent to compare with. */
+  function farmRatio(D) {
+    const f = D && D.v === DETAIL_V ? farmAt(D) : null;
+    if (!f || !f.nOpp) return null;
+    const sum = k => f.src.reduce((s, x) => s + x[k], 0);
+    return (sum('me') + 100) / (sum('opp') + 100);
+  }
+
   /* Lane ids (assigned_lane) are 1, 4 and 6. Early deaths across 25 games put 1 at x ~ -7,000, 4 at ~0 and 6
      at ~ +7,000 on BOTH teams' players, so they are fixed places on the map. Seen from your own base (team 0 at
      -y looks towards +y, team 1 the other way) that is left, centre or right. Colours aren't in the data. */
@@ -1795,7 +1806,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
