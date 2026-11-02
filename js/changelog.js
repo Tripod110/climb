@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 42, date: '2026-11-02', title: 'Your hero pool, sorted',
+      items: [
+        'The scrolling hero bar is gone. Heroes are now grouped by how they do for you over the last 90 days: Climb on these, Steady, and Park for now, each best first, with win rate, record and rank points on every tile.',
+        'Heroes with only a few games lately, and ones you haven’t played in 90 days, sit underneath as small chips. Picking any hero jumps straight to it.',
+      ],
+    },
+    {
       v: 41, date: '2026-11-02', title: 'Your best hero, and the one to park',
       items: [
         'Heroes now opens with a scouting row over your last 90 days: your best hero, the one to park while you climb, most rank points, biggest drain, the hero on the rise and your most played. Tap one to open it.',

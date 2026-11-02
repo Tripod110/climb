@@ -1100,6 +1100,25 @@
       <div class="ins-row">${cards.join('')}</div></section>`;
   }
 
+  /* The hero picker, sorted with intent: the heroes you climb on, steady ones, the ones to park (each best
+     first by Engine.heroInsights' weighed win rate), then small chips for heroes with few games lately
+     and ones not played in the window. */
+  let heroJump = false;
+  function heroPicker(c, ins, list, counts, hero) {
+    const seen = new Set(ins.rows.map(h => h.hero));
+    const tile = h => `<a href="#/heroes/${h.hero}" class="hpk ${h.group}${h.hero === hero ? ' on' : ''}" aria-current="${h.hero === hero}">${icon(c, h.hero, 30)}
+      <span class="hpk-n">${c.esc(c.heroName(h.hero))}</span><b class="hpk-v">${c.pct(h.winRate)}</b>
+      <span class="hpk-s">${h.wins}–${h.losses}${h.hasDelta ? ` · ${c.signed(h.net)}` : ''}</span></a>`;
+    const chip = (id, sub) => `<a href="#/heroes/${id}" class="hchip${id === hero ? ' on' : ''}" aria-current="${id === hero}" title="${c.esc(c.heroName(id))}">${icon(c, id, 22)}<span>${c.esc(c.heroName(id))}</span><span class="muted small">${sub}</span></a>`;
+    const group = (key, label, cls) => { const hs = ins.rows.filter(h => h.group === key); return hs.length ? `<div class="pk-g ${cls || ''}"><div class="pk-k">${label} <span class="muted">${hs.length}</span></div><div class="pk-tiles">${hs.map(tile).join('')}</div></div>` : ''; };
+    const few = ins.rows.filter(h => h.group === 'few').sort((a, b) => b.games - a.games), old = list.filter(h => !seen.has(h)).sort((a, b) => counts.get(b) - counts.get(a));
+    return `<section class="ov-sec">${sh('Your hero pool · last ' + ins.days + ' days', src('yours', `Heroes with ${c.E.HERO_INS_MIN}+ games in the last ${ins.days} days, grouped by their weighed win rate against your overall ${c.pct(ins.base)}: Climb on these is 2+ points above it, Park for now is 5+ points below, Steady is in between. Each group is best first. Numbers under each hero: wins–losses and rank points.`))}
+      ${group('climb', 'Climb on these', 'good')}${group('steady', 'Steady')}${group('park', 'Park for now', 'bad')}
+      ${few.length ? `<div class="pk-g"><div class="pk-k">Few games lately <span class="muted">${few.length}</span></div><div class="pk-chips">${few.map(h => chip(h.hero, h.games)).join('')}</div></div>` : ''}
+      ${old.length ? `<div class="pk-g"><div class="pk-k">Not in ${ins.days} days <span class="muted">${old.length}</span></div><div class="pk-chips">${old.map(h => chip(h, counts.get(h))).join('')}</div></div>` : ''}
+    </section>`;
+  }
+
   function heroes(host, c) {
     const M = c.M, E = c.E, S = c.settings;
     const now = Date.now() / 1000;
@@ -1133,16 +1152,13 @@
     const window = !plan.widened ? `games since the ${new Date(plan.from * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} patch`
       : `the last ${E.BENCH_WIDE_DAYS} days` + (plan.spansPatch ? ' (spans a patch)' : '');
 
-    // Every hero in one strip, busiest lately first (scrolls sideways).
-    const strip = busiest;
     const ins = E.heroInsights(M.all, M.perf, now);
-    const hp = h => `<a href="#/heroes/${h}" class="hp${h === hero ? ' on' : ''}" role="tab" aria-selected="${h === hero}" title="${c.esc(c.heroName(h))}">${icon(c, h, 36)}<span>${c.esc(c.heroName(h))}</span><span class="muted small">${counts.get(h)}</span></a>`;
     const fig = (label, value, sub, badge) => `<div class="fig"><div class="fig-v">${value}</div><div class="t-label">${label}${badge ? ' ' + badge : ''}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
     host.innerHTML = `
       <div class="masthead"><div class="ident"><div><div class="rank-name">Heroes</div>
         <div class="muted small num-line"><span>${list.length} heroes</span><span>${ins.n} games in ${ins.days} days</span>${ins.base != null ? `<span>${c.pct(ins.base)} overall</span>` : ''}</div></div></div></div>
       ${heroScout(c, ins)}
-      <div class="hero-pick" role="tablist" aria-label="Hero" data-keep-x="heroes">${strip.map(hp).join('')}</div>
+      ${heroPicker(c, ins, list, counts, hero)}
 
       <div class="hero-head"><div class="ident">${icon(c, hero, 48)}<div><div class="rank-name">${c.esc(c.heroName(hero))}</div>
         <div class="muted small num-line"><span>${games.length} games</span><span>${sum.wins}–${sum.losses}</span>${sum.hasDelta ? `<span>${c.signed(sum.net)} pts</span>` : ''}</div></div></div>
@@ -1160,9 +1176,9 @@
         ${sh(`Road to ${c.esc(tn(nextTier))}`, seg('Game time', [[900, '15 min'], [1200, '20 min'], [1800, '30 min']], T).replace('class="seg-ctl"', 'class="seg-ctl" id="bt"'))}
         ${!ready ? `<p class="muted small">Loading the comparison… ${loaded}/${E.LADDER_TIERS.length} ranks</p>` : roadHtml(c, lad, yourTier, nextTier, fmt, tn, T, tiersData, hero, `Your average ${c.heroName(hero)} game vs the average one in ${tn(nextTier)} lobbies, at ${T / 60}:00, over ${window} (${plan.n} of your games${plan.thin ? ', fewer than ' + E.MIN_HERO_GAMES + ', so treat it as a rough read' : ''}).`)}
       </section>`}`;
-    // Phone strip: bring the picked hero into view (render() restores the scroll on redraws of the same hero).
-    const pick = host.querySelector('.hero-pick'), on = pick.querySelector('.hp.on');
-    if (on && pick.scrollWidth > pick.clientWidth) pick.scrollLeft = on.offsetLeft - pick.offsetLeft - (pick.clientWidth - on.offsetWidth) / 2;
+    // Picking a hero in the pool jumps to its section below instead of leaving you at the top.
+    host.querySelectorAll('.hpk, .hchip').forEach(a => a.addEventListener('click', () => { heroJump = true; }));
+    if (heroJump) { heroJump = false; const hh = host.querySelector('.hero-head'); if (hh) setTimeout(() => hh.scrollIntoView({ block: 'start' }), 0); }
     bindSeg(host, '#ht', v2 => { heroTab = v2; c.render(); });
     bindSeg(host, '#bt', v2 => { S.benchT = Number(v2); c.save(); c.render(); });
     host.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => { c.startFocus(b.dataset.pick, null, null, 'you'); c.go('#/coach'); }));

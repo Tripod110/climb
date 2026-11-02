@@ -420,7 +420,13 @@
     const n = recent.length;
     if (!n) return { n, days: HERO_INS_DAYS, base: null, rows: [], best: null, avoid: null, mostPts: null, drain: null, rising: null, most: null };
     const base = recent.filter(m => m.won).length / n;
-    const rows = heroBreakdown(recent, perf || new Map()).map(h => Object.assign(h, { adj: (h.wins + HERO_INS_K * base) / (h.games + HERO_INS_K) }));
+    /* Each hero's group for the picker: 'climb' (shrunk rate 2+ pts over your overall), 'park' (5+ pts under
+       and shrunk under), 'steady', or 'few' (under HERO_INS_MIN games). Sorted best first by shrunk rate. */
+    const rows = heroBreakdown(recent, perf || new Map()).map(h => {
+      const adj = (h.wins + HERO_INS_K * base) / (h.games + HERO_INS_K);
+      const group = h.games < HERO_INS_MIN ? 'few' : adj >= base + 0.02 ? 'climb' : h.winRate <= base - HERO_INS_GAP && adj < base ? 'park' : 'steady';
+      return Object.assign(h, { adj, group });
+    }).sort((a, b) => b.adj - a.adj || b.games - a.games);
     const pool = rows.filter(h => h.games >= HERO_INS_MIN);
     const top = (xs, f) => xs.length ? xs.reduce((a, b) => f(b) > f(a) ? b : a) : null;
     const bestC = top(pool, h => h.adj), best = bestC && bestC.adj > base ? bestC : null;

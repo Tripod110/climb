@@ -4,6 +4,12 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.42 (2026-11-02): Your hero pool, sorted
+- `heroInsights` rows carry `group`: climb (weighed rate 2+ pts over overall), park (5+ under, weighed under), steady, or
+  few (< `HERO_INS_MIN` games); rows sorted by weighed rate. 3 new tests.
+- `heroPicker` replaces the scrolling strip: grouped tiles (`.hpk`), then chips (`.hchip`) for few-games and not-in-90-days
+  heroes. A pick scrolls to `.hero-head` (`heroJump`).
+
 ## 0.41 (2026-11-02): Your best hero, and the one to park
 - `Engine.heroInsights(ms, perf, now)`: last `HERO_INS_DAYS` (90) days, per-hero win rate shrunk toward your overall by
   `HERO_INS_K` (10) games. best = top shrunk rate above overall; avoid = lowest, 5+ pts under overall; both need

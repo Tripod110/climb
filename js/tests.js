@@ -466,6 +466,9 @@
     eq('heroInsights: avoid is the clearly-below-your-average hero', hi.avoid && hi.avoid.hero, 3);
     eq('heroInsights: most rank points, and no drain when it is the avoid hero', [hi.mostPts && hi.mostPts.hero, hi.drain], [1, null]);
     eq('heroInsights: games older than the window are left out', [hi.n, hi.rows.some(h => h.hero === 5)], [64, false]);
+    eq('heroInsights: picker groups (58% overall: 50% is 5+ under)', Object.fromEntries(hi.rows.map(h => [h.hero, h.group])), { 1: 'climb', 2: 'few', 3: 'park', 4: 'park' });
+    eq('heroInsights: within the 10+ game heroes, best first', hi.rows.filter(h => h.group !== 'few').map(h => h.hero), [1, 4, 3]);
+    eq('heroInsights: steady sits between', E.heroInsights([...hg(1, 14, 6), ...hg(2, 10, 10), ...hg(3, 6, 14)], new Map(), NOW).rows.map(h => h.group), ['climb', 'steady', 'park']);
     eq('heroInsights: nobody below average = no avoid', E.heroInsights([...hg(1, 10, 10), ...hg(2, 10, 10)], new Map(), NOW).avoid, null);
     // rankProjection: fc above is 31 games, +5 divisions from Acolyte 1 → Acolyte 6 (6 games/division).
     const pj = E.rankProjection(fc, [12, 30]);
