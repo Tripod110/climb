@@ -4,6 +4,11 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.32 (2026-11-02): Rank projection
+- `Engine.rankProjection(fc, at)` carries `rankForecast`'s divisions-per-game forward to +20/+50/+100 games (low/high
+  from its range), clamped Initiate 1..Eternus 6, plus games to the next tier when climbing. Null unless climbing or sliding.
+- `projRow` on Overview draws it as badge rungs above the season rank-points chart. 6 new tests.
+
 ## 0.31 (2026-11-02): Overview: numbers, not sentences
 - `sigChip` replaces `signalLine`: each verdict signal is label + value + "was" value. `focusBrief` is the Overview focus
   (pass rate / win rate before → now from `focusProgress` + `focusImpact`); `focusCard(c, true)` on Coach is unchanged.

@@ -435,6 +435,14 @@
     eq('forecast: sliding', E.rankForecast(rk(Array.from({ length: 30 }, (_, i) => 44 - Math.floor(i / 10)))).call, 'sliding');
     const wobble = rk([...Array(10).fill(41), ...Array(10).fill(43), ...Array(10).fill(41)]);
     eq('forecast: up then down is mixed, not a trend', E.rankForecast(wobble).call, 'mixed');
+    // rankProjection: fc above is 31 games, +5 divisions from Acolyte 1 → Acolyte 6 (6 games/division).
+    const pj = E.rankProjection(fc, [12, 30]);
+    eq('projection: pace carried forward', pj.steps.map(s => s.badge), [42, 45]);
+    eq('projection: games to next tier', pj.tierUp, { badge: 41, games: 6 });
+    eq('projection: none when flat, mixed or thin', [E.rankProjection(E.rankForecast(rk(Array(20).fill(42)))), E.rankProjection(E.rankForecast(wobble)), E.rankProjection(null)], [null, null, null]);
+    const pjDown = E.rankProjection(E.rankForecast(rk(Array.from({ length: 30 }, (_, i) => 44 - Math.floor(i / 10)))), [100]);
+    eq('projection: sliding goes down, no tier-up', [pjDown.dir, pjDown.steps[0].badge < 42, pjDown.tierUp], [-1, true, null]);
+    eq('projection: clamped at Eternus 6', E.rankProjection({ call: 'climbing', gain: 10, n: 11, now: 115, range: [1, 1] }, [100]).steps[0].badge, 116);
     eq('forecast: calibration and unranked games are ignored', E.rankForecast([...climbing, ...climbing.map(m => ({ ...m, calib: true })), { id: 1, t: 1, mode: 'unranked', badge: 50 }]).n, 31);
   }
 

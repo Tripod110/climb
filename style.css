@@ -248,6 +248,20 @@ p .more { white-space: normal; }
 .fb { display: grid; gap: 3px; }
 .fb b { font: 600 26px/1 var(--display); font-variant-numeric: tabular-nums; }
 .num-line { display: flex; flex-wrap: wrap; margin-top: 3px; }
+/* rank projection: now → +20 → +50 → +100 games, as badges on a ruled ladder */
+.proj { margin-bottom: 18px; }
+.proj > .num-line { justify-content: center; margin-top: 10px; }
+.proj > .num-line b { color: var(--brass-hi); font-weight: 600; }
+.rungs { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--brass-lo); border-bottom: 1px solid var(--brass-lo); }
+.rung { display: grid; justify-items: center; gap: 4px; padding: 12px 6px; text-align: center; min-width: 0; position: relative; }
+.rung + .rung { border-left: 1px solid var(--border); }
+.rung + .rung::before { content: '›'; position: absolute; left: -6px; top: 50%; transform: translateY(-50%); color: var(--brass); background: var(--page); line-height: 1; padding: 2px 0; font-size: 14px; }
+.rung-k { font: 600 18px/1 var(--display); color: var(--brass-hi); font-variant-numeric: tabular-nums; }
+.rung:first-child .rung-k { color: var(--muted); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; line-height: 18px; }
+.rung.neg .rung-k { color: var(--bad-text); }
+.rung img { width: 44px; height: 44px; }
+.rung b { font: 600 15px/1.1 var(--display); letter-spacing: .03em; }
+.rung-r { font-size: 11px; color: var(--muted); }
 /* source badges on Overview shrink to a ring: the note is one tap away, the label isn't needed */
 .ov-hero .src, .ledger .src, .ov-sec .src, .masthead .src, .dispatch .src {
   width: 15px; height: 15px; padding: 0; border-radius: 50%; justify-content: center; font-size: 0; vertical-align: 1px;
@@ -720,6 +734,10 @@ code.path { display: block; max-width: 100%; margin: 6px 0 2px; padding: 8px 10p
   .sig-k { font-size: 10px; letter-spacing: .08em; }
   .ov-hero { padding: 28px 16px 22px; }
   .ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rung { padding: 10px 2px; }
+  .rung img { width: 34px; height: 34px; }
+  .rung b { font-size: 12px; }
+  .rung-r { font-size: 9.5px; }
   .fig { border-top: 1px solid var(--border); }
   .fig:nth-child(-n+2) { border-top: 0; }
   .fig + .fig { border-left: 0; }

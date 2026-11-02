@@ -103,6 +103,18 @@
       ${fc.call === 'climbing' ? `<span>range ${fc.range[0]}–${fc.range[1]}</span><span>next <b>${nm(fc.next)}</b></span>` : ''}</div></div>`;
   }
 
+  /* Rank projection: the pace above carried forward, as badges after +20/+50/+100 games (Engine.rankProjection). */
+  function projRow(c) {
+    const E = c.E, fc = E.rankForecast(c.M.all.filter(m => m.mode === 'ranked')), pj = E.rankProjection(fc);
+    if (!pj) return '';
+    const nm = b => c.esc(E.badgeName(b, c.tiers()));
+    const rung = (k, b, sub, cls) => `<li class="rung ${cls || ''}"><span class="rung-k">${k}</span><img src="${c.A.rankImage(b)}" alt="" width="44" height="44"><b>${nm(b)}</b><span class="rung-r">${sub || '&nbsp;'}</span></li>`;
+    const info = src('rule', `Your last ${fc.n} ranked games moved you ${Math.abs(fc.gain)} division${Math.abs(fc.gain) === 1 ? '' : 's'} (${pj.per.toFixed(1)} games each). This carries that pace forward; the small range under each badge uses the fastest and slowest half of that stretch. Rank points are not projected, because Valve’s points don’t convert to divisions at a fixed rate.`);
+    return `<div class="proj ${pj.dir < 0 ? 'down' : 'up'}"><div class="t-label">Projection ${info}</div>
+      <ol class="rungs">${rung('Now', fc.now, `${fc.n} games`)}${pj.steps.map(s => rung('+' + s.games, s.badge, s.lo === s.hi ? '' : `${nm(s.lo)} – ${nm(s.hi)}`, pj.dir < 0 ? 'neg' : '')).join('')}</ol>
+      ${pj.tierUp && pj.tierUp.badge !== fc.next ? `<div class="muted small num-line"><span><b>${nm(pj.tierUp.badge)}</b> in ~${pj.tierUp.games} games</span></div>` : ''}</div>`;
+  }
+
   /* Overview section header: small-caps kicker between gilded rules, with an optional link. */
   const sh = (kicker, more) => `<header class="sh"><div class="sh-k"><span>${kicker}</span></div>${more ? `<div class="sh-row">${more}</div>` : ''}</header>`;
 
@@ -200,6 +212,7 @@
 
       <section class="ov-sec">
         ${sh('The climb · season rank points')}
+        ${projRow(c)}
         <div id="rank-chart" class="chart"></div>
       </section>`;
 

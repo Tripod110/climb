@@ -349,6 +349,27 @@
     return { ...base, call: 'mixed' };
   }
 
+  /* Where that pace lands you after more games: the forecast's divisions-per-game carried forward,
+     with the low/high badge from its range. Only for a direction both halves agreed on (climbing or
+     sliding); clamped to Initiate 1 .. Eternus 6. fc: a rankForecast result. */
+  const RANK_PROJ_AT = [20, 50, 100];
+  const unladder = L => Math.floor((L - 1) / 6) * 10 + ((L - 1) % 6) + 1;
+  function rankProjection(fc, at) {
+    if (!fc || (fc.call !== 'climbing' && fc.call !== 'sliding') || !fc.gain) return null;
+    const L0 = ladder(fc.now), dir = Math.sign(fc.gain), per = (fc.n - 1) / Math.abs(fc.gain);
+    const span = fc.range || [per, per];
+    const top = (TIER_NAMES.length - 1) * 6 + 6, bottom = 7;
+    const land = (g, p) => unladder(Math.max(bottom, Math.min(top, L0 + dir * Math.floor(g / p))));
+    const steps = (at || RANK_PROJ_AT).map(g => {
+      const a = land(g, span[1]), b = land(g, span[0]);
+      return { games: g, badge: land(g, per), lo: Math.min(a, b), hi: Math.max(a, b) };
+    });
+    // Games to the next tier's first division (climbing only).
+    const tierUp = dir > 0 && Math.floor(fc.now / 10) < TIER_NAMES.length - 1
+      ? { badge: (Math.floor(fc.now / 10) + 1) * 10 + 1, games: Math.ceil((ladder((Math.floor(fc.now / 10) + 1) * 10 + 1) - L0) * per) } : null;
+    return { dir, per, steps, tierUp };
+  }
+
   function heroBreakdown(games, perf) {
     const by = new Map();
     for (const m of games) {
@@ -1774,7 +1795,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
