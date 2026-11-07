@@ -4,6 +4,21 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.44 (2026-11-07): A tidy-up behind the scenes
+- No visible change (checked element by element against 0.43 on every tab, desktop and 375px).
+- `views.js`: removed the unused weekly report (`weekCard`, `weekLines`, `weekText`, `weekImage`, `bindWeek`,
+  `weekState`, `fmtT`), `roleBars`, `trendTxt`, `tagChips`, `noteChips`, `roleClass`; dropped unused parameters from
+  `heroCoachPanel` and `roadHtml`.
+- `engine.js`: removed what nothing called: `briefing` + `heroStatShift` (and `BRIEF_*`, `signedInt`), `benchHeroes`,
+  `benchBrackets`, `benchCompare`, `BENCH_MAX_HEROES`, `gameNotes`, `teamShare` (its finding kept as a note),
+  `squadRecord`, `weeklyReport`, `WEEK_S`, `QUADS`, `QUAD_LABEL`, `TAG_LABEL`, `ROLE_GOOD`, `TAG2_GOOD`. Their 24 tests
+  went with them; the team-share tests now check `gameRole().teamRank`. 240 tests.
+- `charts.js`: removed `mixBars` / `miniMix`. `app.js`: dropped `S` and `focusEntries` from the view context.
+- `style.css`: ~158 lines of rules no page uses any more (old `.mrow`, `.board`/`.board2`, `.tiles*`, `.road`, `.ladder-full`,
+  `.full-ladder`, `.hero-all`/`.hero-pick`, `.week*`, `.rolebar`/`.r-*`, `.mini-list`, `.focus`, `.whatsnew`, `.h2h`, …).
+  `.coach-pts li.good/.bad` stays: the match debrief still uses it.
+- README rewritten for the current tabs; AGENTS.md notes the service worker is https-only.
+
 ## 0.43 (2026-11-02): Friends: how you really stack up
 - `Engine.stackBoard(matches, lobbies, me, friends)`: per shared game on the same team (cached `LOBBY_V` lobbies), four
   lobby-relative ratios: souls, max(damage, healing), K+A, alive; log-clamped at ×4. Overall = geometric mean, averaged per

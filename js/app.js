@@ -91,7 +91,7 @@
   const heroName = id => (state.assets && state.assets.heroes[id] && state.assets.heroes[id].name) || 'Hero ' + id;
   const heroIcon = id => (state.assets && state.assets.heroes[id] && state.assets.heroes[id].icon) || '';
   const ctx = {
-    E, A, C, P, S, state, settings, LOG, VERSION, verName,
+    E, A, C, P, state, settings, LOG, VERSION, verName,
     heroName, heroIcon,
     tiers: () => state.assets && state.assets.tiers,
     tierName: t => E.badgeName(t * 10, state.assets && state.assets.tiers),
@@ -111,7 +111,7 @@
     save: () => S.set('settings', settings),
     render: () => render(),
     benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureMatchDetail, matchWin, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
-    focusEntries, focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
+    focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
     ensureFriends, ensureDetailsFor, friendList, entryOf: m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }), dismissRecap, dismissMissing, freshnessNow,
     addMatch, ensureSquad, squadRows, runDuoCoach,
   };

@@ -30,9 +30,6 @@
   const TIER_NAMES = ['Obscurus', 'Initiate', 'Seeker', 'Acolyte', 'Sentinel', 'Mystic',
     'Ritualist', 'Emissary', 'Oracle', 'Phantom', 'Ascendant', 'Eternus'];
 
-  const QUADS = ['earned', 'unlucky', 'passenger', 'rough'];
-  const QUAD_LABEL = { earned: 'Earned win', unlucky: 'Unlucky loss', passenger: 'Passenger win', rough: 'Rough game' };
-  const TAG_LABEL = { farmer: 'Farmer', damage: 'Damage', playmaker: 'Playmaker', survivor: 'Survivor', support: 'Support' };
   const METRICS = ['souls', 'dmg', 'ka', 'deaths', 'farm'];   // farm needs match detail (see farmRatio)
 
   // ---------------------------------------------------------------- normalising API data
@@ -449,88 +446,10 @@
     return sub ? name + ' ' + sub : name;
   }
 
-  // ---------------------------------------------------------------- pre-queue briefing
-
-  /* The launch notification: a few lines, rank-first, read in five seconds before queuing.
-     Everything is a count or an average. It says what moved and never why. */
-  const BRIEF_HERO_N = 10;              // a hero's "recent" = its last 10 season games
-  const BRIEF_ACTIVE_S = 30 * 86400;    // only heroes played in the last 30 days are worth naming
-  const BRIEF_MIN_SIDE = 8;             // both sides of a lever split need 8+ games
+  // ---------------------------------------------------------------- small helpers
 
   const fmtInt = n => String(Math.round(Math.abs(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const signedInt = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtInt(n);
   const wl = ms => { const w = ms.filter(m => m.won).length; return { w, l: ms.length - w }; };
-
-  /* The stat that moved most on a hero: its last 5 games vs its earlier season games. Returns
-     a short phrase, or null when nothing moved by 10%+ or the sample is too thin. */
-  function heroStatShift(games) {
-    if (games.length < 8) return null;
-    const recent = games.slice(-5), before = games.slice(0, -5);
-    const spm = ms => mean(ms.map(m => m.souls / Math.max(1, m.dur / 60)));
-    const dpg = ms => mean(ms.map(m => m.d));
-    const cands = [
-      { a: spm(recent), b: spm(before), up: 'more souls/min', down: 'fewer souls/min', goodUp: true, fmt: x => fmtInt(x) },
-      { a: dpg(recent), b: dpg(before), up: 'dying more', down: 'dying less', goodUp: false, fmt: x => x.toFixed(1) },
-    ].map(c => Object.assign(c, { rel: c.b ? (c.a - c.b) / c.b : 0 }))
-      .filter(c => Math.abs(c.rel) >= 0.1)
-      .sort((x, y) => Math.abs(y.rel) - Math.abs(x.rel));
-    if (!cands.length) return null;
-    const c = cands[0];
-    return { text: `${c.a > c.b ? c.up : c.down} (${c.fmt(c.a)} vs ${c.fmt(c.b)})`, good: (c.a > c.b) === c.goodUp };
-  }
-
-  function briefing(ranked, lobbies, opts) {
-    const o = Object.assign({ now: Date.now() / 1000, heroName: id => 'Hero ' + id, tiers: null }, opts);
-    const season = seasonOf(ranked);
-    if (!season.length) return null;
-    const last = season[season.length - 1];
-    const unit = rankUnit(season);
-    const recent = season.slice(-COMPARE_N);
-    const r = wl(recent), net = recent.reduce((s, m) => s + (m.delta || 0), 0);
-    const title = `${badgeName(last.badge, o.tiers)} · last ${recent.length}: ${r.w}–${r.l}, ${signedInt(net)}`;
-
-    // Hot and cold heroes by rank points over each hero's recent games.
-    const byHero = new Map();
-    for (const m of season) { if (!byHero.has(m.hero)) byHero.set(m.hero, []); byHero.get(m.hero).push(m); }
-    const heroes = [...byHero].filter(([, ms]) => ms.length >= 4 && o.now - ms[ms.length - 1].t <= BRIEF_ACTIVE_S)
-      .map(([hero, ms]) => {
-        const g = ms.slice(-BRIEF_HERO_N);
-        return { hero, all: ms, g, net: g.reduce((s, m) => s + (m.delta || 0), 0), ...wl(g) };
-      });
-    const hot = heroes.filter(h => h.net >= unit).sort((a, b) => b.net - a.net)[0] || null;
-    const cold = heroes.filter(h => h.net <= -unit).sort((a, b) => a.net - b.net)[0] || null;
-    const heroLine = (h, verb) => {
-      const shift = heroStatShift(h.all);
-      return `${o.heroName(h.hero)} is ${verb}: ${h.w}–${h.l}, ${signedInt(h.net)} over its last ${h.g.length}` +
-        (shift ? `, ${shift.text}` : '');
-    };
-
-    // The lever: which lobby placement splits your wins most clearly this season.
-    let lever = null;
-    const placed = season.filter(m => lobbies[m.id]).map(m => ({ m, s: lobbyStats(lobbies[m.id]) }));
-    const splits = [
-      { name: 'top 3 in souls', test: x => x.s.ranks.souls <= 3 },
-      { name: 'one of the 2 fewest deaths in the lobby', test: x => x.s.ranks.deaths <= 2 },
-    ].map(sp => {
-      const yes = placed.filter(sp.test).map(x => x.m), no = placed.filter(x => !sp.test(x)).map(x => x.m);
-      if (yes.length < BRIEF_MIN_SIDE || no.length < BRIEF_MIN_SIDE) return null;
-      const a = wl(yes), b = wl(no);
-      const ra = a.w / yes.length, rb = b.w / no.length;
-      return { ...sp, a, b, ra, rb, gap: ra - rb };
-    }).filter(Boolean).sort((x, y) => y.gap - x.gap);
-    if (splits.length && splits[0].gap >= 0.15) {
-      const s = splits[0];
-      lever = `You win ${Math.round(s.ra * 100)}% when you're ${s.name} (${s.a.w}–${s.a.l}), ${Math.round(s.rb * 100)}% otherwise.`;
-    }
-
-    return {
-      title,
-      hot: hot ? heroLine(hot, 'gaining you rank') : null,
-      cold: cold ? heroLine(cold, 'costing you rank') : null,
-      lever,
-      lastId: last.id,
-    };
-  }
 
   // ---------------------------------------------------------------- benchmark
 
@@ -545,7 +464,6 @@
      thousands of games, so its own error is negligible) and is at least 5%. */
   const BENCH_MIN_PATCH = 8;
   const BENCH_WIDE_DAYS = 60;
-  const BENCH_MAX_HEROES = 6;
   const BENCH_TIMES = [900, 1200, 1800];   // 30 min only counts games that lasted that long
   const BENCH_REL_FLOOR = 0.05;
   /* Each stat = the curve's fields summed. Lane and jungle souls each come in two parts (creep
@@ -584,24 +502,6 @@
     return { hero, from, n, widened: true, spansPatch: patchT != null && from < patchT };
   }
 
-  /* Your most-played heroes over the wide window that qualify, most games first. */
-  function benchHeroes(games, patchT, now) {
-    const wideFrom = Math.min(patchT == null ? Infinity : patchT, benchWideFrom(now));
-    const count = new Map();
-    for (const m of games) if (m.t >= wideFrom) count.set(m.hero, (count.get(m.hero) || 0) + 1);
-    return [...count.keys()].map(h => benchWindow(games, h, patchT, now)).filter(Boolean)
-      .sort((a, b) => b.n - a.n || a.hero - b.hero).slice(0, BENCH_MAX_HEROES);
-  }
-
-  /* Lobby-average badge ranges for "your bracket" (your tier, all subranks) and the reference.
-     Phantom and Ascendant players get compared with Eternus; Eternus players have no one above. */
-  function benchBrackets(badge) {
-    const tier = badge == null ? 0 : Math.floor(badge / 10);
-    const bracket = { min: tier * 10 + 1, max: tier * 10 + 6, tier };
-    const ref = tier >= 11 ? null : tier >= 9 ? { min: 111, tier: 11 } : { min: 91, tier: 9 };
-    return { bracket, ref };
-  }
-
   /* /v1/analytics/player-performance-curve (resolution=0) rows -> { [time]: { n, [stat]: [avg, sd] } }
      for BENCH_TIMES only. A few hundred bytes instead of ~20KB. */
   function compactCurve(rows) {
@@ -615,39 +515,6 @@
       out[r.game_time] = c;
     }
     return out;
-  }
-
-  function benchCompare(mine, bracket, ref) {
-    const times = {};
-    for (const t of BENCH_TIMES) {
-      const me = mine && mine[t], vs = ref && ref[t], base = bracket && bracket[t];
-      if (!me || !me.n) continue;
-      times[t] = {
-        n: me.n,
-        rows: BENCH_STATS.map(s => {
-          const [you, sd] = me[s.key];
-          const r = vs ? vs[s.key][0] : null;
-          const gap = r == null ? null : you - r;
-          const rel = r ? gap / r : null;
-          const se = sd / Math.sqrt(me.n);
-          const sig = gap != null && me.n >= 2 && Math.abs(gap) > 2 * se && Math.abs(rel) >= BENCH_REL_FLOOR;
-          return { key: s.key, label: s.label, you, bracket: base ? base[s.key][0] : null, ref: r, gap, rel, sig,
-            good: gap == null ? null : (gap > 0) === s.higher };
-        }),
-      };
-    }
-    // Headlines: called gaps at 15 and 20 min (30 is long games only), behind first, biggest first,
-    // one per stat (its larger gap of the two times).
-    const best = new Map();
-    for (const t of [900, 1200]) {
-      for (const r of (times[t] ? times[t].rows : [])) {
-        if (!r.sig) continue;
-        const cur = best.get(r.key);
-        if (!cur || Math.abs(r.rel) > Math.abs(cur.rel)) best.set(r.key, Object.assign({ t }, r));
-      }
-    }
-    const headlines = [...best.values()].sort((a, b) => (a.good - b.good) || Math.abs(b.rel) - Math.abs(a.rel)).slice(0, 2);
-    return { times, headlines };
   }
 
   // ---------------------------------------------------------------- steam id
@@ -709,7 +576,6 @@
     carried: 'Carried', key: 'Key player', solid: 'Solid win', passenger: 'Passenger',
     lonewolf: 'Couldn’t carry', tough: 'Tough loss', dragged: 'Dragged down',
   };
-  const ROLE_GOOD = { carried: 1, key: 1, lonewolf: 1, solid: 0, tough: 0, passenger: -1, dragged: -1 };
   const ROLE_NOTE = {
     carried: 'Won, and you were clearly your team’s biggest impact.',
     key: 'One of the two biggest impacts on your team, or one of Valve’s MVPs.',
@@ -724,7 +590,6 @@
     kills: 'Most kills', play: 'Playmaker', obj: 'Objective focus', heal: 'Healer', tank: 'Frontline',
     survivor: 'Survivor', fed: 'Fed', stomp: 'Stomp', stomped: 'Stomped', long: 'Marathon',
   };
-  const TAG2_GOOD = { fed: -1, stomped: -1 };
   const CARRY_IMPACT = 1.3, DRAG_IMPACT = 0.8;
 
   /* The read on one game: a role (one of ROLE_LABEL) and any number of tags. Needs a v2 lobby. */
@@ -765,23 +630,6 @@
     // lobbyFirst: Valve's own post-game MVP #1, the "1st in the lobby" shown in-game. Climb's impact
     // score is team-relative, so it doesn't rank across both teams; on 60 real games the two never agreed.
     return { role, tags, impact: imp.impact, teamRank: imp.teamRank, teamSize: imp.teamSize, r: imp.r, mvp, lobbyFirst: mvp === 1 };
-  }
-
-  /* The two things that most set one game apart, as short chips with the number in them, for the
-     Matches list. All relative to that lobby's average (both teams), so they read the same in a
-     stomp and a slugfest. -> [{ text, tone: 'good'|'bad', w }] strongest first, at most `max`. */
-  function gameNotes(L, max) {
-    if (!L || L.v !== LOBBY_V) return [];
-    const P = L.p, me = P[L.me], out = [];
-    const avgD = mean(P.map(p => p[3]));
-    if (me[3] <= 2 || (me[3] <= 0.5 * avgD && me[3] <= 4)) out.push({ text: me[3] === 0 ? 'No deaths' : `Only ${me[3]} death${me[3] === 1 ? '' : 's'}`, tone: 'good', w: 1 + (avgD - me[3]) / 10 });
-    else if (me[3] >= 10 || me[3] >= 1.6 * avgD) out.push({ text: `${me[3]} deaths`, tone: 'bad', w: 1 + (me[3] - avgD) / 10 });
-    const r = lobbyStats(L).ratio;
-    const rel = (v, label) => { if (v == null) return; const d = Math.round((v - 1) * 100);
-      if (v >= 1.25) out.push({ text: `+${d}% ${label}`, tone: 'good', w: v - 1 }); else if (v <= 0.75) out.push({ text: `−${-d}% ${label}`, tone: 'bad', w: 1 - v }); };
-    rel(r.souls, 'souls'); rel(r.dmg, 'damage');
-    if (rankOf(P.map(p => p[2]), L.me, true) === 1 && me[2] >= 8) out.push({ text: `${me[2]} kills, most in the lobby`, tone: 'good', w: 0.5 });
-    return out.sort((a, b) => b.w - a.w).slice(0, max || 2);
   }
 
   /* Role counts and rates over a set of games, for the Overview tiles and hero cards. */
@@ -1050,17 +898,11 @@
 
   // ---------------------------------------------------------------- v13: grounded reads
 
-  /* Team share (replaces Carried/Dragged as a verdict). Checked 2026-10-23 on the user's last
-     400 games: a share of your OWN team's stats cannot predict the result (impact AUC 0.49; team
-     #1 by impact won 49%, #5 won 59%), because the whole team wins or loses together. So it's
-     shown as a neutral description, never good/bad. What does predict results is early-game
-     play, measured before the outcome is decided (the focus habits). */
-  function teamShare(L, won) {
-    const g = gameRole(L, won);
-    if (!g) return null;
-    const label = g.teamRank <= 2 ? 'Top share' : g.teamRank >= g.teamSize - 1 ? 'Low share' : 'Mid share';
-    return { label, teamRank: g.teamRank, teamSize: g.teamSize, impact: g.impact, lobbyFirst: g.lobbyFirst, tags: g.tags };
-  }
+  /* Team share (the match page's "#2 of 6", replacing Carried/Dragged as a verdict) is a neutral
+     description, never good/bad. Checked 2026-10-23 on the user's last 400 games: a share of your OWN
+     team's stats cannot predict the result (impact AUC 0.49; team #1 by impact won 49%, #5 won 59%),
+     because the whole team wins or loses together. What does predict results is early-game play,
+     measured before the outcome is decided (the focus habits). */
 
   /* Early-game rates over a set of games (needs match detail): the two habits that split the
      user's wins from losses most cleanly. -> { n, ahead12, clean10, nAhead, nClean } */
@@ -1194,22 +1036,6 @@
   }
   const seatOf = (row, acct) => row.team.find(s => s[0] === acct) || null;
 
-  /* Your games by stack size: solo, duo, 3+ (friends on your team, from mate-stats ids). */
-  function squadRecord(history, friends, since) {
-    const byGame = new Map();
-    for (const f of friends) for (const id of f.ids) (byGame.get(id) || byGame.set(id, []).get(id)).push(f.acct);
-    const out = { solo: { n: 0, wins: 0 }, duo: { n: 0, wins: 0 }, squad: { n: 0, wins: 0 }, partners: {} };
-    for (const m of history) {
-      if (m.t < since) continue;
-      const mates = byGame.get(m.id) || [];
-      const b = out[mates.length === 0 ? 'solo' : mates.length === 1 ? 'duo' : 'squad'];
-      b.n++; if (m.won) b.wins++;
-      for (const a of mates) { const p = out.partners[a] || (out.partners[a] = { n: 0, wins: 0 }); p.n++; if (m.won) p.wins++; }
-    }
-    for (const k of ['solo', 'duo', 'squad']) out[k].wr = out[k].n ? out[k].wins / out[k].n : null;
-    return out;
-  }
-
   /* Win chance lost to deaths per game, for `acct` over rows where they played. */
   const costOf = (rows, acct) => {
     const xs = rows.map(r => seatOf(r, acct)).filter(s => s && s[5] != null).map(s => s[5]);
@@ -1330,28 +1156,6 @@
       plan.sort((a, b) => b.gap - a.gap);
     }
     return { n: shared.length, wins: shared.filter(r => r.won).length, metrics, vs, trailing, plan: plan.slice(0, 2) };
-  }
-
-  /* The week together, for pasting into the group chat. Only games you played in (that's what
-     Climb has). worstDeath is a TYPICAL cost from the model, not an exact one. */
-  const WEEK_S = 7 * 86400;
-  function weeklyReport(rows, me, friends, now) {
-    const fs = new Set(friends.map(f => f.acct));
-    const inSquad = r => r.team.some(s => fs.has(s[0]));
-    const week = rows.filter(r => r.t >= now - WEEK_S && inSquad(r));
-    const before = rows.filter(r => r.t < now - WEEK_S && r.t >= now - 5 * WEEK_S && inSquad(r));
-    if (!week.length) return null;
-    const who = [me, ...fs].filter(a => week.some(r => seatOf(r, a)));
-    const people = who.map(acct => {
-      const c = costOf(week, acct), p = costOf(before, acct);
-      return { acct, games: week.filter(r => seatOf(r, acct)).length, cost: c ? c.mean : null, prev: p && p.n >= 4 ? p.mean : null };
-    }).filter(p => p.cost != null && p.games >= 2).sort((a, b) => a.cost - b.cost);
-    let worst = null;
-    for (const r of week) for (const s of r.team) if ((s[0] === me || fs.has(s[0])) && s[6] && (!worst || s[6][0] > worst.cost))
-      worst = { acct: s[0], hero: s[1], cost: s[6][0], t: s[6][1], killerHero: s[6][2], matchId: r.id, won: r.won };
-    const improved = people.filter(p => p.prev != null && p.prev - p.cost >= BOARD_GAP).sort((a, b) => (b.prev - b.cost) - (a.prev - a.cost))[0] || null;
-    return { games: week.length, wins: week.filter(r => r.won).length, people, best: people[0] || null,
-      worst: people.length > 1 ? people[people.length - 1] : null, worstDeath: worst, improved };
   }
 
   const DUO_SYSTEM = [
@@ -1907,21 +1711,20 @@
 
   const Engine = {
     freshness,
-    SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, squadRecord, versus, friendBoard, scorecard, weeklyReport, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
-    teamShare, earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
+    SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, versus, friendBoard, scorecard, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
+    earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
     HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
-    LOBBY_V, ROLE_LABEL, ROLE_GOOD, ROLE_NOTE, TAG2_LABEL, TAG2_GOOD, LADDER_TIERS, LADDER_METRICS,
-    parseSteamInput, lobbyImpact, gameNotes, gameRole, roleSummary, compactHeroStats, rankLadder,
+    LOBBY_V, ROLE_LABEL, ROLE_NOTE, TAG2_LABEL, LADDER_TIERS, LADDER_METRICS,
+    parseSteamInput, lobbyImpact, gameRole, roleSummary, compactHeroStats, rankLadder,
     BENCH_TIMES, BENCH_STATS, BENCH_MIN_PATCH, BENCH_WIDE_DAYS,
-    lastBigPatch, benchWindow, benchHeroes, benchBrackets, compactCurve, benchCompare,
-    ACCOUNT_ID, MIN_HERO_GAMES, COMPARE_N, QUADS, QUAD_LABEL, TAG_LABEL, TIER_NAMES,
+    lastBigPatch, benchWindow, compactCurve,
+    ACCOUNT_ID, MIN_HERO_GAMES, COMPARE_N, TIER_NAMES,
     ladder, normalizeMatch, normalizeHistory, matchFromMeta, mergeAdded, compactLobby, lobbyStats, perfScores, classify,
     seasonOf, sessionOf, windowsFor, summarize, rankUnit, verdict, rankSeries, heroBreakdown, badgeName,
-    heroStatShift, briefing,
   };
   root.Engine = Engine;
   if (typeof module === 'object' && module.exports) module.exports = Engine;

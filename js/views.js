@@ -6,10 +6,9 @@
   // ---------------------------------------------------------------- shared bits
   const ICONV = { improving: '▲', holding: '■', slipping: '▼', unknown: '·' };
   const WORD = { improving: 'Improving', holding: 'Holding', slipping: 'Slipping', unknown: 'Not enough games' };
-  const roleClass = (E, r) => E.ROLE_GOOD[r] > 0 ? 'good' : E.ROLE_GOOD[r] < 0 ? 'bad' : 'flat';
   const firstChip = g => g && g.lobbyFirst ? '<span class="first" title="Valve named you MVP: 1st in the lobby">★ 1st</span>' : '';
   /* Team share is neutral on purpose: on the user's 400 games it didn't predict results (see
-     Engine.teamShare). Gold ★ 1st (Valve's MVP) is the only highlight. */
+     the team-share note in engine.js). Gold ★ 1st (Valve's MVP) is the only highlight. */
   /* How the game went compared with YOUR usual on that hero (the form score), only when it is clearly
      above or below. It replaces "Top/Mid/Low share", which described your team's split and said
      nothing about how you played. */
@@ -21,8 +20,6 @@
       : p.score <= -FORM_GAME ? '<span class="role bad" title="You played below your usual on this hero (souls, farm by 12:00 vs your lane, damage, kills + assists, staying alive vs your other games on it).">Below your usual</span>' : '';
     return firstChip(g) + f;
   };
-  /* Short chips with the number in them (Engine.gameNotes): what stood out in this game. */
-  const noteChips = (c, L, max) => c.E.gameNotes(L, max).map(n => `<span class="tag ${n.tone}">${c.esc(n.text)}</span>`).join('');
 
   /* Where a number comes from. Tap a badge to see how it was worked out. Kinds:
      yours = counted from your own games · model = Climb's trained win model · ranks = averages
@@ -45,8 +42,6 @@
     popover.style.top = (r.bottom + window.scrollY + 6) + 'px';
   });
 
-  // MVP #1 already shows as the gold ★ 1st chip, so its tag is left out of the tag list.
-  const tagChips = (c, g, max) => !g ? '' : g.tags.filter(t => t !== 'mvp1').slice(0, max || 99).map(t => `<span class="tag${c.E.TAG2_GOOD[t] < 0 ? ' warn' : ''}">${c.E.TAG2_LABEL[t]}</span>`).join('');
   const icon = (c, hero, size) => {
     const src = c.heroIcon(hero);
     return src ? `<img class="hero-ic" src="${src}" alt="" width="${size}" height="${size}" loading="lazy">` : `<span class="hero-ic" style="width:${size}px;height:${size}px"></span>`;
@@ -242,11 +237,6 @@
     if (!c.state.detailsBusy) c.ensureDetails();
   }
 
-  function trendTxt(h) {
-    if (!h.ready || h.trend == null) return '<span class="muted small">—</span>';
-    return h.trend >= 0.2 ? '<span class="pos small">▲ rising</span>' : h.trend <= -0.2 ? '<span class="neg small">▼ dipping</span>' : '<span class="muted small">■ steady</span>';
-  }
-
   /* One bar per habit, split at the centre. The point is the right half, green: how often you WIN with
      it. The left half is a quiet grey reference, how often you lost without it. Not "skipped": some of
      these (an early death) aren't fully up to you. Each half is 0–100%. Shared by Overview and Coach. */
@@ -289,15 +279,6 @@
       ${rf(early, 'deaths &lt; 10:00', early ? '' : 'pos')}
       ${swing ? `<a class="rf" href="#/match/${swing.m.id}"><b class="${swing.t.delta >= 0 ? 'pos' : 'neg'}">${swing.t.delta > 0 ? '+' : '−'}${Math.abs(Math.round(swing.t.delta * 100))}%</b><span class="t-label" title="Biggest win-chance swing">swing · ${c.esc(c.heroName(swing.m.hero))} ${mm(swing.t.from)}–${mm(swing.t.to)}${swing.t.myDeaths.length ? ' · ' + swing.t.myDeaths.length + '†' : ''} →</span></a>` : ''}
       <button type="button" class="btn ghost-btn sm" id="recap-ok">Got it</button></section>`;
-  }
-
-  function roleBars(c, roles) {
-    if (!roles.n) return '<p class="muted small">Roles appear once lobby data has loaded.</p>';
-    const order = ['carried', 'key', 'solid', 'passenger', 'lonewolf', 'tough', 'dragged'];
-    return `<div class="rolebar" role="img" aria-label="Game roles">${order.filter(k => roles.counts[k]).map(k =>
-      `<span class="rb-seg r-${k}" style="flex:${roles.counts[k]}" title="${c.E.ROLE_LABEL[k]}: ${roles.counts[k]}"></span>`).join('')}</div>
-      <ul class="role-legend">${order.map(k => `<li><span class="key r-${k}"></span><span>${c.E.ROLE_LABEL[k]}</span><b>${roles.counts[k]}</b></li>`).join('')}</ul>
-      <p class="muted small">Impact is your share of your team’s souls, damage (or healing), kills + assists and objective damage, minus extra deaths. ${roles.n} of these games have lobby data.</p>`;
   }
 
   // ---------------------------------------------------------------- win chance (match page)
@@ -717,82 +698,6 @@
     return `<li class="${p.self ? 'me' : ''}">${p.self ? `<div class="b-row stk">${inner}</div>` : `<a class="b-row stk" href="#/friend/${p.acct}">${inner}</a>`}</li>`;
   }
 
-  const fmtT = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
-  /* The weekly report as lines, shared by the card, the Discord text and the image. */
-  function weekLines(c, w, list) {
-    const nm = a => nameIn(c, list, a);
-    const day = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const lines = [{ k: 'title', t: `Squad week, ${day(new Date(Date.now() - 6 * 86400e3))} – ${day(new Date())}` },
-      { k: 'big', t: `${w.wins}–${w.games - w.wins} together (${w.games} games)` }];
-    if (w.best) lines.push({ k: 'good', t: `Cleanest: ${nm(w.best.acct)}, ${ptsLost(w.best.cost)} win chance lost to deaths per game` });
-    if (w.worst) lines.push({ k: 'bad', t: `Most expensive: ${nm(w.worst.acct)}, ${ptsLost(w.worst.cost)} per game` });
-    if (w.worstDeath) { const d = w.worstDeath; lines.push({ k: 'bad', t: `Death of the week: ${nm(d.acct)} on ${c.heroName(d.hero)} at ${fmtT(d.t)}${d.killerHero ? ', killed by ' + c.heroName(d.killerHero) : ''}. Cost about ${ptsLost(d.cost)} win chance` }); }
-    if (w.improved) lines.push({ k: 'good', t: `Most improved: ${nm(w.improved.acct)}, ${ptsLost(w.improved.prev)} → ${ptsLost(w.improved.cost)} per game vs the 4 weeks before` });
-    if (w.people.length > 2) lines.push({ k: 'list', t: 'Ranking: ' + w.people.map((p, i) => `${i + 1}. ${nm(p.acct)} ${ptsLost(p.cost)}`).join(' · ') });
-    lines.push({ k: 'foot', t: 'Death costs are typical costs from Climb’s win model. Games with ' + nm(c.state.settings.account) + ' only.' });
-    return lines;
-  }
-  function weekCard(c, w, list) {
-    const L = weekLines(c, w, list);
-    return `<section class="card week"><div class="card-head"><div><div class="t-label">This week ${src('model', 'Your games with at least one friend in the last 7 days. Per person: win chance lost to their own deaths per game (2+ games this week). The death of the week is the single most expensive death by the win model, a typical cost, not an exact one. Most improved compares with their 4 weeks before (4+ games then). Only games you played in, since those are the ones Climb has.')}</div>
-      <h2>${c.esc(L[1].t)}</h2></div>
-      <div class="week-btns"><button type="button" class="btn" id="wk-text">Copy for Discord</button><button type="button" class="btn ghost-btn" id="wk-img">Copy image</button></div></div>
-      <ul class="week-lines">${L.slice(2, -1).map(x => `<li class="${x.k}">${c.esc(x.t)}</li>`).join('')}</ul>
-      <p class="muted small" id="wk-msg" aria-live="polite">${c.esc(weekState.msg || L[L.length - 1].t)}</p>
-      ${weekState.text ? `<div class="week-out"><textarea readonly rows="8" aria-label="Weekly report text">${c.esc(weekState.text)}</textarea></div>` : ''}
-      ${weekState.img ? `<div class="week-out"><img alt="Weekly squad report" src="${weekState.img}"></div>` : ''}</section>`;
-  }
-  /* The page re-renders while data loads, so the copy result lives here, not in the DOM. */
-  const weekState = { msg: null, text: null, img: null };
-  function weekText(c, w, list) {
-    const L = weekLines(c, w, list);
-    return [`**${L[0].t}**`, `**${L[1].t}**`, ...L.slice(2, -1).map(x => '- ' + x.t), `-# ${L[L.length - 1].t} Made with Climb.`].join('\n');
-  }
-  /* A plain PNG of the report (no avatars: cross-origin images would block the export). */
-  function weekImage(c, w, list) {
-    const L = weekLines(c, w, list), W = 760, pad = 32;
-    const cv = document.createElement('canvas'), g = cv.getContext('2d');
-    const font = (s, b) => `${b ? 700 : 400} ${s}px system-ui, -apple-system, Segoe UI, sans-serif`;
-    const wrap = (t, size, max) => { g.font = font(size); const out = []; let line = ''; for (const w0 of t.split(' ')) { const n = line ? line + ' ' + w0 : w0; if (g.measureText(n).width > max && line) { out.push(line); line = w0; } else line = n; } out.push(line); return out; };
-    const items = L.map(x => ({ x, size: x.k === 'big' ? 30 : x.k === 'title' ? 15 : x.k === 'foot' ? 13 : 18 }));
-    const laid = items.map(it => ({ ...it, lines: wrap(it.x.t, it.size, W - pad * 2) }));
-    const H = pad * 2 + laid.reduce((s, it) => s + it.lines.length * it.size * 1.4 + 8, 0);
-    cv.width = W * 2; cv.height = H * 2; g.scale(2, 2);
-    g.fillStyle = '#0c0c0d'; g.fillRect(0, 0, W, H);
-    g.fillStyle = '#4c8dff'; g.fillRect(0, 0, 4, H);
-    let y = pad;
-    const col = { title: '#9a9aa2', big: '#f2f2f3', good: '#47c97a', bad: '#ff6b6b', list: '#d0d0d4', foot: '#77777f' };
-    for (const it of laid) {
-      g.font = font(it.size, it.x.k === 'big' || it.x.k === 'title'); g.fillStyle = col[it.x.k] || '#f2f2f3'; g.textBaseline = 'top';
-      for (const ln of it.lines) { g.fillText(ln, pad, y); y += it.size * 1.4; }
-      y += 8;
-    }
-    return new Promise(res => cv.toBlob(res, 'image/png'));
-  }
-  function bindWeek(host, c, w, list) {
-    const set = (msg, text, img) => { if (weekState.img && weekState.img !== img) URL.revokeObjectURL(weekState.img); Object.assign(weekState, { msg, text, img }); c.render(); };
-    const ta = host.querySelector('.week-out textarea');
-    if (ta && weekState.select) { weekState.select = false; ta.focus(); ta.select(); }
-    const bt = host.querySelector('#wk-text'), bi = host.querySelector('#wk-img');
-    // If the browser refuses the clipboard, show the text (selected) or the image instead to copy by hand.
-    if (bt) bt.addEventListener('click', async () => {
-      const text = weekText(c, w, list);
-      try { await navigator.clipboard.writeText(text); set('Copied. Paste it into your Discord.', null, null); }
-      catch (e) { weekState.select = true; set('Your browser blocked copying. The text is selected below: press Ctrl+C.', text, null); }
-    });
-    if (bi) bi.addEventListener('click', async () => {
-      try {
-        const blob = await weekImage(c, w, list);
-        const url = URL.createObjectURL(blob);
-        set('Copying…', null, url);
-        // Some browsers leave the permission request hanging instead of refusing, hence the timeout.
-        const timeout = new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 3000));
-        try { await Promise.race([navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]), timeout]); set('Image copied. Paste it into your Discord.', null, url); }
-        catch (e) { set('Your browser blocked copying. Right-click the image below and choose Copy image.', null, url); }
-      } catch (e) { set('Couldn’t make the image: ' + e.message, null, null); }
-    });
-  }
-
   /* You vs one friend: early-game habits + win chance lost, the catch-up plan, and "Coach us". */
   function scoreCard(c, sc, f) {
     const st = c.state, me = c.esc((st.profile && st.profile.name) || 'You'), them = c.esc(f.name || 'Your friend');
@@ -1065,14 +970,13 @@
     </section>`;
   }
 
-  // ---------------------------------------------------------------- heroes + rank ladder
+  // ---------------------------------------------------------------- heroes
   let heroTab = 'road';   // 'road' | 'coach'; kept here because the page redraws as data loads
   const HERO_COACH_GAMES = 30;
 
-  /* "Coach me" on one hero: what to focus on, with the evidence from this hero's own games. */
   /* Heroes → Coach me: the habits that split YOUR wins from losses on this hero (the Overview's split
      bars, the suggested one first, with a button), then deaths in wins vs losses. Nothing here is AI. */
-  function heroCoachPanel(c, hero, games, plan, lad, items) {
+  function heroCoachPanel(c, hero, games, items) {
     const E = c.E, name = c.esc(c.heroName(hero));
     const recent = games.slice(-HERO_COACH_GAMES);
     const missing = recent.filter(m => !c.state.details[m.id] || c.state.details[m.id].v !== E.DETAIL_V);
@@ -1191,9 +1095,9 @@
         ${fig('★ 1st', roles.n ? roles.mvp : '—', `${roles.n} games read`, src('valve', 'Games where Valve named you MVP, 1st in the lobby.'))}
       </div>
 
-      ${heroTab === 'coach' ? heroCoachPanel(c, hero, games, plan, lad, c.state.items && c.state.items.map) : `<section class="ov-sec">
+      ${heroTab === 'coach' ? heroCoachPanel(c, hero, games, c.state.items && c.state.items.map) : `<section class="ov-sec">
         ${sh(`Road to ${c.esc(tn(nextTier))}`, seg('Game time', [[900, '15 min'], [1200, '20 min'], [1800, '30 min']], T).replace('class="seg-ctl"', 'class="seg-ctl" id="bt"'))}
-        ${!ready ? `<p class="muted small">Loading the comparison… ${loaded}/${E.LADDER_TIERS.length} ranks</p>` : roadHtml(c, lad, yourTier, nextTier, fmt, tn, T, tiersData, hero, `Your average ${c.heroName(hero)} game vs the average one in ${tn(nextTier)} lobbies, at ${T / 60}:00, over ${window} (${plan.n} of your games${plan.thin ? ', fewer than ' + E.MIN_HERO_GAMES + ', so treat it as a rough read' : ''}).`)}
+        ${!ready ? `<p class="muted small">Loading the comparison… ${loaded}/${E.LADDER_TIERS.length} ranks</p>` : roadHtml(c, lad, nextTier, fmt, tn, T, tiersData, hero, `Your average ${c.heroName(hero)} game vs the average one in ${tn(nextTier)} lobbies, at ${T / 60}:00, over ${window} (${plan.n} of your games${plan.thin ? ', fewer than ' + E.MIN_HERO_GAMES + ', so treat it as a rough read' : ''}).`)}
       </section>`}`;
     // Picking a hero in the pool jumps to its section below instead of leaving you at the top.
     host.querySelectorAll('.hpk, .hchip').forEach(a => a.addEventListener('click', () => { heroJump = true; }));
@@ -1204,9 +1108,8 @@
     if (!ready) c.ensureHeroLadder(hero);
   }
 
-  /* The next-rank plan: up to three training targets, what's already there, and the full ladder
-     folded away. */
-  function roadHtml(c, lad, yourTier, nextTier, fmt, tn, T, tiersData, hero, window) {
+  /* The next-rank plan: up to three training targets and what's already at that rank's level. */
+  function roadHtml(c, lad, nextTier, fmt, tn, T, tiersData, hero, window) {
     const E = c.E, plan = E.nextRankPlan(lad), nextName = tn(nextTier);
     const nNext = tiersData[nextTier] && tiersData[nextTier].curve && tiersData[nextTier].curve[T] ? tiersData[nextTier].curve[T].n : null;
     const active = c.state.focus.active && c.state.focus.active.habit;

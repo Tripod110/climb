@@ -104,46 +104,6 @@
     hit.addEventListener('pointerleave', () => { tip.hide(); cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); });
   }
 
-  /* Stacked 100% bars of the four match classes, one row per window. HTML not SVG: flex gives
-     the 2px surface gap and rounded data-ends for free. */
-  function mixBars(host, rows, quads, labels) {
-    host.innerHTML = '';
-    const tip = tooltip(host);
-    for (const row of rows) {
-      const total = quads.reduce((s, q) => s + row.q[q], 0);
-      const line = document.createElement('div');
-      line.className = 'mix-row';
-      line.innerHTML = `<span class="mix-label">${row.label}</span>`;
-      const bar = document.createElement('div');
-      bar.className = 'mix-bar';
-      if (!total) bar.innerHTML = '<span class="mix-none">no scored games</span>';
-      for (const q of quads) {
-        if (!row.q[q]) continue;
-        const seg = document.createElement('span');
-        seg.className = 'seg q-' + q;
-        seg.style.flexGrow = row.q[q];
-        const pct = Math.round(row.q[q] / total * 100);
-        const html = `<b>${labels[q]}</b><br>${row.q[q]} of ${total} games · ${pct}%`;
-        seg.setAttribute('aria-label', `${labels[q]}: ${row.q[q]} of ${total}`);
-        seg.addEventListener('pointerenter', () => {
-          const hr = host.getBoundingClientRect(), sr = seg.getBoundingClientRect();
-          tip.show(html, sr.left - hr.left + sr.width / 2, sr.top - hr.top);
-        });
-        seg.addEventListener('pointerleave', () => tip.hide());
-        bar.appendChild(seg);
-      }
-      line.appendChild(bar);
-      host.appendChild(line);
-    }
-  }
-
-  /* Tiny inline mix bar for table cells. */
-  function miniMix(q, quads) {
-    const total = quads.reduce((s, k) => s + q[k], 0);
-    if (!total) return '<span class="muted">—</span>';
-    return '<span class="mini-mix">' + quads.filter(k => q[k]).map(k => `<span class="seg q-${k}" style="flex-grow:${q[k]}"></span>`).join('') + '</span>';
-  }
-
   /* Calendar heatmap: one column per week, Mon..Sun rows, one sequential hue in fixed hour
      steps (lvl-0..5 in CSS). HTML grid, so each cell is a hover target with its own label. */
   function heatmap(host, cells, opts) {
@@ -205,5 +165,5 @@
     host.append(bars, ticks);
   }
 
-  root.Charts = { rankLine, mixBars, miniMix, heatmap, hourBars, signed, fmtInt };
+  root.Charts = { rankLine, heatmap, hourBars, signed, fmtInt };
 })(window);

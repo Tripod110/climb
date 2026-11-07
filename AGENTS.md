@@ -21,8 +21,8 @@ and the helper in depth; this file is the rules.
 - Serve the folder statically: `python -m http.server 8765 --bind 127.0.0.1` (also in
   `.claude/launch.json`), open http://127.0.0.1:8765/.
 - Tests: `node js/tests.js` and `node js/play-tests.js`. Both must pass before any commit.
-- The service worker caches hard. When checking a change in a browser, unregister it and clear
-  caches (or bump the version) before trusting what you see.
+- The service worker only registers over https (the live site), where it caches hard. Locally the
+  browser cache can still serve old files: hard-reload (or clear caches) before trusting what you see.
 
 ## Rules
 - **Every number comes from Engine, with a test** in `js/tests.js`. A view may format and

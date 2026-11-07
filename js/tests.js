@@ -150,28 +150,6 @@
   eq('form dip neutralised in tougher lobbies', vc.signals[1].dir, 0);
   eq('climbing + keeping pace in tougher lobbies = improving', vc.call, 'improving');
 
-  // ---------------------------------------------------------------- briefing
-  {
-    const now = 200 * D;
-    const g = [];
-    let id = 1;
-    const add = (hero, won, delta, extra) => g.push(Object.assign({ id: id++, t: now - 20 * D + id * H, dur: 1800, hero, won, delta, badge: 42, souls: 36000, d: 5 }, extra));
-    for (let i = 0; i < 10; i++) add(1, i < 8, i < 8 ? 400 : -300);                      // hot: 8-2
-    for (let i = 0; i < 8; i++) add(2, i < 2, i < 2 ? 300 : -300, { d: i < 3 ? 4 : 8 }); // cold: 2-6, dying more lately
-    for (let i = 0; i < 3; i++) add(3, true, 300);                                        // too few games to name
-    const names = { 1: 'Pocket', 2: 'Paradox', 3: 'Shiv' };
-    const lob = {};
-    g.forEach(m => { lob[m.id] = { me: 0, p: Array.from({ length: 12 }, (_, j) => [0, j === 0 ? (m.won ? 50000 : 20000) : 30000, 5, 5, 5, 1, 0]) }; });
-    const b = E.briefing(g, lob, { now, heroName: h => names[h] });
-    eq('briefing title', b.title, 'Sentinel 2 · last 20: 12–8, +1,900');
-    eq('briefing hot hero', b.hot, 'Pocket is gaining you rank: 8–2, +2,600 over its last 10');
-    eq('briefing cold hero + stat shift', b.cold, 'Paradox is costing you rank: 2–6, −1,200 over its last 8, dying more (8.0 vs 4.0)');
-    ok('briefing lever names souls split', /top 3 in souls/.test(b.lever), b.lever);
-    eq('briefing ignores heroes not played in 30 days', E.briefing(g, lob, { now: now + 60 * D, heroName: h => names[h] }).hot, null);
-    eq('briefing on no games', E.briefing([], {}, {}), null);
-    eq('stat shift needs 8 games', E.heroStatShift(g.slice(0, 5)), null);
-  }
-
   // ---------------------------------------------------------------- benchmark
   {
     const now = 100 * D, patch = now - 10 * D;
@@ -191,31 +169,11 @@
     eq('too few since patch: widened to 60 days, spans patch', [w2.from, w2.n, w2.widened, w2.spansPatch], [now - 60 * D, 7, true, true]);
     eq('too few even in 60 days: not benchmarked', E.benchWindow(g, 3, patch, now), null);
     eq('patch older than 60 days widens back to the patch', E.benchWindow(g, 4, now - 90 * D, now).from, now - 90 * D);
-    eq('bench heroes: qualifying ones, most games first', E.benchHeroes(g, patch, now).map(w => w.hero), [1, 2]);
-
-    eq('Sentinel bracket vs Phantom+', E.benchBrackets(43), { bracket: { min: 41, max: 46, tier: 4 }, ref: { min: 91, tier: 9 } });
-    eq('Phantom compares with Eternus', E.benchBrackets(95).ref, { min: 111, tier: 11 });
-    eq('Eternus has no reference', E.benchBrackets(114).ref, null);
 
     const row = (t, n, o) => Object.assign({ game_time: t, samples: n }, ...E.BENCH_STATS.flatMap(s => s.f).map(f => ({ [f + '_avg']: 0, [f + '_std']: 0 })), o);
     const cc = E.compactCurve([row(600, 9, {}), row(1200, 10, { gold_lane_creep_avg: 4000, gold_lane_creep_orbs_avg: 1000, gold_lane_creep_std: 300, gold_lane_creep_orbs_std: 100 })]);
     eq('curve keeps bench times only', Object.keys(cc), ['1200']);
     eq('lane souls = creeps + orbs, SDs added', cc[1200].lane, [5000, 400]);
-
-    // You: 10 games, jungle 1400±800 vs ref 2100 → gap −700, SE 253, called. Lane 4700±800 vs
-    // 4900 → −4%, under the floor. Deaths 2 vs 3 → ahead.
-    const curve = o => ({ 1200: Object.assign({ n: 10 }, ...E.BENCH_STATS.map(s => ({ [s.key]: [100, 0] })), o) });
-    const cmp = E.benchCompare(
-      curve({ jungle: [1400, 800], lane: [4700, 800], deaths: [2, 0.5] }),
-      curve({ jungle: [2000, 0] }),
-      curve({ jungle: [2100, 0], lane: [4900, 0], deaths: [3, 0] }));
-    const at = k => cmp.times[1200].rows.find(r => r.key === k);
-    eq('jungle gap called', [at('jungle').gap, at('jungle').sig, at('jungle').good], [-700, true, false]);
-    eq('bracket shown alongside', at('jungle').bracket, 2000);
-    eq('small gap not called', at('lane').sig, false);
-    eq('fewer deaths = good', [at('deaths').sig, at('deaths').good], [true, true]);
-    eq('headlines: behind first', cmp.headlines.map(h => h.key), ['jungle', 'deaths']);
-    eq('no reference: nothing called', E.benchCompare(curve({}), null, null).headlines, []);
   }
 
   // ---------------------------------------------------------------- steam id
@@ -498,19 +456,11 @@
     eq('forecast: calibration and unranked games are ignored', E.rankForecast([...climbing, ...climbing.map(m => ({ ...m, calib: true })), { id: 1, t: 1, mode: 'unranked', badge: 50 }]).n, 31);
   }
 
-  // ---------------------------------------------------------------- street brawl + game notes
+  // ---------------------------------------------------------------- street brawl
   {
     eq('street brawl (game_mode 4) is dropped from history', E.normalizeHistory([row({ game_mode: 4, match_mode: 1 }), row({ match_id: 2, game_mode: 1, match_mode: 1 })]).map(m => m.id), [2]);
     eq('added street brawl game is not counted', E.matchFromMeta({ match_id: 5, start_time: '2026-10-28 03:16:39', match_mode: 'Unranked', game_mode: 'StreetBrawl', winning_team: 'Team0', duration_s: 700,
       players: [{ account_id: 7, hero_id: 1, team: 'Team0' }] }, 7).mode, 'other');
-    // 12 players: me (index 0) with 2 deaths, +50% souls, average damage.
-    const pl = (souls, k, d, a, dmg) => [0, souls, k, d, a, dmg, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0];
-    const L = { v: E.LOBBY_V, me: 0, avgBadge: null, dur: 1800, win: 0, p: [pl(60000, 9, 2, 5, 30000), ...Array.from({ length: 11 }, (_, i) => pl(37000, 5, 7, 5, 30000))] };
-    const n = E.gameNotes(L, 2);
-    eq('notes: few deaths and rich souls, strongest first', n.map(x => x.text), ['Only 2 deaths', '+54% souls']);
-    eq('notes: none without a v2 lobby', E.gameNotes(null), []);
-    const bad = { v: E.LOBBY_V, me: 0, p: [pl(20000, 1, 12, 2, 8000), ...Array.from({ length: 11 }, () => pl(40000, 5, 6, 5, 30000))] };
-    eq('notes: a rough game says so', E.gameNotes(bad, 3).map(x => x.tone), ['bad', 'bad', 'bad']);
   }
 
   // ---------------------------------------------------------------- hero coach
@@ -568,12 +518,12 @@
 
   // ---------------------------------------------------------------- v13
   {
-    // team share is neutral and mirrors the team rank
+    // team share: your rank on your own team by impact (shown neutral on the match page)
     const pl = (team, souls, o) => Object.assign([team, souls, 5, 5, 8, 25000, 0, 1, 1000, 10000, 100, 5, 0, 1, 50, 0], o || {});
     const L = { v: E.LOBBY_V, me: 0, dur: 1800, win: 0, p: [pl(0, 60000), ...[30000, 30000, 30000, 30000, 30000].map(x => pl(0, x)), ...Array.from({ length: 6 }, () => pl(1, 30000))] };
-    eq('team share: top', E.teamShare(L, true).label, 'Top share');
+    eq('team share: you are your team’s #1', E.gameRole(L, true).teamRank, 1);
     L.p[0] = pl(0, 9000, { 5: 5000, 2: 0, 4: 1, 3: 12, 8: 0 });
-    eq('team share: low', E.teamShare(L, false).label, 'Low share');
+    { const g = E.gameRole(L, false); ok('team share: low share = bottom two of your team', g.teamRank >= g.teamSize - 1, g.teamRank); }
 
     // next-rank plan from a ladder
     const lad = { rows: [
@@ -643,13 +593,6 @@
     const sc = E.scorecard(rows, 1, 2);
     eq('scorecard: I trail, plan targets my gaps', [sc.trailing, sc.plan.map(p => p.id)], ['me', ['early0']]);
     eq('scorecard: cost metric names the better player', sc.metrics.find(x => x.id === 'cost').better, 'them');
-    const wk = E.weeklyReport(rows, 1, [{ acct: 2 }, { acct: 3 }], 7 * 86400);
-    eq('weekly: record + best/worst', [wk.games, wk.wins, wk.best.acct, wk.worst.acct], [12, 6, 2, 3]);
-    eq('weekly: most expensive death', [wk.worstDeath.acct, wk.worstDeath.cost], [3, 0.3]);
-    eq('weekly: nothing this week -> null', E.weeklyReport(rows, 1, [{ acct: 2 }], 1e9), null);
-    const rec = E.squadRecord([{ id: 1, t: 5, won: true }, { id: 2, t: 5, won: false }, { id: 3, t: 5, won: true }],
-      [{ acct: 2, ids: [2, 3] }, { acct: 3, ids: [3] }], 0);
-    eq('squad record: solo / duo / 3+', [rec.solo.n, rec.duo.n, rec.squad.n, rec.squad.wins], [1, 1, 1, 1]);
   }
 
   // ---------------------------------------------------------------- freshness

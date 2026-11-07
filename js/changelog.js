@@ -6,6 +6,13 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 44, date: '2026-11-07', title: 'A tidy-up behind the scenes',
+      items: [
+        'Nothing looks different: this release removes code and styles left over from Climb’s older designs, so there’s less to download.',
+        'The setup notes for anyone working on Climb now describe the app as it is today.',
+      ],
+    },
+    {
       v: 43, date: '2026-11-02', title: 'Friends: how you really stack up',
       items: [
         'The Friends board used to rank on deaths alone, so someone who played safe looked better than they were. It now ranks on souls, damage or healing, kills + assists and staying alive, each against the lobby average in the games you played together.',
