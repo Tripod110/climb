@@ -22,6 +22,8 @@
   eq('mode 1 = unranked', E.normalizeMatch(row({ match_mode: 1 })).mode, 'unranked');
   eq('null delta stays null', E.normalizeMatch(row({ ranked_delta: null })).delta, null);
   eq('zero delta stays zero', E.normalizeMatch(row({ ranked_delta: 0 })).delta, 0);
+  const plcRow = E.normalizeMatch(row({ ranked_delta: 0, ranked_display_badge: 0, ranked_calibration_match: 3 }));
+  eq('placement game: no rank-point delta, keeps the counter', [plcRow.delta, plcRow.calib], [null, 3]);
   eq('history drops other modes + sorts asc',
     E.normalizeHistory([row({ match_id: 2, start_time: 20 }), row({ match_id: 3, match_mode: 3 }), row({ match_id: 1, start_time: 10 })]).map(m => m.id), [1, 2]);
 
@@ -402,6 +404,13 @@
     eq('forecast: climbing + pace', [fc.call, fc.gain, Math.round(fc.perDivision)], ['climbing', 5, 6]);
     eq('forecast: next division', [fc.now, fc.next], [36, 41]);
     eq('forecast: next badge rolls over a tier', [E.nextBadge(36), E.nextBadge(42), E.nextBadge(null)], [41, 43, null]);
+    eq('next badge: Ascendant 6 -> Eternus 1, nothing above Eternus 6', [E.nextBadge(106), E.nextBadge(115), E.nextBadge(116)], [111, 116, null]);
+    eq('rank status: ranked, top flagged at Eternus', [E.rankStatus([], 42).state, E.rankStatus([], 42).top, E.rankStatus([], 113).top], ['ranked', false, true]);
+    const plc = [{ mode: 'unranked' }, { mode: 'ranked', calib: 1, badge: 0 }, { mode: 'ranked', calib: 2, badge: 0 }];
+    eq('rank status: placement games -> calibrating, with the count', [E.rankStatus(plc, 0).state, E.rankStatus(plc, null).placed], ['calibrating', 2]);
+    eq('rank status: no ranked games -> unranked', E.rankStatus([{ mode: 'unranked' }], null).state, 'unranked');
+    eq('road tier: next rank, Eternus vs itself, Initiate before a rank', [E.roadTier(42), E.roadTier(114), E.roadTier(null), E.roadTier(0)],
+      [{ tier: 5, kind: 'next' }, { tier: 11, kind: 'top' }, { tier: 1, kind: 'entry' }, { tier: 1, kind: 'entry' }]);
     eq('forecast: flat', E.rankForecast(rk(Array(20).fill(42))).call, 'flat');
     eq('forecast: sliding', E.rankForecast(rk(Array.from({ length: 30 }, (_, i) => 44 - Math.floor(i / 10)))).call, 'sliding');
     const wobble = rk([...Array(10).fill(41), ...Array(10).fill(43), ...Array(10).fill(41)]);

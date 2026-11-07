@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 45, date: '2026-11-07', title: 'Clearer numbers, at every rank',
+      items: [
+        'Every number says what it is: “Souls lead at 12:00”, “No deaths to 10:00”, “Rank pts”, “+340 pts”, and changes in % instead of “pts”. The ★ 1st badge is now ★ MVP.',
+        'Coach shows each stat as “in wins vs in losses”, with which way is better, and only the better side lit up.',
+        'Account & about has a short glossary of every term. A one-time tip on Overview points to the small ⓘ rings that explain each number.',
+        'Works for every player: “Calibrating” during placement games, Heroes compares Eternus players with the Eternus average and new players with Initiate, and the match page no longer scrolls sideways on phones.',
+      ],
+    },
+    {
       v: 44, date: '2026-11-07', title: 'A tidy-up behind the scenes',
       items: [
         'Nothing looks different: this release removes code and styles left over from Climb’s older designs, so there’s less to download.',

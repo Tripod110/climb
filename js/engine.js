@@ -42,9 +42,10 @@
     return {
       id: r.match_id, t: r.start_time, mode, hero: r.hero_id,
       won: r.match_result === r.player_team,
-      delta: r.ranked_delta == null ? null : r.ranked_delta,
+      // Placement games carry Valve's counter (1, 2, …) with a 0 delta and badge: they move no rank points, so no delta.
+      delta: r.ranked_delta == null || r.ranked_calibration_match ? null : r.ranked_delta,
       badge: r.ranked_display_badge == null ? null : r.ranked_display_badge,
-      calib: !!r.ranked_calibration_match,
+      calib: r.ranked_calibration_match || 0,
       dur: r.match_duration_s || 0,
       k: r.player_kills || 0, d: r.player_deaths || 0, a: r.player_assists || 0,
       souls: r.net_worth || 0, lh: r.last_hits || 0,
@@ -330,7 +331,25 @@
      RANK_FC_N ranked games, and only calls a direction when both halves of that window agree.
      ranked: ranked matches (mode 'ranked', not calibration), oldest first. */
   const RANK_FC_N = 40, RANK_FC_MIN = 15;
-  const nextBadge = b => b == null || b <= 0 ? null : b % 10 >= 6 ? (Math.floor(b / 10) + 1) * 10 + 1 : b + 1;
+  const TOP_TIER = TIER_NAMES.length - 1;   // Eternus: no rank above it
+  const nextBadge = b => b == null || b <= 0 || (Math.floor(b / 10) >= TOP_TIER && b % 10 >= 6) ? null
+    : b % 10 >= 6 ? (Math.floor(b / 10) + 1) * 10 + 1 : b + 1;
+
+  /* Where a player stands, so no screen assumes a rank: 'ranked' (has a badge), 'calibrating' (ranked
+     games so far are placement games: no badge yet; placed = Valve's counter on the latest one) or
+     'unranked' (no ranked games at all). ranked: ranked matches oldest first; badge: current badge. */
+  function rankStatus(ranked, badge) {
+    if (badge > 0) return { state: 'ranked', badge, top: Math.floor(badge / 10) >= TOP_TIER };
+    const rk = (ranked || []).filter(m => m.mode === 'ranked');
+    if (!rk.length) return { state: 'unranked', badge: null };
+    return { state: 'calibrating', badge: null, placed: rk[rk.length - 1].calib || rk.filter(m => m.calib).length };
+  }
+  /* Which rank the Heroes comparison is against: the next tier up ('next'), your own at Eternus ('top':
+     nobody is above you), or Initiate before you have a rank ('entry'). */
+  function roadTier(badge) {
+    const t = badge > 0 ? Math.floor(badge / 10) : 0;
+    return t <= 0 ? { tier: 1, kind: 'entry' } : t >= TOP_TIER ? { tier: TOP_TIER, kind: 'top' } : { tier: t + 1, kind: 'next' };
+  }
   function rankForecast(ranked) {
     const rows = (ranked || []).filter(m => m.mode === 'ranked' && !m.calib && m.badge > 0).slice(-RANK_FC_N);
     const n = rows.length;
@@ -1714,7 +1733,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, versus, friendBoard, scorecard, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankProjection, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankStatus, roadTier, rankProjection, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

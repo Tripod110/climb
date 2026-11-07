@@ -4,6 +4,22 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.45 (2026-11-07): Clearer numbers, at every rank
+- Engine: `rankStatus(ranked, badge)` → ranked (with `top` at Eternus) / calibrating (`placed` = Valve's placement counter)
+  / unranked; `roadTier(badge)` → next tier, Eternus vs itself (`top`), or Initiate before a rank (`entry`); `nextBadge`
+  returns null at Eternus 6 (was 121, "Tier 12 1"). `normalizeMatch`: placement games (`ranked_calibration_match` > 0)
+  get `delta: null` and keep the counter in `calib`, so they no longer show as "±0 pts". 6 new tests (246).
+- Views: masthead "Calibrating · N placement games"; Heroes heading "Road to X" / "vs the X average"; Pace "games / rank
+  step", "3–10 games", no "next" without one; Rank points signal "—" without rank-point games; chart key hidden on an
+  empty chart; `form1()` formats Form (±0.0, no negative zero) on Overview, Matches and the match page.
+- Labels: Souls lead at 12:00, No deaths to 10:00, ★ MVP, Rank pts column, "+N pts" on tiles/cards/film room,
+  "% vs before" deltas, win chance in % on the match page, "N deaths" in the recap, Creeps last-hit, Lost to deaths
+  (Friends), "100% = lobby average", "adjusted for few games", caught out (≤5s), Form/Rough games ⓘ notes.
+- Coach `wlFig`: "in wins vs in losses", better side `pos`, other `muted` (no red), "↓ lower / ↑ higher is better" line.
+- About: "How Climb reads your games" replaced by a 21-term glossary (`GLOSSARY`, `.gloss`). Overview: one-time `.src-hint`
+  (settings `srcHint`), dismissed by Got it or by tapping any ⓘ.
+- 375px: match-page farm lane rows wrap and the farm tabs share the width (was 82px of sideways scroll).
+
 ## 0.44 (2026-11-07): A tidy-up behind the scenes
 - No visible change (checked element by element against 0.43 on every tab, desktop and 375px).
 - `views.js`: removed the unused weekly report (`weekCard`, `weekLines`, `weekText`, `weekImage`, `bindWeek`,

@@ -262,10 +262,10 @@ p .more { white-space: normal; }
 .rung b { font: 600 15px/1.1 var(--display); letter-spacing: .03em; }
 .rung-r { font-size: 11px; color: var(--muted); }
 /* source badges on Overview shrink to a ring: the note is one tap away, the label isn't needed */
-.ov-hero .src, .ledger .src, .ov-sec .src, .masthead .src, .dispatch .src {
+.ov-hero .src, .ledger .src, .ov-sec .src, .masthead .src, .dispatch .src, .src-hint .src {
   width: 15px; height: 15px; padding: 0; border-radius: 50%; justify-content: center; font-size: 0; vertical-align: 1px;
 }
-.ov-hero .src::after, .ledger .src::after, .ov-sec .src::after, .masthead .src::after, .dispatch .src::after { content: 'i'; font: italic 700 10px/1 Georgia, serif; }
+.ov-hero .src::after, .ledger .src::after, .ov-sec .src::after, .masthead .src::after, .dispatch .src::after, .src-hint .src::after { content: 'i'; font: italic 700 10px/1 Georgia, serif; }
 /* last session: one ruled band of figures */
 .recap-band { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 0; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--border-2); border-left: 2px solid var(--brass); background: var(--shade); }
 .rb-k { margin-right: 18px; color: var(--brass-hi); }
@@ -672,7 +672,8 @@ a.b-row:hover { background: var(--hover); }
 .ledger.l3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ledger.l3 .fig:nth-child(n + 4) { border-top: 1px solid var(--border); }
 .ledger.l3 .fig:nth-child(4) { border-left: 0; }
-.wl-pair { display: flex; justify-content: center; gap: 22px; margin-bottom: 8px; }
+.wl-pair { display: flex; justify-content: center; align-items: flex-start; gap: 14px; margin-bottom: 8px; }
+.wl-pair > .wl-vs { display: block; padding-top: 10px; font-size: 12px; }
 .wl-pair > span { display: grid; justify-items: center; gap: 4px; }
 .wl-pair .fig-v { font-size: 28px; margin: 0; }
 .wl-pair .t-sub { margin: 0; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
@@ -849,4 +850,20 @@ a.mr2.gold::before { background: var(--gold); }
   .stk-key { display: grid; grid-template-columns: 20px 28px repeat(4, minmax(0, 1fr)) 46px; gap: 10px; padding: 0 4px 4px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
   .stk-key > span:first-child { grid-column: 3; } .stk-key > span { text-align: center; } .stk-key > span:last-child { text-align: right; }
   .board3 .stk > .stk-v { font-size: 13px; text-align: center; }
+}
+
+/* one-time hint: what the small source tags are (Overview, until dismissed or a tag is tapped) */
+.src-hint { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; margin-bottom: 14px; border: 1px dashed var(--brass-lo); color: var(--ink-2); }
+.src-hint .btn { white-space: nowrap; flex: none; }
+/* About: glossary, term then one line */
+.gloss { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 8px 18px; margin: 0; font-size: 13.5px; }
+.gloss dt { font-weight: 650; color: var(--ink); }
+.gloss dd { margin: 0; color: var(--ink-2); }
+@media (max-width: 640px) { .gloss { grid-template-columns: minmax(0, 1fr); gap: 2px; } .gloss dd { margin-bottom: 8px; } }
+/* Phones: the match page's farm lane rows wrap (name + heroes, then the numbers) and its four tabs share the width. */
+@media (max-width: 640px) {
+  .farm-lanes li { flex-wrap: wrap; gap: 4px 12px; }
+  .farm-lanes .fl-name, .farm-lanes .fl-who { min-width: 0; flex: 1 1 100%; }
+  .farm-card .seg-ctl { display: flex; width: 100%; }
+  .farm-card .seg-ctl button { flex: 1 1 0; min-width: 0; padding: 6px 4px; white-space: normal; line-height: 1.25; letter-spacing: .06em; }
 }

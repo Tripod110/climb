@@ -6,7 +6,7 @@
   // ---------------------------------------------------------------- shared bits
   const ICONV = { improving: '▲', holding: '■', slipping: '▼', unknown: '·' };
   const WORD = { improving: 'Improving', holding: 'Holding', slipping: 'Slipping', unknown: 'Not enough games' };
-  const firstChip = g => g && g.lobbyFirst ? '<span class="first" title="Valve named you MVP: 1st in the lobby">★ 1st</span>' : '';
+  const firstChip = g => g && g.lobbyFirst ? '<span class="first" title="Valve named you MVP: 1st in the lobby">★ MVP</span>' : '';
   /* Team share is neutral on purpose: on the user's 400 games it didn't predict results (see
      the team-share note in engine.js). Gold ★ 1st (Valve's MVP) is the only highlight. */
   /* How the game went compared with YOUR usual on that hero (the form score), only when it is clearly
@@ -49,6 +49,7 @@
   const kda = m => `${m.k}<span class="sl">/</span>${m.d}<span class="sl">/</span>${m.a}`;
   const deltaHtml = (c, m) => m.delta == null ? '<span class="muted">—</span>' : `<span class="${m.delta > 0 ? 'pos' : m.delta < 0 ? 'neg' : 'muted'}">${c.signed(m.delta)}</span>`;
   const mins = s => Math.round(s / 60) + 'm';
+  const form1 = x => { const v = Math.round(x * 10) / 10; return (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(1); };
   const seg = (name, opts, cur) => `<div class="seg-ctl" role="group" aria-label="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${String(v) === String(cur)}">${l}</button>`).join('')}</div>`;
   const bindSeg = (host, sel, fn) => host.querySelectorAll(sel + ' button').forEach(b => b.addEventListener('click', () => fn(b.dataset.v)));
   const impactBar = v => {
@@ -89,13 +90,13 @@
     const E = c.E, fc = E.rankForecast(c.M.all.filter(m => m.mode === 'ranked'));
     if (fc.call === 'thin') return '';
     const nm = b => c.esc(E.badgeName(b, c.tiers()));
-    const info = src('rule', `Counts the divisions you moved through in your last ${E.RANK_FC_N} ranked games (calibration excluded) and only calls a direction when both halves of that stretch agree. It does not predict rank points, because Valve’s points don’t convert to divisions at a fixed rate.`);
+    const info = src('rule', `A rank step is one division, e.g. Ritualist 1 → Ritualist 2. Counts the steps you moved in your last ${E.RANK_FC_N} ranked games (placement games excluded) and only calls a direction when both halves of that stretch agree. It does not predict rank points, because Valve’s points don’t convert to steps at a fixed rate.`);
     // Numbers first: games per division (or the call), then the stretch it was read from.
-    const big = fc.call === 'climbing' ? `<span class="pace-n">${Math.round(fc.perDivision)}</span><span class="muted">games / division</span>`
+    const big = fc.call === 'climbing' ? `<span class="pace-n">${Math.round(fc.perDivision)}</span><span class="muted">games / rank step</span>`
       : `<span class="pace-w ${fc.call === 'sliding' ? 'neg' : ''}">${fc.call === 'sliding' ? '▼ Sliding' : fc.call === 'flat' ? '■ Flat' : '· Mixed'}</span>`;
     return `<div class="forecast"><div class="t-label">Pace ${info}</div><div class="pace">${big}</div>
       <div class="pace-sub small"><span>${nm(fc.from)} → ${nm(fc.to)}</span><span>${fc.n} ranked · ${c.pct(fc.winRate)}</span>
-      ${fc.call === 'climbing' ? `<span>range ${fc.range[0]}–${fc.range[1]}</span><span>next <b>${nm(fc.next)}</b></span>` : ''}</div></div>`;
+      ${fc.call === 'climbing' ? `<span>${fc.range[0]}–${fc.range[1]} games</span>${fc.next ? `<span>next <b>${nm(fc.next)}</b></span>` : ''}` : ''}</div></div>`;
   }
 
   /* Rank projection: the pace above carried forward, as badges after +20/+50/+100 games (Engine.rankProjection). */
@@ -106,11 +107,14 @@
     // "Mystic 2 – Mystic 5" reads as "Mystic 2–5" when both ends are in one tier.
     const span = (lo, hi) => Math.floor(lo / 10) === Math.floor(hi / 10) ? `${nm(lo)}–${hi % 10}` : `${nm(lo)} – ${nm(hi)}`;
     const rung = (k, b, sub, cls) => `<li class="rung ${cls || ''}"><span class="rung-k">${k}</span><img src="${c.A.rankImage(b)}" alt="" width="44" height="44"><b>${nm(b)}</b><span class="rung-r">${sub || '&nbsp;'}</span></li>`;
-    const info = src('rule', `Your last ${fc.n} ranked games moved you ${Math.abs(fc.gain)} division${Math.abs(fc.gain) === 1 ? '' : 's'} (${pj.per.toFixed(1)} games each). This carries that pace forward; the small range under each badge uses the fastest and slowest half of that stretch. Rank points are not projected, because Valve’s points don’t convert to divisions at a fixed rate.`);
+    const info = src('rule', `Your last ${fc.n} ranked games moved you ${Math.abs(fc.gain)} rank step${Math.abs(fc.gain) === 1 ? '' : 's'} (${pj.per.toFixed(1)} games each). This carries that pace forward; the small range under each badge uses the fastest and slowest half of that stretch. Rank points are not projected, because Valve’s points don’t convert to rank steps at a fixed rate.`);
     return `<div class="proj ${pj.dir < 0 ? 'down' : 'up'}"><div class="t-label">Where this pace takes you ${info}</div>
       <ol class="rungs">${rung('Today', fc.now, '')}${pj.steps.map(s => rung(`in ${s.games} games`, s.badge, s.lo === s.hi ? '' : 'range ' + span(s.lo, s.hi), pj.dir < 0 ? 'neg' : '')).join('')}</ol>
       ${pj.tierUp && pj.tierUp.badge !== fc.next ? `<div class="muted small num-line"><span><b>${nm(pj.tierUp.badge)}</b> in ~${pj.tierUp.games} games</span></div>` : ''}</div>`;
   }
+
+  /* The rank line, for any player: a badge name, "Calibrating" during placement games, or "Unranked". */
+  const rankTitle = c => c.E.rankStatus(c.M.ranked, c.M.badge).state === 'calibrating' ? 'Calibrating' : c.esc(c.E.badgeName(c.M.badge, c.tiers()));
 
   /* Overview section header: small-caps kicker between gilded rules, with an optional link. */
   const sh = (kicker, more) => `<header class="sh"><div class="sh-k"><span>${kicker}</span></div>${more ? `<div class="sh-row">${more}</div>` : ''}</header>`;
@@ -118,17 +122,17 @@
   /* A verdict signal as a number pair: now, and what it was (Engine.verdict's three signals). */
   function sigChip(c, s) {
     const d = s.detail, M = c.M;
-    const sc = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1);
+    const sc = form1;
     const dir = s.dir == null ? 'na' : s.dir === 1 ? 'up' : s.dir === -1 ? 'down' : 'flat';
     const ic = { 1: '▲', 0: '■', '-1': '▼', null: '·' }[s.dir];
     let label, now, was = '';
-    if (s.text === 'rank') { label = 'Rank pts'; now = M.allMode && !M.curRanked.n ? '—' : d.net == null ? `${d.wins}–${d.losses}` : c.signed(d.net); }
+    if (s.text === 'rank') { label = 'Rank points'; now = d.net == null ? '—' : c.signed(d.net); }
     else if (s.text === 'form') {
-      label = 'Form';
+      label = 'Form ' + src('yours', FORM_INFO);
       if (s.dir == null) now = '—';
       else if (d.tougher) { now = 'Even'; was = `lobbies +${Math.round(M.v.lobbyShift)} subranks`; }
       else { now = sc(d.score); was = d.ref == null ? '' : (d.hasRef ? 'was ' : 'usual ') + sc(d.ref); }
-    } else { label = 'Rough games'; now = s.dir == null ? (d.of ? `${d.rough}/${d.of}` : '—') : c.pct(d.rate); was = s.dir == null || d.ref == null ? '' : 'was ' + c.pct(d.ref); }
+    } else { label = 'Rough games ' + src('yours', 'Games you lost while playing below your usual (Form under 0), as a share of games with a Form score. Fewer is better, even before it shows as wins.'); now = s.dir == null ? (d.of ? `${d.rough}/${d.of}` : '—') : c.pct(d.rate); was = s.dir == null || d.ref == null ? '' : 'was ' + c.pct(d.ref); }
     return `<li class="sig ${dir}"><span class="sig-icon" aria-hidden="true">${ic}</span><span class="sig-k">${label}</span><b class="sig-v">${now}</b>${was ? `<span class="sig-was">${was}</span>` : ''}</li>`;
   }
 
@@ -144,12 +148,13 @@
     const splitNote = id => { const x = catOf(id); return x && x.n ? ` Over your last ${x.n} games you won ${c.pct(x.wrPass)} when you did this and ${c.pct(x.wrFail)} when you didn’t.` : ''; };
     const delta = (a, b, good) => a == null || b == null ? '' : (() => {
       const d = a - b; if (Math.abs(d) < 0.02) return '<span class="muted">■ same</span>';
-      const up = d > 0; return `<span class="${up === good ? 'pos' : 'neg'}">${up ? '▲' : '▼'} ${Math.abs(Math.round(d * 100))} pts</span>`;
+      const up = d > 0; return `<span class="${up === good ? 'pos' : 'neg'}">${up ? '▲' : '▼'} ${Math.abs(Math.round(d * 100))}% vs before</span>`;
     })();
     const fig = (label, value, sub, badge) => `<div class="fig"><div class="fig-v">${value}</div><div class="t-label">${label}${badge ? ' ' + badge : ''}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
     const fresh = c.LOG.filter(e => e.v > S.seenV).slice(0, 2);
     const recent = M.all.slice(-8).reverse();
     const pace = forecastCard(c);
+    const rs = E.rankStatus(M.ranked, M.badge);
 
     host.innerHTML = `
       ${fresh.length ? `<div class="dispatch"><details><summary><span class="t-label">New in ${c.verName(fresh[0].v)}</span> ${c.esc(fresh[0].title)}</summary>
@@ -162,8 +167,8 @@
         <div class="ident">
           ${M.badge ? `<img class="badge" src="${c.A.rankImage(M.badge)}" alt="" width="64" height="64">` : ''}
           <div>
-            <div class="rank-name">${c.esc(E.badgeName(M.badge, c.tiers()))}</div>
-            <div class="muted small num-line"><span>${M.seasonSum.wins}–${M.seasonSum.losses}</span>${M.seasonSum.hasDelta ? `<span>${c.signed(M.seasonSum.net)} pts</span>` : ''}<span>${M.all.length} games</span>${freshLine(c)}</div>
+            <div class="rank-name">${rankTitle(c)}</div>
+            <div class="muted small num-line">${rs.state === 'calibrating' ? `<span>${rs.placed} placement game${rs.placed === 1 ? '' : 's'}</span>` : ''}<span>${M.seasonSum.wins}–${M.seasonSum.losses}</span>${M.seasonSum.hasDelta ? `<span>${c.signed(M.seasonSum.net)} pts</span>` : ''}<span>${M.all.length} games</span>${freshLine(c)}</div>
           </div>
         </div>
         <div class="ctl-row">
@@ -172,6 +177,7 @@
         </div>
       </div>
 
+      ${S.srcHint ? '' : `<div class="src-hint small"><span>Tap any ${src('yours', 'Like this one. Each says where a number comes from: Your games, Trained model, Rank data, Valve, Climb rule or AI. Tap any of them to see how it was worked out.')} to see how a number is worked out</span><button type="button" class="btn ghost-btn sm" id="hint-ok">Got it</button></div>`}
       <section class="ov-hero v-${v.call}">
         <div class="kicker">${M.cur.n} games${M.prev ? ' vs the ' + M.prev.n + ' before' : ''}${v.confidence === 'low' && M.cur.n ? ' · small sample' : ''}</div>
         <div class="v-line"><span class="v-icon" aria-hidden="true">${ICONV[v.call]}</span><h1 class="v-word">${WORD[v.call]}</h1></div>
@@ -179,8 +185,8 @@
       </section>
       <div class="ledger">
         ${fig('Win rate', c.pct(M.cur.winRate), `${M.cur.wins}–${M.cur.losses}`, src('yours', `Wins ÷ games in this window (${M.cur.n} games), from your match history on deadlock-api.`))}
-        ${fig('Ahead at 12:00', early.nAhead ? c.pct(early.ahead12) : '—', earlyPrev && earlyPrev.nAhead ? delta(early.ahead12, earlyPrev.ahead12, true) : `${early.nAhead} games`, src('yours', `Games where your souls at 12:00 beat your lane opponents’ average, out of ${early.nAhead} games in this window with match detail.` + splitNote('ahead12')))}
-        ${fig('Clean to 10:00', early.nClean ? c.pct(early.clean10) : '—', earlyPrev && earlyPrev.nClean ? delta(early.clean10, earlyPrev.clean10, true) : `${early.nClean} games`, src('yours', `Games with zero deaths in the first 10 minutes, out of ${early.nClean} games in this window with match detail.` + splitNote('early0')))}
+        ${fig('Souls lead at 12:00', early.nAhead ? c.pct(early.ahead12) : '—', earlyPrev && earlyPrev.nAhead ? delta(early.ahead12, earlyPrev.ahead12, true) : `${early.nAhead} games`, src('yours', `Games where your souls at 12:00 beat your lane opponents’ average, out of ${early.nAhead} games in this window with match detail.` + splitNote('ahead12')))}
+        ${fig('No deaths to 10:00', early.nClean ? c.pct(early.clean10) : '—', earlyPrev && earlyPrev.nClean ? delta(early.clean10, earlyPrev.clean10, true) : `${early.nClean} games`, src('yours', `Games with zero deaths in the first 10 minutes, out of ${early.nClean} games in this window with match detail.` + splitNote('early0')))}
         ${fig('Deaths a game', M.cur.n ? (M.w.cur.reduce((s, m) => s + m.d, 0) / M.cur.n).toFixed(1) : '—', M.prev && M.prev.n ? `${(M.w.prev.reduce((s, m) => s + m.d, 0) / M.prev.n).toFixed(1)} before` : '', src('yours', 'Average deaths per game in this window, from your match history.'))}
       </div>
 
@@ -202,7 +208,7 @@
             <span class="fm-res">${m.won ? 'Win' : 'Loss'}</span>${icon(c, m.hero, 52)}
             <b class="fm-hero">${c.esc(c.heroName(m.hero))}</b>
             <span class="fm-kda">${kda(m)}</span>
-            <span class="fm-foot">${deltaHtml(c, m)}<span class="muted">${c.ago(m.t)}</span></span>
+            <span class="fm-foot">${m.delta == null ? deltaHtml(c, m) : `<span>${deltaHtml(c, m)} <span class="muted">pts</span></span>`}<span class="muted">${c.ago(m.t)}</span></span>
             ${g ? `<span class="fm-chips">${roleChip(c, g, m.id)}</span>` : ''}</a></li>`;
         }).join('')}</ol>
       </section>
@@ -211,7 +217,7 @@
         ${sh('The climb · season rank points')}
         ${projRow(c)}
         <div id="rank-chart" class="chart"></div>
-        <div class="chart-key small"><span class="pos">▲</span> ranked up <span class="neg">▼</span> ranked down</div>
+        ${E.rankSeries(M.season).length >= 2 ? '<div class="chart-key small"><span class="pos">▲</span> ranked up <span class="neg">▼</span> ranked down</div>' : ''}
       </section>`;
 
     const pts = E.rankSeries(M.season);
@@ -227,6 +233,10 @@
     });
     bindSeg(host, '#win', v2 => { S.window = v2; c.save(); c.render(); });
     bindSeg(host, '#scope', v2 => { S.games = v2; c.save(); c.render(); });
+    const hk = host.querySelector('#hint-ok');
+    if (hk) hk.addEventListener('click', () => { S.srcHint = true; c.save(); c.render(); });
+    // Tapping any tag also counts as having seen the hint (it goes on the next redraw, so the popover stays).
+    if (!S.srcHint) host.addEventListener('click', e => { if (e.target.closest && e.target.closest('.src')) { S.srcHint = true; c.save(); } });
     const ok = host.querySelector('#wn-ok');
     if (ok) ok.addEventListener('click', () => { S.seenV = c.VERSION; c.save(); c.render(); });
     const mk = host.querySelector('#missing-ok');
@@ -277,7 +287,7 @@
       ${ranked ? rf(c.signed(pts), 'rank pts', pts > 0 ? 'pos' : pts < 0 ? 'neg' : '') : ''}
       ${f && marks.length ? `<span class="rf"><span class="dots">${marks.map(x => `<span class="dot ${x === '✓' ? 'y' : 'n'}">${x}</span>`).join('')}</span><span class="t-label">${c.esc(E.habitById(f.habit).short)}</span></span>` : ''}
       ${rf(early, 'deaths &lt; 10:00', early ? '' : 'pos')}
-      ${swing ? `<a class="rf" href="#/match/${swing.m.id}"><b class="${swing.t.delta >= 0 ? 'pos' : 'neg'}">${swing.t.delta > 0 ? '+' : '−'}${Math.abs(Math.round(swing.t.delta * 100))}%</b><span class="t-label" title="Biggest win-chance swing">swing · ${c.esc(c.heroName(swing.m.hero))} ${mm(swing.t.from)}–${mm(swing.t.to)}${swing.t.myDeaths.length ? ' · ' + swing.t.myDeaths.length + '†' : ''} →</span></a>` : ''}
+      ${swing ? `<a class="rf" href="#/match/${swing.m.id}"><b class="${swing.t.delta >= 0 ? 'pos' : 'neg'}">${swing.t.delta > 0 ? '+' : '−'}${Math.abs(Math.round(swing.t.delta * 100))}%</b><span class="t-label" title="Biggest win-chance swing">swing · ${c.esc(c.heroName(swing.m.hero))} ${mm(swing.t.from)}–${mm(swing.t.to)}${swing.t.myDeaths.length ? ' · ' + swing.t.myDeaths.length + (swing.t.myDeaths.length === 1 ? ' death' : ' deaths') : ''} →</span></a>` : ''}
       <button type="button" class="btn ghost-btn sm" id="recap-ok">Got it</button></section>`;
   }
 
@@ -334,7 +344,7 @@
       const rows = E.farmSeries(D, farmTab) || [];
       const ls = E.farmLanes(D, f.t, farmTab);
       return `<section class="card farm-card">${head}${who}
-        <div class="table-wrap"><table class="tbl"><thead><tr><th>By</th><th class="n">You</th><th class="n">Lane opponents</th><th class="n">Gap</th>${farmTab === 'lane' ? '<th class="n">Creeps killed (you / them)</th>' : ''}</tr></thead>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>By</th><th class="n">You</th><th class="n">Lane opponents</th><th class="n">Gap</th>${farmTab === 'lane' ? '<th class="n">Creeps last-hit (you / them)</th>' : ''}</tr></thead>
         <tbody>${rows.map(r => `<tr><td>${clk(r.t)}</td><td class="n">${c.fmtInt(r.me)}</td><td class="n">${r.opp == null ? '—' : c.fmtInt(Math.round(r.opp))}</td><td class="n">${r.opp == null ? '—' : gapHtml(c, r.me - r.opp)}</td>${farmTab === 'lane' ? `<td class="n">${r.effMe == null ? '—' : Math.round(r.effMe * 100) + '%'}${r.effOpp == null ? '' : ' / ' + Math.round(r.effOpp * 100) + '%'}</td>` : ''}</tr>`).join('')}</tbody></table></div>
         ${ls ? `<div class="t-label" style="margin-top:12px">Lane by lane at ${clk(f.t)} · souls per player from this source</div>${lanesList(c, ls)}` : ''}
       </section>`;
@@ -351,7 +361,7 @@
       line = `Biggest gap: <b>${c.esc(worst.label.toLowerCase())}</b>, ${gapHtml(c, gap)} souls against your lane opponents by ${clk(f.t)}.${usual}`;
     } else line = `No source where you trailed your lane opponents by ${E.FARM_MIN_GAP}+ souls by ${clk(f.t)}.`;
     const me = D.players.find(p => p.items), early = me ? (me.deaths || []).filter(d => d[0] < f.t).length : null;
-    const eff = f.eff.me == null ? '' : `<p class="muted small">Lane creeps killed by ${clk(f.t)}: you ${Math.round(f.eff.me * 100)}%${f.eff.opp != null ? `, lane opponents ${Math.round(f.eff.opp * 100)}%` : ''}.${early != null ? ` You died ${early} time${early === 1 ? '' : 's'} before then, which costs farm too.` : ''}</p>`;
+    const eff = f.eff.me == null ? '' : `<p class="muted small">Lane creeps last-hit by ${clk(f.t)}, of those you could reach: you ${Math.round(f.eff.me * 100)}%${f.eff.opp != null ? `, lane opponents ${Math.round(f.eff.opp * 100)}%` : ''}.${early != null ? ` You died ${early} time${early === 1 ? '' : 's'} before then, which costs farm too.` : ''}</p>`;
     return `<section class="card farm-card">${head}${who}
       <p>${line}</p>
       <div class="table-wrap"><table class="tbl"><thead><tr><th>Source</th><th class="n">You</th><th class="n">Lane opponents</th><th class="n">Gap</th></tr></thead>
@@ -372,7 +382,7 @@
     const fig = (label, v, cl, sub, badge) => `<div class="fig"><div class="fig-v ${cl}">${v}</div><div class="t-label">${label}${badge ? ' ' + badge : ''}</div><div class="t-sub">${sub}</div></div>`;
     return `<div class="ledger">
       ${P.src.map((x, i) => fig(x.label, sgn(x.gap), cls[x.call], `${c.fmtInt(Math.round(x.me))} vs ${c.fmtInt(Math.round(x.opp))}`, i ? '' : info)).join('')}
-      ${P.eff ? fig('Lane creeps killed', Math.round(P.eff.me * 100) + '%', P.eff.me - P.eff.opp >= 0.05 ? 'pos' : P.eff.opp - P.eff.me >= 0.05 ? 'neg' : '', `lane ${Math.round(P.eff.opp * 100)}%`) : ''}
+      ${P.eff ? fig('Creeps last-hit', Math.round(P.eff.me * 100) + '%', P.eff.me - P.eff.opp >= 0.05 ? 'pos' : P.eff.opp - P.eff.me >= 0.05 ? 'neg' : '', `lane ${Math.round(P.eff.opp * 100)}%`) : ''}
     </div>`;
   }
 
@@ -383,7 +393,7 @@
     const q20 = W.quality && W.quality['1200'];
     const head = `<div class="card-head"><div><div class="t-label">Win chance ${src('model', `Climb’s win model, trained on ${c.fmtInt(W.matches)} Deadlock matches since the ${W.patch} patch (deadlock-api’s public data). It reads the gaps in souls, kills, objectives destroyed and mid-boss at each minute. Checked on matches it never saw: at 20:00 the team it favours wins ${q20 && q20.accuracy ? Math.round(q20.accuracy * 100) + '%' : '~75%'} of the time, and its percentages match real results to within ~1–2 points between 9 and 30 minutes. The Coach tab shows how it does on your own games.`)}</div><h2>How this game swung</h2></div></div>`;
     if (!w) return `<section class="card wp-card">${head}<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading the match timeline…</p></section>`;
-    const pts = v => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(Math.round(v * 100))}`;
+    const pts = v => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(Math.round(v * 100))}%`;
     const hero = id => id != null ? c.esc(c.heroName(id)) : 'unknown';
     const q = W.quality && (W.quality['1200'] || Object.values(W.quality)[0]);
     const swingLine = s => {
@@ -404,10 +414,10 @@
       <p class="muted small"><span class="key wp-key-swing"></span> biggest swings · <span class="key wp-key-death"></span> your deaths</p>
       <div class="grid-2 wp-cols">
         <div><div class="t-label">Turning points</div><ul class="wp-list">${w.turning.map(swingLine).join('')}</ul></div>
-        <div><div class="t-label">Your deaths${w.deaths.length ? ` · about ${Math.round(total * 100)} pts in total` : ''} ${src('model', 'What a death like this USUALLY costs: the median souls swing for the dead player’s team, measured around deaths where nobody else in the lobby died, by game minute and by how rich the victim was. That swing is then turned into win chance with the model. It isn’t a measurement of that exact death: snapshots are 3–5 minutes apart, so most deaths (teamfights) can’t be isolated.')}</div>
+        <div><div class="t-label">Your deaths${w.deaths.length ? ` · about −${Math.round(total * 100)}% win chance in total` : ''} ${src('model', 'What a death like this USUALLY costs: the median souls swing for the dead player’s team, measured around deaths where nobody else in the lobby died, by game minute and by how rich the victim was. That swing is then turned into win chance with the model. It isn’t a measurement of that exact death: snapshots are 3–5 minutes apart, so most deaths (teamfights) can’t be isolated.')}</div>
           ${w.deaths.length ? `<ul class="wp-list">${w.deaths.map(d => `<li><span class="wp-when">${mmss(d.t)}</span>
-            <span>Died to <b>${hero(d.killerHero)}</b>${d.ttk > 0 && d.ttk <= c.E.FAST_DEATH_S ? ' <span class="tag warn">caught out</span>' : ''}</span>
-            <span class="muted small">${Math.round(d.total * 100) >= 1 ? `about <b class="neg">${pts(-d.total)} pts</b> win chance` : `under 1 pt of win chance${d.p < 0.05 || d.p > 0.95 ? ' (the game was already decided)' : ''}`} · a death like this usually swings ~${c.fmtInt(d.souls)} souls${d.share >= 1.2 ? ' (you were rich, so it cost more)' : ''}${d.objPts >= 0.005 ? ` · +${Math.round(d.objLift * 100)}% chance your team loses an objective in the next 90s` : ''}</span></li>`).join('')}</ul>`
+            <span>Died to <b>${hero(d.killerHero)}</b>${d.ttk > 0 && d.ttk <= c.E.FAST_DEATH_S ? ` <span class="tag warn" title="Died within ${c.E.FAST_DEATH_S}s of first taking damage">caught out</span>` : ''}</span>
+            <span class="muted small">${Math.round(d.total * 100) >= 1 ? `about <b class="neg">${pts(-d.total)}</b> win chance` : `under 1% of win chance${d.p < 0.05 || d.p > 0.95 ? ' (the game was already decided)' : ''}`} · a death like this usually swings ~${c.fmtInt(d.souls)} souls${d.share >= 1.2 ? ' (you were rich, so it cost more)' : ''}${d.objPts >= 0.005 ? ` · +${Math.round(d.objLift * 100)}% chance your team loses an objective in the next 90s` : ''}</span></li>`).join('')}</ul>`
             : '<p class="muted small">No deaths this game.</p>'}</div>
       </div>
       <p class="muted small">Model trained ${c.esc(W.trained_at.slice(0, 10))} on ${c.fmtInt(W.matches)} matches since the ${c.esc(W.patch)} patch${q && q.accuracy ? `. At 20:00 the team it favours goes on to win ${Math.round(q.accuracy * 100)}% of the time` : ''}. Death costs are what a death like that usually costs at that minute, measured around deaths where nobody else died, not a measurement of that exact death.</p>
@@ -561,10 +571,10 @@
      'lower' | 'higher' decides which side is coloured good. (Coach, Heroes.) */
   function wlFig(label, x, fmt, better, sub, info) {
     const gap = x.win != null && x.loss != null ? x.win - x.loss : null;
-    const cls = side => gap == null || gap === 0 ? '' : ((side === 'win') === ((better === 'lower') === (gap < 0))) ? 'pos' : 'neg';
-    return `<div class="fig wlf"><div class="wl-pair"><span><b class="fig-v ${cls('win')}">${fmt(x.win)}</b><span class="t-sub">wins</span></span>
-      <span><b class="fig-v ${cls('loss')}">${fmt(x.loss)}</b><span class="t-sub">losses</span></span></div>
-      <div class="t-label">${label}${info ? ' ' + info : ''}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
+    const cls = side => gap == null || gap === 0 ? '' : ((side === 'win') === ((better === 'lower') === (gap < 0))) ? 'pos' : 'muted';
+    return `<div class="fig wlf"><div class="wl-pair"><span><b class="fig-v ${cls('win')}">${fmt(x.win)}</b><span class="t-sub">in wins</span></span>
+      <span class="wl-vs muted">vs</span><span><b class="fig-v ${cls('loss')}">${fmt(x.loss)}</b><span class="t-sub">in losses</span></span></div>
+      <div class="t-label">${label}${info ? ' ' + info : ''}</div><div class="t-sub">${better === 'lower' ? '↓ lower is better' : '↑ higher is better'}</div><div class="t-sub">${sub || '&nbsp;'}</div></div>`;
   }
 
   // ---------------------------------------------------------------- coach (last 30 games)
@@ -601,7 +611,7 @@
       </section>
 
       <section class="ov-sec">
-        ${sh('Wins vs losses')}
+        ${sh('Your wins vs your losses')}
         <div class="ledger l3">
           ${wl('Deaths a game', A.deaths.perGame, one, 'lower')}
           ${wl('Deaths before 10:00', A.deaths.before10, one, 'lower')}
@@ -619,7 +629,7 @@
 
       <section class="ov-sec">
         ${sh('Deaths')}
-        <div class="num-line deaths-line"><span><b>${A.deaths.total}</b> deaths</span><span>${A.n} games</span>${A.deaths.fastShare != null ? `<span><b>${c.pct(A.deaths.fastShare)}</b> caught out ${src('yours', `Deaths that came within ${E.FAST_DEATH_S}s of first taking damage.`)}</span>` : ''}</div>
+        <div class="num-line deaths-line"><span><b>${A.deaths.total}</b> deaths</span><span>${A.n} games</span>${A.deaths.fastShare != null ? `<span><b>${c.pct(A.deaths.fastShare)}</b> caught out (≤${E.FAST_DEATH_S}s) ${src('yours', `Deaths that came within ${E.FAST_DEATH_S}s of first taking damage: no time to react or be saved.`)}</span>` : ''}</div>
         <div class="death-grid">
           <div><div class="t-label">A game, by phase · <span class="pos">wins</span> / <span class="neg">losses</span></div>
             <div class="phases">${A.deaths.byPhase.map(p => `<div class="ph"><span class="ph-l">${p.label}</span>
@@ -657,7 +667,7 @@
     const list = c.friendList();
     const info = src('yours', 'Steam’s own friends list isn’t reachable from a website (Steam’s API refuses browser requests, and deadlock-api doesn’t store it), so Climb finds friends from deadlock-api’s teammate history instead: anyone you’ve been on a team with 10+ times. Random teammates almost never repeat that often.');
     const mast = `<div class="masthead"><div class="ident"><div><div class="rank-name">Friends</div>
-      <div class="muted small num-line"><span>${list.length} friends ${info}</span>${list.length ? `<span>${c.fmtInt(list.reduce((s0, f) => s0 + f.games, 0))} games together</span>` : ''}</div></div></div></div>`;
+      <div class="muted small num-line"><span>${list.length} friends ${info}</span>${list.length ? `<span>${c.fmtInt(list.reduce((s0, f) => s0 + f.games, 0))} games together</span><span>100% = lobby average</span>` : ''}</div></div></div></div>`;
     if (!st.friends) { host.innerHTML = mast + '<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Finding the people you queue with…</p>'; return; }
     if (!list.length) { host.innerHTML = mast + `<p class="muted small">0 people with ${E.FRIEND_MIN}+ games together</p>`; return; }
     c.ensureSquad();
@@ -669,8 +679,8 @@
     for (const k of STACK_COLS.map(x => x[0])) best[k] = Math.max(...board.map(p => p.stat[k]));
     host.innerHTML = mast + `
       <section class="ov-sec">
-        ${sh('How you stack up', src('yours', `You and each friend in the games you played together on the same team (${E.STACK_MIN}+ games), from the lobby stats Climb keeps for every game. Each stat is against the lobby’s average player in that game, so 100% is average: souls; damage or healing, whichever is higher, so supports aren’t sunk; kills + assists; and staying alive (fewer deaths than the lobby is over 100%). Overall combines the four and is pulled toward 100 by ${E.STACK_K} games, so a small sample can’t top the board. “Ahead of you / behind you” needs a 5%+ gap in your shared games that holds in both halves; otherwise it’s even. Death cost is the old ranking: win chance lost to their own deaths per game, last 90 days, lower is better.`))}
-        ${board.length ? `<div class="stk stk-head"><span></span><span></span><span></span><span></span>${STACK_COLS.map(x => `<span class="n">${x[1]}</span>`).join('')}<span class="n hide-s">Death cost</span><span class="n">Overall</span></div>
+        ${sh('How you stack up', src('yours', `You and each friend in the games you played together on the same team (${E.STACK_MIN}+ games), from the lobby stats Climb keeps for every game. Each stat is against the lobby’s average player in that game, so 100% is average: souls; damage or healing, whichever is higher, so supports aren’t sunk; kills + assists; and staying alive (fewer deaths than the lobby is over 100%). Overall combines the four and is pulled toward 100 by ${E.STACK_K} games, so a small sample can’t top the board. “Ahead of you / behind you” needs a 5%+ gap in your shared games that holds in both halves; otherwise it’s even. Lost to deaths is the old ranking: win chance lost to their own deaths per game, last 90 days, lower is better.`))}
+        ${board.length ? `<div class="stk stk-head"><span></span><span></span><span></span><span></span>${STACK_COLS.map(x => `<span class="n">${x[1]}</span>`).join('')}<span class="n hide-s">Lost to deaths</span><span class="n">Overall</span></div>
           <div class="stk-key small muted">${STACK_COLS.map(x => `<span>${x[1]}</span>`).join('')}<span>Overall</span></div>
           <ol class="board3">${board.map((p, i) => stackRow(c, p, i, list, best, cost)).join('')}</ol>`
           : `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading your games with friends…</p>`}
@@ -798,7 +808,7 @@
      when: 'clock' (time of day, under a day header) or 'ago'. */
   function matchRow(c, m, mark, when) {
     const L = c.state.lobbies[m.id], g = c.E.gameRole(L, m.won), me = L && L.p[L.me], p = c.M.perf.get(m.id);
-    const form = !p ? '<span class="muted">—</span>' : `<span class="${p.score >= 0.2 ? 'pos' : p.score <= -0.2 ? 'neg' : 'muted'}">${(p.score >= 0 ? '+' : '−') + Math.abs(p.score).toFixed(1)}</span>`;
+    const form = !p ? '<span class="muted">—</span>' : `<span class="${p.score >= 0.2 ? 'pos' : p.score <= -0.2 ? 'neg' : 'muted'}">${form1(p.score)}</span>`;
     const t = when === 'clock' ? new Date(m.t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : c.ago(m.t);
     return `<a class="mr2 ${m.won ? 'w' : 'l'}${g && g.lobbyFirst ? ' gold' : ''}" href="#/match/${m.id}">
       <span class="mh">${icon(c, m.hero, 30)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
@@ -811,8 +821,8 @@
       <span class="n mr-pts">${deltaHtml(c, m)}</span>
       <span class="n muted small hide-s">${t}</span></a>`;
   }
-  const FORM_INFO = 'How you played vs your usual on that hero: souls, farm by 12:00 vs your lane, damage, kills + assists and staying alive, against your other games on it. 0 is a normal game for you; +1 is about one standard deviation better.';
-  const matchHead = c => `<div class="mr2 mhead"><span>Hero</span><span></span><span></span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="n">Form ${src('yours', FORM_INFO)}</span><span class="n">Pts</span><span class="n hide-s">Time</span></div>`;
+  const FORM_INFO = 'How you played vs your usual on that hero: souls, farm by 12:00 vs your lane, damage, kills + assists and staying alive, against your other games on it. 0 is a normal game for you; +1.0 is a clearly better game than usual (about one standard deviation), −1.0 a clearly worse one. Needs 5+ games on the hero.';
+  const matchHead = c => `<div class="mr2 mhead"><span>Hero</span><span></span><span></span><span class="n">K / D / A</span><span class="n hide-s">Souls</span><span class="n hide-s">Damage</span><span class="n">Form ${src('yours', FORM_INFO)}</span><span class="n">Rank pts</span><span class="n hide-s">Time</span></div>`;
 
   const matchFilter = { hero: 'all', result: 'all', role: 'all', mode: 'all' };
   let matchLimit = 60;   // games listed; "Show more" adds 60. Module state so a redraw keeps it
@@ -848,7 +858,7 @@
           ${seg('Mode', [['all', 'All modes'], ['ranked', 'Ranked'], ['unranked', 'Unranked']], matchFilter.mode).replace('class="seg-ctl"', 'class="seg-ctl" id="f-mode"')}
           <div class="filters">
             <select id="f-hero" aria-label="Hero">${opt('all', 'All heroes', matchFilter.hero)}${heroes.map(h => opt(h, c.heroName(h), matchFilter.hero)).join('')}</select>
-            <select id="f-role" aria-label="How you played">${opt('all', 'Any form', matchFilter.role)}${opt('first', '★ 1st in the lobby', matchFilter.role)}${opt('above', 'Above your usual', matchFilter.role)}${opt('below', 'Below your usual', matchFilter.role)}</select>
+            <select id="f-role" aria-label="How you played">${opt('all', 'Any form', matchFilter.role)}${opt('first', '★ MVP', matchFilter.role)}${opt('above', 'Above your usual', matchFilter.role)}${opt('below', 'Below your usual', matchFilter.role)}</select>
           </div></div></div>
 
       <div class="ledger">
@@ -899,7 +909,7 @@
     const imp = E.lobbyImpact(L);
     const zs = p ? ['souls', 'farm', 'dmg', 'ka', 'deaths'].filter(k => p.z[k] != null).map(k => {
       const lab = { souls: 'Souls', farm: 'Farm by 12:00', dmg: 'Damage', ka: 'Kills + assists', deaths: 'Staying alive' }[k];
-      return `<li><span>${lab}</span><span class="${p.z[k] >= 0.2 ? 'pos' : p.z[k] <= -0.2 ? 'neg' : 'muted'}">${(p.z[k] >= 0 ? '+' : '−') + Math.abs(p.z[k]).toFixed(1)}</span></li>`;
+      return `<li><span>${lab}</span><span class="${p.z[k] >= 0.2 ? 'pos' : p.z[k] <= -0.2 ? 'neg' : 'muted'}">${form1(p.z[k])}</span></li>`;
     }).join('') : '';
     const share = (k, lab, inv) => {
       const v = g.r[k], good = inv ? v <= 1 : v >= 1;
@@ -924,12 +934,12 @@
           <div class="t-label">Your share of your team ${src('rule', 'Your share of your own team’s souls, damage (or healing), kills + assists and objectives, minus extra deaths: 1.00 = an average teammate. Tested on your last 400 games, it does NOT predict whether you win (being your team’s #1 won 49% of the time), because the whole team wins or loses together. It describes your part; the win-chance card below measures what moved the game.')}</div>
           ${g.lobbyFirst ? '<div class="first-line">★ 1st in the lobby · Valve’s MVP</div>' : g.mvp >= 2 && g.mvp <= 3 ? `<div class="muted small">Valve’s ${g.mvp === 2 ? '2nd' : '3rd'} MVP</div>` : ''}
           <div class="role-big">#${g.teamRank} of ${g.teamSize}</div>
-          <p class="muted">${g.teamRank <= 2 ? 'Top share' : g.teamRank >= g.teamSize - 1 ? 'Low share' : 'Mid share'} of your team’s stats · impact <b>${g.impact.toFixed(2)}</b> <span class="small">(1.00 = an average teammate)</span></p>
+          <p class="muted">on your team · impact <b>${g.impact.toFixed(2)}</b> <span class="small">(1.00 = an average teammate)</span></p>
         </section>
         <section class="card">
           <div class="t-label">You vs an average teammate <span class="muted">(100% = average)</span></div>
           <div class="shares">${share('souls', 'Souls')}${share('dmg', 'Damage')}${share('ka', 'Kills + assists')}${share('obj', 'Objectives')}${share('deaths', 'Deaths', true)}</div>
-          ${p ? `<div class="t-label" style="margin-top:14px">Compared with your usual ${c.esc(c.heroName(m.hero))} (${p.base} games)</div><ul class="zs">${zs}</ul>`
+          ${p ? `<div class="t-label" style="margin-top:14px">Form vs your usual ${c.esc(c.heroName(m.hero))} (${p.base} games) ${src('yours', FORM_INFO)}</div><ul class="zs">${zs}</ul>`
               : `<p class="muted small">Form vs your usual appears once you have ${E.MIN_HERO_GAMES}+ games on this hero.</p>`}
         </section>
       </div>
@@ -999,7 +1009,7 @@
         <div class="ledger l3">
           ${wlFig('Deaths a game', d.perGame, r1, 'lower', `${r1(d.perGame.all)} overall`)}
           ${wlFig('Deaths before 10:00', d.before10, r1, 'lower', `${r1(d.before10.all)} overall`)}
-          <div class="fig"><div class="fig-v">${d.fastShare == null ? '—' : c.pct(d.fastShare)}</div><div class="t-label">Caught out ${src('yours', `Deaths within ${E.FAST_DEATH_S}s of first taking damage.`)}</div><div class="t-sub">of deaths</div></div>
+          <div class="fig"><div class="fig-v">${d.fastShare == null ? '—' : c.pct(d.fastShare)}</div><div class="t-label">Caught out ${src('yours', `Deaths within ${E.FAST_DEATH_S}s of first taking damage.`)}</div><div class="t-sub">of deaths · ≤${E.FAST_DEATH_S}s</div></div>
         </div>
         ${d.killers.length ? `<div class="num-line killers"><span class="t-label">Killed most by</span>${d.killers.slice(0, 3).map(k => `<span>${icon(c, k.hero, 18)} ${c.esc(k.name)} <b>${k.n}</b></span>`).join('')}${d.zones.length ? `<span class="t-label">Where</span><span>${c.esc(d.zones[0].zone)} <b>${c.pct(d.zones[0].share)}</b></span>` : ''}</div>` : ''}
       </section>`;
@@ -1014,12 +1024,12 @@
     const cards = [
       card('Your best', ins.best, c.pct(ins.best && ins.best.winRate), ins.best && `${wl(ins.best)} · ${ins.best.games} games`, 'good'),
       card('Park it for now', ins.avoid, c.pct(ins.avoid && ins.avoid.winRate), ins.avoid && `${wl(ins.avoid)} · ${ins.avoid.games} games`, 'bad'),
-      card('Most rank points', ins.mostPts, ins.mostPts && c.signed(ins.mostPts.net), ins.mostPts && `${ins.mostPts.hasDelta} ranked`, 'good'),
-      card('Biggest drain', ins.drain, ins.drain && c.signed(ins.drain.net), ins.drain && `${ins.drain.hasDelta} ranked`, 'bad'),
+      card('Most rank points', ins.mostPts, ins.mostPts && c.signed(ins.mostPts.net) + ' pts', ins.mostPts && `${ins.mostPts.hasDelta} ranked`, 'good'),
+      card('Biggest drain', ins.drain, ins.drain && c.signed(ins.drain.net) + ' pts', ins.drain && `${ins.drain.hasDelta} ranked`, 'bad'),
       card('On the rise', ins.rising, ins.rising && '▲ +' + ins.rising.trend.toFixed(1), 'form, last 5 vs before', 'good'),
       card('Most played', ins.most, ins.most && String(ins.most.games), ins.most && `games · ${c.pct(ins.most.winRate)}`),
     ].filter(Boolean);
-    return `<section class="ov-sec">${sh('Scouting · last ' + ins.days + ' days', src('yours', `Over your games in the last ${ins.days} days. A hero’s win rate is weighed against your overall ${c.pct(ins.base)} by ${E.HERO_INS_K} games, so a 4–0 hero can’t beat a 30–20 one; best and park-it need ${E.HERO_INS_MIN}+ games, and park-it must sit 5+ points under your overall. Rank points count ranked games only (5+). On the rise compares the form of your last 5 games on a hero with the ones before.`))}
+    return `<section class="ov-sec">${sh('Scouting · last ' + ins.days + ' days', src('yours', `Over your games in the last ${ins.days} days. A hero’s win rate is adjusted for few games: pulled toward your overall ${c.pct(ins.base)} by ${E.HERO_INS_K} games, so a 4–0 hero can’t beat a 30–20 one; best and park-it need ${E.HERO_INS_MIN}+ games, and park-it must sit 5+ points under your overall. Rank points count ranked games only (5+). On the rise compares the form of your last 5 games on a hero with the ones before.`))}
       <div class="ins-row">${cards.join('')}</div></section>`;
   }
 
@@ -1031,11 +1041,11 @@
     const seen = new Set(ins.rows.map(h => h.hero));
     const tile = h => `<a href="#/heroes/${h.hero}" class="hpk ${h.group}${h.hero === hero ? ' on' : ''}" aria-current="${h.hero === hero}">${icon(c, h.hero, 30)}
       <span class="hpk-n">${c.esc(c.heroName(h.hero))}</span><b class="hpk-v">${c.pct(h.winRate)}</b>
-      <span class="hpk-s">${h.wins}–${h.losses}${h.hasDelta ? ` · ${c.signed(h.net)}` : ''}</span></a>`;
+      <span class="hpk-s">${h.wins}–${h.losses}${h.hasDelta ? ` · ${c.signed(h.net)} pts` : ''}</span></a>`;
     const chip = (id, sub) => `<a href="#/heroes/${id}" class="hchip${id === hero ? ' on' : ''}" aria-current="${id === hero}" title="${c.esc(c.heroName(id))}">${icon(c, id, 22)}<span>${c.esc(c.heroName(id))}</span><span class="muted small">${sub}</span></a>`;
     const group = (key, label, cls) => { const hs = ins.rows.filter(h => h.group === key); return hs.length ? `<div class="pk-g ${cls || ''}"><div class="pk-k">${label} <span class="muted">${hs.length}</span></div><div class="pk-tiles">${hs.map(tile).join('')}</div></div>` : ''; };
     const few = ins.rows.filter(h => h.group === 'few').sort((a, b) => b.games - a.games), old = list.filter(h => !seen.has(h)).sort((a, b) => counts.get(b) - counts.get(a));
-    return `<section class="ov-sec">${sh('Your hero pool · last ' + ins.days + ' days', src('yours', `Heroes with ${c.E.HERO_INS_MIN}+ games in the last ${ins.days} days, grouped by their weighed win rate against your overall ${c.pct(ins.base)}: Climb on these is 2+ points above it, Park for now is 5+ points below, Steady is in between. Each group is best first. Numbers under each hero: wins–losses and rank points.`))}
+    return `<section class="ov-sec">${sh('Your hero pool · last ' + ins.days + ' days', src('yours', `Heroes with ${c.E.HERO_INS_MIN}+ games in the last ${ins.days} days, grouped by their win rate adjusted for few games (pulled toward your overall ${c.pct(ins.base)} by ${c.E.HERO_INS_K} games): Climb on these is 2+ points above it, Park for now is 5+ points below, Steady is in between. Each group is best first. Numbers under each hero: wins–losses and rank points.`))}
       ${group('climb', 'Climb on these', 'good')}${group('steady', 'Steady')}${group('park', 'Park for now', 'bad')}
       ${few.length ? `<div class="pk-g"><div class="pk-k">Few games lately <span class="muted">${few.length}</span></div><div class="pk-chips">${few.map(h => chip(h.hero, h.games)).join('')}</div></div>` : ''}
       ${old.length ? `<div class="pk-g"><div class="pk-k">Not in ${ins.days} days <span class="muted">${old.length}</span></div><div class="pk-chips">${old.map(h => chip(h, counts.get(h))).join('')}</div></div>` : ''}
@@ -1069,7 +1079,7 @@
     const T = S.benchT;
     const ready = mine.curve && mine.stats && loaded === E.LADDER_TIERS.length;
     const lad = ready ? E.rankLadder(hero, T, mine, tiersData, yourTier) : null;
-    const nextTier = Math.min(11, yourTier + 1);
+    const road = E.roadTier(M.badge), nextTier = road.tier;
     const tn = t => c.tierName(t);
     const fmt = (r, v) => v == null ? '—' : r.fmt === 'pct' ? Math.round(v * 100) + '%' : r.fmt === 'dec' ? v.toFixed(1) : c.kfmt(v);
     const window = !plan.widened ? `games since the ${new Date(plan.from * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} patch`
@@ -1090,13 +1100,13 @@
       <div class="ledger l5">
         ${fig('Win rate', c.pct(sum.winRate), `${sum.wins}–${sum.losses}`)}
         ${fig('Rank points', sum.hasDelta ? c.signed(sum.net) : '—', 'on this hero')}
-        ${fig('Ahead at 12:00', heroEarly.nAhead ? c.pct(heroEarly.ahead12) : '—', `${heroEarly.nAhead} games`, src('yours', 'Games where your souls at 12:00 beat your lane opponents’ average, out of your recent games on this hero with match detail.'))}
-        ${fig('Clean to 10:00', heroEarly.nClean ? c.pct(heroEarly.clean10) : '—', `${heroEarly.nClean} games`)}
-        ${fig('★ 1st', roles.n ? roles.mvp : '—', `${roles.n} games read`, src('valve', 'Games where Valve named you MVP, 1st in the lobby.'))}
+        ${fig('Souls lead at 12:00', heroEarly.nAhead ? c.pct(heroEarly.ahead12) : '—', `${heroEarly.nAhead} games`, src('yours', 'Games where your souls at 12:00 beat your lane opponents’ average, out of your recent games on this hero with match detail.'))}
+        ${fig('No deaths to 10:00', heroEarly.nClean ? c.pct(heroEarly.clean10) : '—', `${heroEarly.nClean} games`)}
+        ${fig('★ MVP games', roles.n ? roles.mvp : '—', `${roles.n} games read`, src('valve', 'Games where Valve named you MVP, 1st in the lobby.'))}
       </div>
 
       ${heroTab === 'coach' ? heroCoachPanel(c, hero, games, c.state.items && c.state.items.map) : `<section class="ov-sec">
-        ${sh(`Road to ${c.esc(tn(nextTier))}`, seg('Game time', [[900, '15 min'], [1200, '20 min'], [1800, '30 min']], T).replace('class="seg-ctl"', 'class="seg-ctl" id="bt"'))}
+        ${sh(road.kind === 'next' ? `Road to ${c.esc(tn(nextTier))}` : `vs the ${c.esc(tn(nextTier))} average`, seg('Game time', [[900, '15 min'], [1200, '20 min'], [1800, '30 min']], T).replace('class="seg-ctl"', 'class="seg-ctl" id="bt"'))}
         ${!ready ? `<p class="muted small">Loading the comparison… ${loaded}/${E.LADDER_TIERS.length} ranks</p>` : roadHtml(c, lad, nextTier, fmt, tn, T, tiersData, hero, `Your average ${c.heroName(hero)} game vs the average one in ${tn(nextTier)} lobbies, at ${T / 60}:00, over ${window} (${plan.n} of your games${plan.thin ? ', fewer than ' + E.MIN_HERO_GAMES + ', so treat it as a rough read' : ''}).`)}
       </section>`}`;
     // Picking a hero in the pool jumps to its section below instead of leaving you at the top.
@@ -1158,6 +1168,32 @@
       tipHtml: (h, v) => `<b>${hourLabel(h)}</b><br>${v ? P.dur(v) + ' over 4 weeks' : 'Never'}` });
   }
 
+
+  /* About's glossary: every term or number that isn't self-explanatory, one line each. */
+  const GLOSSARY = E => [
+    ['Improving / Holding / Slipping', 'The overall call: rank points, Form and rough games, each against the window before.'],
+    ['Rank points (pts)', 'Valve’s own rank-point change per ranked game. Placement games have none.'],
+    ['Calibrating', 'Still in placement games: no rank yet, so rank comparisons use Initiate.'],
+    ['Form', 'How a game went vs your usual on that hero. 0 = a normal game for you, +1.0 clearly better, −1.0 clearly worse. Needs 5+ games on the hero.'],
+    ['Rough games', 'Losses where you also played below your usual (Form under 0).'],
+    ['Rank step · Pace', 'One division, e.g. Ritualist 1 → 2. Pace = ranked games per step lately.'],
+    ['Souls lead at 12:00', 'Games where your souls beat your lane opponents’ average at 12:00.'],
+    ['No deaths to 10:00', 'Games with zero deaths in the first 10 minutes.'],
+    ['Habit', 'One thing to practise, checked ✓ or ✗ every game. Pass rate = how often you do it; mastered at ' + E.FOCUS_GRAD[0] + ' of your last ' + E.FOCUS_GRAD[1] + '.'],
+    ['Won with it · Lost without it', 'How often you won when a habit happened, and lost when it didn’t.'],
+    ['Follows result', 'A habit that partly happens because a game is already being lost.'],
+    ['In wins · in losses', 'The same stat averaged over your wins and over your losses.'],
+    ['Caught out', 'A death within ' + E.FAST_DEATH_S + 's of first taking damage.'],
+    ['Win chance', 'Climb’s trained model: your team’s chance to win at that minute, from the souls, kills and objective gaps.'],
+    ['−6% win chance (a death)', 'What a death like that usually costs at that minute, not an exact measure of that one.'],
+    ['Creeps last-hit', 'Lane creeps you last-hit, out of those you could reach.'],
+    ['★ MVP', 'Valve named you MVP: 1st in the lobby.'],
+    ['#2 of 6 · impact', 'Your place on your own team by share of souls, damage or healing, kills + assists and objectives. 1.00 = an average teammate. Neutral: it doesn’t predict wins.'],
+    ['Adjusted win rate', 'A hero’s win rate pulled toward your overall by ' + E.HERO_INS_K + ' games, so 4–0 can’t beat 30–20.'],
+    ['Overall · 100%', 'Friends: souls, damage or healing, kills + assists and staying alive vs the lobby average. 100 = average.'],
+    ['i (the small rings)', 'Where a number comes from: Your games · Trained model · Rank data · Valve · Climb rule (a rule of thumb) · AI (Gemini’s wording). Tap one to see how a number is worked out.'],
+  ];
+
   // ---------------------------------------------------------------- about / settings
   function about(host, c) {
     const S = c.settings, st = c.state, E = c.E;
@@ -1196,15 +1232,7 @@
           <p class="muted small">Data from <a href="https://deadlock-api.com" rel="noopener" target="_blank">deadlock-api.com</a>. New games can take a while to show up there.</p>
         </section>
       </div>
-      <section class="card how"><h2>How Climb reads your games</h2><ul>
-        <li><b>Improving / Holding / Slipping</b> combines rank points, form and consistency, each compared with the window before. If your lobbies got 3+ subranks tougher, placing lower there isn’t held against you.</li>
-        <li><b>Impact</b> is your share of your team’s souls, damage (or healing, for supports), kills + assists and objective damage, each relative to an average teammate, minus a penalty for dying more than them. 1.00 = an average teammate.</li>
-        <li><b>Team share</b> (Top / Mid / Low share) is your rank on your own team by impact. It describes your part and is kept neutral: tested on 400 games, it doesn’t predict whether you win, because a whole team wins or loses together. What does predict wins is early-game play, measured before the result is decided, which is what the habits and the Overview tiles use.</li>
-        <li><b>Where numbers come from</b>: every key number has a small badge. <i>Your games</i> = counted from your matches. <i>Rank data</i> = averages of other players’ games by rank. <i>Trained model</i> = Climb’s win model. <i>Valve</i> = straight from the game. <i>Climb rule</i> = a rule of thumb, not proven. <i>AI</i> = Gemini’s wording. Tap one to see how it was worked out.</li>
-        <li><b>Tags</b>: Valve’s MVP awards, then lobby bests (top farmer, top damage, most kills, playmaker, objectives, healer, frontline, survivor), plus Fed (10+ deaths), Stomp / Stomped (under 20 min) and Marathon (45+ min).</li>
-        <li><b>Form</b> scores a game against your other games on the same hero, using your share of the lobby’s souls, damage, kills + assists and deaths, plus your farm by 12:00 (lane, camps and boxes) against your lane opponents when the match has detail.</li>
-        <li><b>Rank comparison</b> (Heroes tab): for the hero you pick, your average against the average game in each rank’s lobbies, over the same dates: games since the last big patch, or the last 60 days if you have fewer than 8. A gap is only called when it’s bigger than your normal game-to-game swing.</li>
-      </ul></section>
+      <section class="card how"><h2>What the numbers mean</h2><dl class="gloss">${GLOSSARY(E).map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl></section>
       <section class="card how"><h2>Changelog</h2>${c.LOG.map(e => `<h3>${c.verName(e.v)} · ${c.esc(e.title)} <span class="muted small">${c.esc(e.date)}</span></h3><ul>${e.items.map(i => `<li>${c.esc(i)}</li>`).join('')}</ul>`).join('')}</section>`;
     host.querySelector('#acct-form').addEventListener('submit', async e => {
       e.preventDefault();

@@ -33,7 +33,9 @@ and the helper in depth; this file is the rules.
   language) and `CHANGELOG.md` (what changed in code). Versions display as `0.N`.
 - **Design**: near-black page (`#0c0c0d`), brass (`--brass*`) for structure only, green and red
   mean only good and bad. System fonts only: the CSP blocks web fonts. Numbers over sentences;
-  explanations go behind the small "i" source badge (`src()` in views.js), not in body text.
+  explanations go behind the small "i" source badge (`src()` in views.js), not in body text. A new
+  term or unit gets one line in `GLOSSARY` (views.js, shown on About). Nothing may assume a rank:
+  use `Engine.rankStatus` / `roadTier` (calibrating, unranked and Eternus all have to read right).
   Every page must work at 375px wide with no horizontal scroll.
 - **Off limits**: Windows notifications, in-game mods, overlays, reading or writing game memory
   or logs from the web app.
