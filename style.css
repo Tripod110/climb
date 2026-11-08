@@ -903,3 +903,27 @@ a.mr2.gold::before { background: var(--gold); }
 .fm-chips .plq { font-size: 9px; padding: 3px 5px 2px; }
 .plq-row { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: -4px 0 18px; }
 .plq-row .plq { font-size: 13px; padding: 6px 11px 5px; }
+/* Coach: the rulebook (rule, kept, broken in losses, worth, train) */
+.rules { list-style: none; padding: 0; margin: 4px 0 0; }
+.rules li { display: grid; grid-template-columns: minmax(0, 1fr) 64px 92px 64px 84px; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.rules li.dim { opacity: .55; }
+.rules-h { border-top: 0 !important; padding-top: 0 !important; font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.rules-h span { display: flex; align-items: center; gap: 6px; }
+.rules-h .n { justify-content: flex-end; }
+.rules .rl { display: grid; gap: 2px; min-width: 0; }
+.rules .rl b { font-size: 15px; }
+.rules .n { display: grid; justify-items: end; gap: 1px; font-variant-numeric: tabular-nums; }
+.rules .n b { font: 600 17px/1.1 var(--display); }
+.rules li > :last-child { justify-self: end; }
+@media (max-width: 640px) {
+  .rules li { grid-template-columns: minmax(0, 1fr) repeat(3, 58px); gap: 8px; }
+  .rules-h { display: none !important; }
+  .rules li > :last-child { grid-column: 1 / -1; justify-self: start; }
+}
+/* Match page: this game against the rulebook */
+.rc { list-style: none; padding: 0; margin: 6px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 24px; }
+.rc li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.rc li b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.rc li.n > span:nth-child(2) { color: var(--ink); }
+.rc li.y > span:nth-child(2) { color: var(--ink-2); }
+@media (max-width: 640px) { .rc { grid-template-columns: minmax(0, 1fr); } }

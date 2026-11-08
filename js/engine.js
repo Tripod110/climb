@@ -933,9 +933,10 @@
     return out;
   }
 
-  const DETAIL_V = 4;   // 2 = + objectives and mid-boss; 3 = every player's deaths; 4 = farm sources (boxes, treasure, creeps available) and lane souls without the orb double count. Older cached details get re-fetched
+  const DETAIL_V = 5;   // 2 = + objectives and mid-boss; 3 = every player's deaths; 4 = farm sources (boxes, treasure, creeps available) and lane souls without the orb double count; 5 = objective damage and souls lost to deaths (the rulebook). Older cached details get re-fetched
   /* Full metadata for one match (items, death details, stat snapshots) -> what the brief needs.
-     Snapshots: [t, souls, kills, deaths, assists, heroDamage, laneSouls, jungleSouls, lastHits, boxSouls, treasureSouls, creepsAvailable]. */
+     Snapshots: [t, souls, kills, deaths, assists, heroDamage, laneSouls, jungleSouls, lastHits, boxSouls, treasureSouls, creepsAvailable,
+     objectiveDamage, soulsLostToDeaths]. */
   function compactMatchDetail(meta, accountId) {
     const teamNum = t => (typeof t === 'number' ? t : String(t).endsWith('1') ? 1 : 0);
     const players = (meta.players || []).map(p => ({
@@ -943,7 +944,7 @@
       snaps: (p.stats || []).map(s => [s.time_stamp_s, s.net_worth || 0, s.kills || 0, s.deaths || 0, s.assists || 0, s.player_damage || 0,
         // gold_lane_creep already includes the part collected as orbs (orbs <= lane in every snapshot), so lane souls are not summed with them.
         s.gold_lane_creep || 0, (s.gold_neutral_creep || 0) + (s.gold_neutral_creep_orbs || 0), s.creep_kills || 0,
-        s.gold_source_breakable_gold || 0, s.gold_treasure || 0, s.possible_creeps || 0]),
+        s.gold_source_breakable_gold || 0, s.gold_treasure || 0, s.possible_creeps || 0, s.boss_damage || 0, s.gold_death_loss || 0]),
       items: p.account_id === accountId ? (p.items || []).map(x => [x.game_time_s, x.item_id, x.sold_time_s || 0]) : null,
       deaths: (p.death_details || []).map(d => [d.game_time_s, d.killer_player_slot,
         Math.round((d.death_pos || [])[0] || 0), Math.round((d.death_pos || [])[1] || 0), Math.round((d.time_to_kill_s || 0) * 10) / 10]),
@@ -1099,14 +1100,14 @@
       const r = habitResults(habitById(id), entries, items).filter(x => x.pass != null);
       return { n: r.length, rate: r.length ? r.filter(x => x.pass).length / r.length : null };
     };
-    const a = rate('ahead12'), c = rate('early0');
-    return { ahead12: a.rate, nAhead: a.n, clean10: c.rate, nClean: c.n };
+    const a = rate('lane_souls'), c = rate('lane_le1');
+    return { laneWon: a.rate, nLane: a.n, laneSafe: c.rate, nSafe: c.n };
   }
 
   /* Which ladder stats move you toward the next rank, turned into training targets. Uses the
      rankLadder result for one hero. Each target says the number to hit and, where Climb can
      check it game by game, the focus habit that trains it. */
-  const LADDER_HABIT = { lane: 'ahead12', souls: 'ahead12', deaths: 'early0', jungle: null, dmg: null, obj: null, kills: null, assists: null, acc: null, wr: null };
+  const LADDER_HABIT = { lane: 'lane_souls', souls: 'lane_souls', deaths: 'lane_le1', jungle: null, dmg: null, obj: null, kills: null, assists: null, acc: null, wr: null };
   function nextRankPlan(lad) {
     const gaps = lad.rows.filter(r => r.key !== 'wr' && r.you != null && r.next && r.next.v != null && r.next.status === 'behind')
       .sort((a, b) => Math.abs(b.next.rel) - Math.abs(a.next.rel))
@@ -1769,6 +1770,56 @@
     return { n, ready: true, src, headline: behind, eff: effs.length ? { me: mean(effs.map(f => f.eff.me)), opp: mean(effs.map(f => f.eff.opp)) } : null };
   }
 
+  /* ---- the rulebook: rules proven on everyone's games (model/habits.py, 2026-11-08) ----
+     62,984 ranked matches, 755,808 player-games. Each effect is the SAME player's win rate in games keeping the
+     rule minus games breaking it, so skill can't pose as the rule; 9:00-20:00 rules are compared from the same
+     9:00 team position (all) and, stricter, the same 15:00 one (lo): the real effect sits between. Every one
+     helped in every rank band, on 89%+ of heroes and in both halves of the players. Bands: cal (placement),
+     b1 Initiate-Seeker, b2 Acolyte-Sentinel, b3 Mystic-Ritualist, b4 Emissary-Oracle, b5 Phantom-Eternus. */
+  const LANE_T = 540, MID_T = 1200;
+  const lobbyAt = (D, t, i) => D.players.map(p => { const s = snapAtT(p, t); return s && s.length > i ? s[i] : null; }).filter(x => x != null);
+  const PROVEN = {
+    lane_souls: { all: 0.123, lo: null, bands: { cal: 0.115, b1: 0.145, b2: 0.132, b3: 0.113, b4: 0.11, b5: 0.127 } },
+    lane_le1: { all: 0.079, lo: null, bands: { cal: 0.086, b1: 0.09, b2: 0.089, b3: 0.074, b4: 0.068, b5: 0.072 } },
+    mid_le2: { all: 0.124, lo: 0.05, bands: { cal: 0.118, b1: 0.12, b2: 0.125, b3: 0.118, b4: 0.129, b5: 0.142 } },
+    mid_nolone: { all: 0.069, lo: 0.025, bands: { cal: 0.059, b1: 0.063, b2: 0.071, b3: 0.065, b4: 0.069, b5: 0.08 } },
+    mid_obj: { all: 0.067, lo: 0.038, bands: { cal: 0.072, b1: 0.063, b2: 0.069, b3: 0.063, b4: 0.068, b5: 0.064 } },
+    mid_bank: { all: 0.061, lo: 0.028, bands: { cal: 0.054, b1: 0.054, b2: 0.058, b3: 0.061, b4: 0.068, b5: 0.073 } },
+    mid_nocaught: { all: 0.051, lo: 0.024, bands: { cal: 0.045, b1: 0.044, b2: 0.05, b3: 0.046, b4: 0.057, b5: 0.066 } },
+  };
+  const rankBandOf = badge => { const t = badge > 0 ? Math.floor(badge / 10) : 0; return t <= 0 ? 'cal' : t <= 2 ? 'b1' : t <= 4 ? 'b2' : t <= 6 ? 'b3' : t <= 8 ? 'b4' : 'b5'; };
+  /* What keeping a rule is worth at your rank, in win-rate points: [lo, hi] (lo = hi for lane rules). */
+  function ruleWorth(id, badge) {
+    const pr = PROVEN[id];
+    if (!pr) return null;
+    const hi = pr.bands[rankBandOf(badge)] != null ? pr.bands[rankBandOf(badge)] : pr.all;
+    return [pr.lo == null ? hi : pr.lo * hi / pr.all, hi];
+  }
+  const RULES = [
+    { id: 'lane_souls', label: 'Win your lane: souls ≥ your lane opponents at 9:00', short: 'Win your lane', how: 'Last-hit and deny every wave, take the jungle camps and boxes between waves, and only trade when it costs them more than you.',
+      test: (m, L, D) => { const me = meOf(D); if (!me || D.dur < LANE_T) return null;
+        const opp = D.players.filter(p => p.team !== me.team && p.lane === me.lane && me.lane).map(p => snapAtT(p, LANE_T)).filter(Boolean), mine = snapAtT(me, LANE_T);
+        return mine && opp.length ? mine[1] >= mean(opp.map(q => q[1])) : null; } },
+    { id: 'lane_le1', label: 'At most 1 death before 9:00', short: '≤1 death in lane', how: 'Back off when your lane opponent has the souls lead or a teammate is missing, and don’t chase past your guardian.',
+      test: (m, L, D) => { const d = deathsIn(D, 0, LANE_T); return d ? d.length <= 1 : null; } },
+    { id: 'mid_le2', label: 'At most 2 deaths from 9:00 to 20:00', short: '≤2 mid-game deaths', how: 'Fight with your team, not ahead of it; leave a fight that has turned before you’re the last one in it.',
+      test: (m, L, D) => { if (!D || D.dur < MID_T) return null; const d = deathsIn(D, LANE_T, MID_T); return d ? d.length <= 2 : null; } },
+    { id: 'mid_nolone', label: 'No lone deaths 9:00–20:00 (nobody else died within 10s)', short: 'Don’t die alone', how: 'A death in a fight can be a trade; a death on your own is free for them. Don’t farm or walk alone where the enemy can reach you unseen.',
+      test: (m, L, D) => { const me = meOf(D); if (!me || D.dur < MID_T) return null;
+        const others = D.players.filter(p => p !== me).flatMap(p => (p.deaths || []).map(d => d[0]));
+        return !(me.deaths || []).some(d => d[0] >= LANE_T && d[0] < MID_T && !others.some(t => Math.abs(t - d[0]) <= 10)); } },
+    { id: 'mid_obj', label: 'Objective damage by 20:00 ≥ the lobby average', short: 'Hit objectives', how: 'When a fight is won or a wave is pushed, turn it into guardian, walker or shrine damage before going back to farm.',
+      test: (m, L, D) => { const me = meOf(D); if (!me || D.dur < MID_T) return null; const all = lobbyAt(D, MID_T, 12), s = snapAtT(me, MID_T);
+        return s && s.length > 12 && all.length > 1 ? s[12] >= mean(all) : null; } },
+    { id: 'mid_bank', label: 'Souls lost to deaths by 20:00 ≤ the lobby median', short: 'Bank your souls', how: 'Spend before you take a risk: buy at the shop before a fight or a long walk so a death doesn’t drop unspent souls.',
+      test: (m, L, D) => { const me = meOf(D); if (!me || D.dur < MID_T) return null; const all = lobbyAt(D, MID_T, 13).sort((a, b) => a - b), s = snapAtT(me, MID_T);
+        return s && s.length > 13 && all.length > 1 ? s[13] <= all[Math.floor((all.length - 1) / 2)] : null; } },
+    { id: 'mid_nocaught', label: 'Never caught out before 20:00 (killed within 5s of first taking damage)', short: 'Never caught out', how: 'Keep an escape and a teammate in reach; if you can’t see two or more enemies on the map, assume they’re coming for you.',
+      test: (m, L, D) => { if (!D || D.dur < MID_T) return null; const d = deathsIn(D, 0, MID_T); return d ? !d.some(x => x[4] > 0 && x[4] <= FAST_DEATH_S) : null; } },
+  ];
+  /* Habits Climb offered before the rulebook. Kept so Friends' scorecard and past focuses still read; never offered. */
+  const LEGACY_HABIT = { early0: 'lane_le1', early1: 'lane_le1', ahead12: 'lane_souls', cs12: 'lane_souls', jungle12: 'lane_souls', creeps12: 'lane_souls', nocatch: 'mid_nocaught', rate: 'mid_le2', late2: 'mid_le2', tier3: null, tier4: null };
+
   /* test(m, L, D, items) -> true / false / null (can't tell from this game's data). */
   const HABITS = [
     { id: 'early0', label: 'No deaths before 10:00', short: 'No early deaths', test: (m, L, D) => { const d = deathsIn(D, 0, 600); return d ? d.length === 0 : null; } },
@@ -1789,35 +1840,43 @@
     { id: 'rate', label: 'Under 1.2 deaths per 10 minutes', short: '<1.2 deaths / 10 min', outcome: true, test: m => m.dur ? (m.d / (m.dur / 60)) * 10 < 1.2 : null },
     { id: 'late2', label: 'At most 2 deaths after 20:00', short: '≤2 late deaths', outcome: true, test: (m, L, D) => { if (!D || D.dur < 1500) return null; const d = deathsIn(D, 1200, Infinity); return d ? d.length <= 2 : null; } },
   ];
-  const habitById = id => HABITS.find(h => h.id === id) || null;
+  const habitById = id => RULES.find(h => h.id === id) || HABITS.find(h => h.id === id) || null;
 
   /* entries: [{ m, L, D }] -> [{ m, pass }] where pass is true / false / null. */
   function habitResults(habit, entries, items) {
     return entries.map(e => ({ m: e.m, pass: e.m ? habit.test(e.m, e.L, e.D, items) : null }));
   }
 
-  /* Every habit over a sample: how often you pass, and your win rate when you do vs don't. */
-  function habitCatalog(entries, items) {
-    return HABITS.map(h => {
+  /* The rulebook over a sample of your games: how often you keep each proven rule, how often you broke it in your
+     losses, your own win rate kept vs broken, and what it's worth at your rank. priority = worth × how often
+     you break it when you lose: the rule costing you the most games. badge: your current badge (for the band). */
+  function habitCatalog(entries, items, badge) {
+    return RULES.map(h => {
       const r = habitResults(h, entries, items).filter(x => x.pass != null);
-      const yes = r.filter(x => x.pass), no = r.filter(x => !x.pass);
+      const yes = r.filter(x => x.pass), no = r.filter(x => !x.pass), losses = r.filter(x => !x.m.won);
       const wr = xs => xs.length ? xs.filter(x => x.m.won).length / xs.length : null;
-      const lift = yes.length && no.length ? wr(yes) - wr(no) : null;
-      const eligible = yes.length >= FOCUS_MIN_SIDE && no.length >= FOCUS_MIN_SIDE && lift != null && lift >= FOCUS_MIN_LIFT;
-      return { id: h.id, label: h.label, short: h.short, outcome: !!h.outcome, n: r.length, passRate: r.length ? yes.length / r.length : null,
-        wrPass: wr(yes), wrFail: wr(no), nPass: yes.length, nFail: no.length, lift, eligible };
-    }).sort((a, b) => (b.eligible - a.eligible) || (a.outcome - b.outcome) || ((b.lift || -1) - (a.lift || -1)));
+      const worth = ruleWorth(h.id, badge), missLoss = losses.length ? losses.filter(x => !x.pass).length / losses.length : null;
+      return { id: h.id, label: h.label, short: h.short, how: h.how, outcome: false, n: r.length, passRate: r.length ? yes.length / r.length : null,
+        wrPass: wr(yes), wrFail: wr(no), nPass: yes.length, nFail: no.length, lift: yes.length && no.length ? wr(yes) - wr(no) : null,
+        worth, nLoss: losses.length, missLoss, priority: worth && missLoss != null ? (worth[0] + worth[1]) / 2 * missLoss : 0,
+        eligible: r.length >= RULE_MIN_GAMES };
+    }).sort((a, b) => (b.eligible - a.eligible) || (b.priority - a.priority));
   }
+  const RULE_MIN_GAMES = 5;
 
-  /* The habit Climb itself would pick: the biggest win-rate split among eligible habits that you
-     don't already pass most of the time, preferring ones that don't follow the result. */
+  /* Climb's pick for your focus: the rule costing you the most in your losses that you don't already keep 7 in 10. */
   function suggestHabit(catalog) {
     const ok = catalog.filter(c => c.eligible && c.passRate < FOCUS_GRAD[0] / FOCUS_GRAD[1]);
-    return (ok.find(c => !c.outcome) || ok[0] || null);
+    return (ok.length ? ok : catalog.filter(c => c.eligible)).sort((a, b) => b.priority - a.priority)[0] || null;
   }
 
-  /* goal: { habit, start (unix), baseline: { rate, n } }; entries: every game since start, oldest first.
-     -> { n, passes, rate, recent: [true/false…] (last 10, oldest first), verdict, graduated } */
+  /* One game against the rulebook: [{ id, short, label, pass (true/false/null), worth }] in rulebook order. */
+  function ruleCard(e, items, badge) {
+    return RULES.map(h => ({ id: h.id, short: h.short, label: h.label, pass: e && e.m ? h.test(e.m, e.L, e.D, items) : null, worth: ruleWorth(h.id, badge) }));
+  }
+  /* A saved focus on a habit Climb no longer offers -> the rule that replaced it (or null). */
+  const isLegacyHabit = id => Object.prototype.hasOwnProperty.call(LEGACY_HABIT, id);
+
   function focusProgress(goal, entries, items) {
     const h = habitById(goal.habit);
     if (!h) return null;
@@ -1881,10 +1940,10 @@
 
   const FOCUS_SYSTEM = [
     'You are a Deadlock coach choosing ONE habit for the player to work on next.',
-    'You get the player\'s recent stats and a catalog of habits Climb can check in every game, each with how often the player passes it and their win rate when they pass vs fail.',
+    'You get the player\'s recent stats and Climb\'s rulebook: rules proven on 63,000 ranked matches to raise win rate for the same player, each with what it is worth at this player\'s rank (win-rate points), how often the player keeps it, and how often they broke it in their losses.',
     'Rules:',
-    '- Choose only an id from the catalog with eligible=true. Prefer habits that do not follow the result (outcome=false) and that the player passes less than 70% of the time.',
-    '- Pick the habit most likely to win them games, using the win-rate split and the rest of the stats.',
+    '- Choose only an id from the catalog with eligible=true. Prefer rules the player keeps less than 70% of the time.',
+    '- Pick the rule most likely to win them games: high worth at their rank AND often broken in their losses.',
     '- "why" cites the numbers. "how" gives 2–3 concrete things to do in-game to pass it. No invented hero or item facts.',
   ].join('\n');
   const focusSchema = ids => ({
@@ -1903,7 +1962,7 @@
     earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
     HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankStatus, roadTier, rankOutlook, OUTLOOK_N, OUTLOOK_K, OUTLOOK_DRIFT, OUTLOOK_STEP, matchRanks, MATCH_TAGS, matchTags, LANE_END, playerRankAt, avgBadge, heroRecord, heroTags, TAG_K, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
-    HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
+    HABITS, RULES, PROVEN, LEGACY_HABIT, isLegacyHabit, ruleWorth, rankBandOf, ruleCard, RULE_MIN_GAMES, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,
     LOBBY_V, ROLE_LABEL, ROLE_NOTE, TAG2_LABEL, LADDER_TIERS, LADDER_METRICS,

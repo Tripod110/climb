@@ -185,8 +185,8 @@
       </section>
       <div class="ledger">
         ${fig('Win rate', c.pct(M.cur.winRate), `${M.cur.wins}–${M.cur.losses}`, src('yours', `Wins ÷ games in this window (${M.cur.n} games), from your match history on deadlock-api.`))}
-        ${fig('Souls lead at 12:00', early.nAhead ? c.pct(early.ahead12) : '—', earlyPrev && earlyPrev.nAhead ? delta(early.ahead12, earlyPrev.ahead12, true) : `${early.nAhead} games`, src('yours', `Games where your souls at 12:00 beat your lane opponents’ average, out of ${early.nAhead} games in this window with match detail.` + splitNote('ahead12')))}
-        ${fig('No deaths to 10:00', early.nClean ? c.pct(early.clean10) : '—', earlyPrev && earlyPrev.nClean ? delta(early.clean10, earlyPrev.clean10, true) : `${early.nClean} games`, src('yours', `Games with zero deaths in the first 10 minutes, out of ${early.nClean} games in this window with match detail.` + splitNote('early0')))}
+        ${fig('Lane won at 9:00', early.nLane ? c.pct(early.laneWon) : '—', earlyPrev && earlyPrev.nLane ? delta(early.laneWon, earlyPrev.laneWon, true) : `${early.nLane} games`, src('yours', `Games where your souls at 9:00, when the lane phase ends, were at least your lane opponents’ average, out of ${early.nLane} games in this window with match detail. Across 63,000 ranked matches, the same player wins about 12 points more often when they do.` + splitNote('lane_souls')))}
+        ${fig('≤1 death to 9:00', early.nSafe ? c.pct(early.laneSafe) : '—', earlyPrev && earlyPrev.nSafe ? delta(early.laneSafe, earlyPrev.laneSafe, true) : `${early.nSafe} games`, src('yours', `Games with at most one death before 9:00, out of ${early.nSafe} games in this window with match detail. Across 63,000 ranked matches, worth about 8 points of win rate to the same player.` + splitNote('lane_le1')))}
         ${fig('Deaths a game', M.cur.n ? (M.w.cur.reduce((s, m) => s + m.d, 0) / M.cur.n).toFixed(1) : '—', M.prev && M.prev.n ? `${(M.w.prev.reduce((s, m) => s + m.d, 0) / M.prev.n).toFixed(1)} before` : '', src('yours', 'Average deaths per game in this window, from your match history.'))}
       </div>
 
@@ -259,7 +259,7 @@
       <b class="dv-off">${c.pct(lose)}</b><span class="dv-track"><span class="dv-bar l" style="right:50%;width:${(lose * 50).toFixed(1)}%"></span><span class="dv-bar w" style="left:50%;width:${(win * 50).toFixed(1)}%"></span></span><b class="pos">${c.pct(win)}</b></span>`;
   }
 
-  /* The habits that split YOUR wins from losses most, from your last 30 games. Plain counts. */
+  /* The rules costing you the most (worth at your rank × broken in your losses), as your own won-with / lost-without bars. */
   function splitTable(c, cat) {
     const rows = cat.filter(x => x.eligible).slice(0, 4);
     if (!rows.length) return '<p class="muted small">Counting once match details for your recent games have loaded…</p>';
@@ -528,29 +528,25 @@
       ${more ? `<details class="fold"><summary>How to pass it · games since you started</summary>${more}</details>` : ''}`;
   }
 
-  /* Coach, no habit yet: the three habits that split your wins from losses most, as the Overview's
-     split bars with a Pick button; every habit folds below. */
-  function habitPicks(c) {
-    const rows = c.focusCatalog().filter(x => x.eligible).slice(0, 3);
-    if (!rows.length) return '<p class="muted small">Counting once match details for your recent games have loaded…</p>';
-    return `<ul class="splits picks">${splitHead(c, rows[0].n)}
-      ${rows.map(x => `<li>${splitLab(c, x)}${splitBar(c, x)}<button type="button" class="btn sm" data-pick="${x.id}">Pick</button></li>`).join('')}</ul>`;
-  }
-  /* Every habit with your pass rate and win-rate split, folded. */
-  function habitPicker(c, title) {
-    const E = c.E, rows = c.focusCatalog().filter(x => x.n);
-    if (!rows.length) return '';
-    return `<details class="fold"><summary>${title} (${rows.length}) ${src('rule', `Every game gets a ✓ or ✗. After ${E.FOCUS_MIN_GAMES} games Climb says whether your pass rate really moved, and a habit is mastered at ${E.FOCUS_GRAD[0]} of your last ${E.FOCUS_GRAD[1]}. Only habits that split your wins from your losses can be picked. From your last ${rows[0].n} games with match detail.`)}</summary>
-      <div class="table-wrap"><table class="tbl habits"><thead><tr><th>Habit</th><th class="n">Happens</th><th class="n">Won with it</th><th class="n">Won without</th><th></th></tr></thead>
-      <tbody>${rows.map(x => `<tr class="${x.eligible ? '' : 'dim'}"><td>${c.esc(x.label)}${x.outcome ? ' <span class="tag" title="Partly follows the result: losing games also causes this">follows result</span>' : ''}</td>
-        <td class="n">${pc0(x.passRate)}</td><td class="n pos">${pc0(x.wrPass)}</td><td class="n muted">${pc0(x.wrFail)}</td>
-        <td class="n">${x.eligible ? `<button type="button" class="btn ghost-btn sm" data-pick="${x.id}">Pick</button>` : '<span class="muted small" title="Made no clear difference to your win rate">no difference</span>'}</td></tr>`).join('')}</tbody></table></div></details>`;
+  /* The rulebook (Engine.habitCatalog): every rule proven on everyone's games, with how often you keep it, how often
+     you broke it in your losses, and what it's worth at your rank. Climb's pick (★) is the one costing you the most. */
+  const worthTxt = w => !w ? '—' : Math.round(w[0] * 100) === Math.round(w[1] * 100) ? `+${Math.round(w[1] * 100)}` : `+${Math.round(w[0] * 100)}–${Math.round(w[1] * 100)}`;
+  function rulebook(c) {
+    const E = c.E, rows = c.focusCatalog(), act = c.state.focus.active && c.state.focus.active.habit, pick = E.suggestHabit(rows);
+    if (!rows.some(x => x.n)) return '<p class="muted small">Checking the rules once match details for your recent games have loaded…</p>';
+    const info = src('ranks', `Seven rules proven on 62,984 ranked matches (model/habits.py): for the SAME player, games keeping the rule were won this many points more often than games breaking it, at your rank. Mid-game rules show a range: from the same team position at 9:00 down to the same position at 15:00. Each helped at every rank and on 89%+ of heroes. Kept and broken-in-losses are from your last ${rows[0].n || 0} games with match detail. ★ is Climb’s pick for your focus: the rule worth the most times how often you broke it when you lost.`);
+    const btn = x => act === x.id ? '<span class="tag">your focus</span>' : !x.eligible ? '<span class="muted small">no data yet</span>'
+      : `<button type="button" class="btn sm${pick && pick.id === x.id ? '' : ' ghost-btn'}" data-pick="${x.id}">${pick && pick.id === x.id ? '★ Train' : 'Train'}</button>`;
+    return `<ul class="rules"><li class="rules-h small"><span>Rule ${info}</span><span class="n">Kept</span><span class="n">Broken in losses</span><span class="n">Worth</span><span></span></li>
+      ${rows.map(x => `<li${x.eligible ? '' : ' class="dim"'}><span class="rl"><b>${c.esc(x.short)}</b><span class="muted small">${c.esc(x.label)}</span></span>
+        <span class="n"><b>${pc0(x.passRate)}</b><span class="muted small">kept</span></span><span class="n"><b class="${x.missLoss >= 0.5 ? 'neg' : ''}">${pc0(x.missLoss)}</b><span class="muted small">of ${x.nLoss} losses</span></span>
+        <span class="n"><b class="brass">${worthTxt(x.worth)}</b><span class="muted small">win %</span></span>${btn(x)}</li>`).join('')}</ul>`;
   }
 
   function focusHistory(c) {
     const E = c.E, H = c.state.focus.history;
     if (!H.length) return '';
-    const OUT = { graduated: 'Mastered', dropped: 'Dropped', switched: 'Switched' };
+    const OUT = { graduated: 'Mastered', dropped: 'Dropped', switched: 'Switched', retired: 'Retired' };
     return `<section class="ov-sec">${sh('Past habits')}<ul class="fc-hist">${H.map(x => `<li>
       <span>${c.esc((E.habitById(x.habit) || { label: x.habit }).label)}</span>
       <b>${pc0(x.baseline)} <span class="muted">→</span> ${pc0(x.rate)}</b><span class="muted small">${x.n} games</span>
@@ -603,11 +599,11 @@
 
     host.innerHTML = mast + `
       <section class="ov-sec coach-train">
-        ${sh(active ? 'Training' : 'Training · pick one habit', active ? '' : pickBtn)}
+        ${sh(active ? 'Training · the rulebook' : 'Training · pick one rule', active ? '' : pickBtn)}
         ${busy ? `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>${c.esc(busy)}</p>` : ''}
         ${st.focusError ? `<p class="neg small">${c.esc(st.focusError)}</p>` : ''}
-        ${active ? focusCard(c, true) : habitPicks(c)}
-        ${habitPicker(c, active ? 'Switch habit' : 'All habits')}
+        ${active ? focusCard(c, true) : ''}
+        ${rulebook(c)}
       </section>
 
       <section class="ov-sec">
@@ -970,6 +966,7 @@
         </section>
       </div>
       ${wpCard(c, m)}
+      ${ruleCardHtml(c, m)}
       ${farmMatchCard(c, m)}
       ${coachCard(c, m)}
       <section class="card flush scoreboard"><div class="sb-info small muted">Rank, games and win rate on the hero ${src('yours', `Each badge is the player’s rank in this game when deadlock-api can tell (this was their latest ranked game, or they haven’t played ranked since); a dimmer badge is their rank now. Under each hero: their games and win rate on it, all modes, all time. Tags: One-trick (60%+ of their games, 50+ games), Main (30%+, 30+ games), New on it (under 5 games), and Wins / Loses a lot on it, from a win rate pulled toward 50% by ${E.TAG_K} games so a short streak can’t earn it.`)}</div>${team(myTeam)}${team(1 - myTeam)}</section>`;
@@ -978,6 +975,19 @@
     bindSeg(host, '#ft', v2 => { farmTab = v2; c.render(); });
     const cb = host.querySelector('[data-coach]');
     if (cb) cb.addEventListener('click', () => c.runDebrief(m.id, cb.dataset.coach === 'again'));
+  }
+
+  /* This game against the rulebook (Engine.ruleCard): kept ✓ / broken ✗ per rule, with what each is worth. Needs match detail. */
+  function ruleCardHtml(c, m) {
+    const D = c.state.details[m.id];
+    if (!D || D.v !== c.E.DETAIL_V) return '';
+    const rows = c.E.ruleCard(c.entryOf(m), c.state.items && c.state.items.map, c.M.badge).filter(x => x.pass != null);
+    if (!rows.length) return '';
+    const broke = rows.filter(x => !x.pass);
+    const info = src('ranks', 'The rules proven on 62,984 ranked matches to raise win rate for the same player (see Coach). Worth: how many win-rate points keeping it is worth at your rank. Mid-game rules need a 20-minute game.');
+    return `<section class="card rule-card"><div class="card-head"><div><div class="t-label">Rulebook ${info}</div>
+      <h2>${broke.length ? `Broke ${broke.length} of ${rows.length}` : `Kept all ${rows.length}`}</h2></div></div>
+      <ul class="rc">${rows.map(x => `<li class="${x.pass ? 'y' : 'n'}"><span class="dot ${x.pass ? 'y' : 'n'}">${x.pass ? '✓' : '✗'}</span><span>${c.esc(x.short)}</span><b class="brass">${worthTxt(x.worth)}</b></li>`).join('')}</ul></section>`;
   }
 
   function coachCard(c, m) {
@@ -1020,13 +1030,13 @@
     if (missing.length) c.ensureDetailsFor(missing.map(m => m.id));
     const hc = E.heroCoach(recent.map(c.entryOf), items, c.heroName);
     const loading = missing.length && c.state.detailsBusy ? `<p class="muted coach-busy"><span class="spin" aria-hidden="true"></span>Reading your ${name} games…</p>` : '';
-    const info = src('yours', `Counted from your last ${HERO_COACH_GAMES} ${c.heroName(hero)} games that have match detail. Habits are the same checks as the Coach tab. A habit is only suggested when passing it split YOUR ${c.heroName(hero)} wins from losses by ${Math.round(E.FOCUS_MIN_LIFT * 100)}+ points with ${E.FOCUS_MIN_SIDE}+ games on each side. Under ${E.HERO_COACH_FIRM} games the sample is flagged thin. Nothing here is written by AI.`);
+    const info = src('yours', `Counted from your last ${HERO_COACH_GAMES} ${c.heroName(hero)} games that have match detail: the Coach tab’s rulebook, on this hero. ★ is the rule your ${c.heroName(hero)} losses broke most, weighted by what it’s worth. Under ${E.HERO_COACH_FIRM} games the sample is flagged thin. Nothing here is written by AI.`);
     const head = sh(`Coach me · ${name}`, `<span class="muted small">${hc.n} games read${hc.thin ? ' · thin' : ''}</span> ${info}`);
     if (!hc.ready) return `<section class="ov-sec">${head}<p class="muted small">${hc.n}/${E.HERO_COACH_MIN} games with match detail</p>${loading}</section>`;
     const f = hc.focus, active = c.state.focus.active && c.state.focus.active.habit;
     const isF = k => !!(f && k.id === f.id);
-    const rows = hc.catalog.filter(k => k.n >= 5 && !k.outcome).sort((a, b) => (isF(b) - isF(a)) || (b.eligible - a.eligible) || ((b.lift || -1) - (a.lift || -1))).slice(0, 5);
-    const btn = k => !k.eligible ? '<span class="muted small">no clear split</span>' : active === k.id ? '<span class="tag">your focus</span>'
+    const rows = hc.catalog.filter(k => k.n >= 5).sort((a, b) => (isF(b) - isF(a)) || (b.priority - a.priority)).slice(0, 5);
+    const btn = k => !k.eligible ? '<span class="muted small">no data yet</span>' : active === k.id ? '<span class="tag">your focus</span>'
       : `<button type="button" class="btn sm${isF(k) ? '' : ' ghost-btn'}" data-pick="${k.id}">${isF(k) ? '★ Pick' : 'Pick'}</button>`;
     const d = hc.agg.deaths, r1 = v => v == null ? '—' : v.toFixed(1);
     return `<section class="ov-sec">${head}${loading}
@@ -1127,8 +1137,8 @@
       <div class="ledger l5">
         ${fig('Win rate', c.pct(sum.winRate), `${sum.wins}–${sum.losses}`)}
         ${fig('Rank points', sum.hasDelta ? c.signed(sum.net) : '—', 'on this hero')}
-        ${fig('Souls lead at 12:00', heroEarly.nAhead ? c.pct(heroEarly.ahead12) : '—', `${heroEarly.nAhead} games`, src('yours', 'Games where your souls at 12:00 beat your lane opponents’ average, out of your recent games on this hero with match detail.'))}
-        ${fig('No deaths to 10:00', heroEarly.nClean ? c.pct(heroEarly.clean10) : '—', `${heroEarly.nClean} games`)}
+        ${fig('Lane won at 9:00', heroEarly.nLane ? c.pct(heroEarly.laneWon) : '—', `${heroEarly.nLane} games`, src('yours', 'Games where your souls at 9:00 were at least your lane opponents’ average, out of your recent games on this hero with match detail.'))}
+        ${fig('≤1 death to 9:00', heroEarly.nSafe ? c.pct(heroEarly.laneSafe) : '—', `${heroEarly.nSafe} games`)}
         ${fig('★ MVP games', roles.n ? roles.mvp : '—', `${roles.n} games read`, src('valve', 'Games where Valve named you MVP, 1st in the lobby.'))}
       </div>
 
@@ -1205,11 +1215,11 @@
     ['Rough games', 'Losses where you also played below your usual (Form under 0).'],
     ['Rank step · Pace', 'One division, e.g. Ritualist 1 → 2 (1,000 rank points in Season 2). Pace = ranked games per step lately.'],
     ['Where your win rate takes you', 'Your rank after 20 / 50 / 100 more ranked games, from your recent win rate pulled toward 50%. Tested on other players’ seasons; the range is where 6 in 10 ended up.'],
-    ['Souls lead at 12:00', 'Games where your souls beat your lane opponents’ average at 12:00.'],
-    ['No deaths to 10:00', 'Games with zero deaths in the first 10 minutes.'],
-    ['Habit', 'One thing to practise, checked ✓ or ✗ every game. Pass rate = how often you do it; mastered at ' + E.FOCUS_GRAD[0] + ' of your last ' + E.FOCUS_GRAD[1] + '.'],
-    ['Won with it · Lost without it', 'How often you won when a habit happened, and lost when it didn’t.'],
-    ['Follows result', 'A habit that partly happens because a game is already being lost.'],
+    ['Lane won at 9:00', 'Games where your souls at 9:00, when the lane phase ends, were at least your lane opponents’ average.'],
+    ['≤1 death to 9:00', 'Games with at most one death in the lane phase.'],
+    ['Rulebook · focus', 'Seven rules proven on 63,000 ranked matches to raise win rate for the same player, checked ✓ or ✗ every game. Your focus is the one to train now; mastered at ' + E.FOCUS_GRAD[0] + ' of your last ' + E.FOCUS_GRAD[1] + '.'],
+    ['Worth', 'How many points of win rate keeping a rule is worth at your rank, measured within the same players.'],
+    ['Won with it · Lost without it', 'How often you won when you kept a rule, and lost when you broke it.'],
     ['In wins · in losses', 'The same stat averaged over your wins and over your losses.'],
     ['Caught out', 'A death within ' + E.FAST_DEATH_S + 's of first taking damage.'],
     ['Win chance', 'Climb’s trained model: your team’s chance to win at that minute, from the souls, kills and objective gaps.'],

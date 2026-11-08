@@ -313,14 +313,38 @@
     const es = [];
     for (let i = 0; i < 10; i++) es.push(g(i, i < 8, [900]));
     for (let i = 10; i < 20; i++) es.push(g(i, i < 12, [300]));
-    const cat = E.habitCatalog(es, {});
-    const early0 = cat.find(c => c.id === 'early0');
-    eq('catalog: pass rate + split', [early0.passRate, early0.wrPass, early0.wrFail, early0.eligible], [0.5, 0.8, 0.2, true]);
-    eq('catalog: habit with no data is not eligible', cat.find(c => c.id === 'ahead12').eligible, false);
-    eq('suggest picks the biggest real split, non-outcome first', E.suggestHabit(cat).id, 'early0');
+    // The rulebook: proven rules only, ranked by worth at your rank × how often you broke it in your losses.
+    // lane_le1 (≤1 death before 9:00): the 900s death passes; two deaths before 9:00 fail.
+    const es2 = [];
+    for (let i = 0; i < 10; i++) es2.push(g(i, i < 8, [900]));
+    for (let i = 10; i < 20; i++) es2.push(g(i, i < 12, [100, 300]));
+    const cat = E.habitCatalog(es2, {}, 42);
+    const le1 = cat.find(c => c.id === 'lane_le1');
+    eq('rulebook: only the proven rules', cat.map(c => c.id).sort(), E.RULES.map(r => r.id).sort());
+    eq('rulebook: pass rate, split, broken in 8 of 10 losses', [le1.passRate, le1.wrPass, le1.wrFail, le1.missLoss, le1.eligible], [0.5, 0.8, 0.2, 0.8, true]);
+    near('rulebook: priority = worth at your rank × broken in losses', le1.priority, 0.089 * 0.8);
+    eq('rulebook: a rule with no data in these games is not offered', cat.find(c => c.id === 'lane_souls').eligible, false);
+    eq('rulebook: suggest = the rule costing you most', E.suggestHabit(cat).id, 'lane_le1');
     const flat = [];
-    for (let i = 0; i < 20; i++) flat.push(g(i, i % 2 === 0, i < 10 ? [900] : [300]));
-    eq('no win-rate split -> not offered', E.habitCatalog(flat, {}).find(c => c.id === 'early0').eligible, false);
+    for (let i = 0; i < 20; i++) flat.push(g(i, i % 2 === 0, i < 10 ? [900] : [100, 300]));
+    eq('rulebook: proven rules are offered even without a personal split', E.habitCatalog(flat, {}, 42).find(c => c.id === 'lane_le1').eligible, true);
+    eq('rule worth: lane rule is one number, mid rule a range (15:00 to 9:00 position)', [E.ruleWorth('lane_le1', 42), E.ruleWorth('mid_le2', 42).map(x => +x.toFixed(3))], [[0.089, 0.089], [0.05, 0.125]]);
+    eq('rank bands', [0, 13, 42, 61, 85, 116].map(E.rankBandOf), ['cal', 'b1', 'b2', 'b3', 'b4', 'b5']);
+    eq('rule card: one line per rule, pass from this game', E.ruleCard(es2[10], {}, 42).find(x => x.id === 'lane_le1').pass, false);
+    // Each rule's check on a small match. snap: [t, souls, k, d, a, dmg, lane, jungle, lh, box, treasure, creeps, objDmg, soulsLost]
+    const sp = (t, souls, obj, lost) => [t, souls, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, obj, lost];
+    const pl = (slot, team, lane, s540, s1200, deaths, items) => ({ slot, team, lane, acct: slot, items: items ? [] : null, snaps: [s540, s1200], deaths: deaths || [] });
+    const Dr = (meDeaths, other) => ({ v: E.DETAIL_V, dur: 1800, players: [
+      pl(1, 0, 1, sp(540, 6000, 0, 0), sp(1200, 15000, 4000, 300), meDeaths, true),
+      pl(2, 1, 1, sp(540, 5000, 0, 0), sp(1200, 14000, 1000, 900), other || []),
+      pl(3, 1, 4, sp(540, 4000, 0, 0), sp(1200, 13000, 1000, 100)),
+    ] });
+    const tr = (id, D) => E.habitById(id).test({ won: true, dur: 1800 }, null, D, {});
+    eq('rules: lane souls ≥ lane opponent at 9:00; obj damage ≥ lobby; souls lost ≤ lobby median', ['lane_souls', 'mid_obj', 'mid_bank'].map(id => tr(id, Dr([]))), [true, true, true]);
+    eq('rules: a lone death at 12:00 breaks "don’t die alone"; one with another death 5s later doesn’t', [tr('mid_nolone', Dr([[720, 2, 0, 0, 9]])), tr('mid_nolone', Dr([[720, 2, 0, 0, 9]], [[725, 1, 0, 0, 9]]))], [false, true]);
+    eq('rules: three deaths 9:00–20:00 break ≤2; a 3s death breaks never caught out', [tr('mid_le2', Dr([[600, 2, 0, 0, 9], [700, 2, 0, 0, 9], [800, 2, 0, 0, 9]])), tr('mid_nocaught', Dr([[600, 2, 0, 0, 3]]))], [false, false]);
+    eq('rules: mid rules need a 20-minute game', E.habitById('mid_le2').test({}, null, Object.assign(Dr([]), { dur: 1100 }), {}), null);
+    eq('legacy habits are recognised, rules are not', [E.isLegacyHabit('ahead12'), E.isLegacyHabit('tier3'), E.isLegacyHabit('lane_souls')], [true, true, false]);
 
     const goal = { habit: 'early0', start: 1000 + 20, baseline: { rate: 0.3, n: 30 } };
     const after = n => Array.from({ length: n }, (_, k) => g(20 + k, true, k % 5 === 0 ? [300] : [900]));  // 80% pass
@@ -394,7 +418,7 @@
     eq('habit jungle12: more camp+box souls than lane opponents', [E.habitById('jungle12').test(null, null, fg(sn(2400, 900, 900, 0, 32, 36), sn(2400, 500, 500, 0, 32, 36), sn(2400, 500, 500, 0, 32, 36)).D), E.habitById('jungle12').test(null, null, mk(1, 0, 800)[0].D)], [true, false]);
     eq('habit creeps12: 80% of lane creeps', [E.habitById('creeps12').test(null, null, fg(sn(1, 1, 1, 0, 30, 36), sn(1, 1, 1, 0, 1, 36), sn(1, 1, 1, 0, 1, 36)).D), E.habitById('creeps12').test(null, null, fg(sn(1, 1, 1, 0, 20, 36), sn(1, 1, 1, 0, 1, 36), sn(1, 1, 1, 0, 1, 36)).D)], [true, false]);
     const cd4 = E.compactMatchDetail({ duration_s: 100, players: [{ account_id: 7, player_slot: 1, team: 'Team0', assigned_lane: 1, items: [], stats: [{ time_stamp_s: 60, net_worth: 5, gold_lane_creep: 400, gold_lane_creep_orbs: 300, gold_neutral_creep: 50, gold_source_breakable_gold: 70, gold_treasure: 20, possible_creeps: 9, creep_kills: 8 }] }] }, 7);
-    eq('detail v4: lane souls not double counted by orbs; boxes, treasure, creeps available kept', cd4.players[0].snaps[0].slice(6), [400, 50, 8, 70, 20, 9]);
+    eq('detail v5: lane souls not double counted by orbs; boxes, treasure, creeps available kept; objective damage + souls lost (0 when absent)', cd4.players[0].snaps[0].slice(6), [400, 50, 8, 70, 20, 9, 0, 0]);
 
     // rankForecast: divisions per game over the last 40 ranked games, direction only when both halves agree.
     const rk = (badges, won) => badges.map((b, i) => ({ id: i, t: i, mode: 'ranked', badge: b, calib: false, won: won ? won(i) : i % 2 === 0 }));
@@ -502,12 +526,12 @@
     const r0 = E.heroCoach(few, {});
     eq('hero coach: under the minimum makes no call', [r0.ready, r0.n, r0.need], [false, 7, 1]);
     const es = [];
-    for (let i = 0; i < 6; i++) es.push(g(i, i < 5, [900]));
-    for (let i = 6; i < 12; i++) es.push(g(i, i < 7, [300]));
+    for (let i = 0; i < 6; i++) es.push(g(i, i < 5, []));
+    for (let i = 6; i < 12; i++) es.push(g(i, i < 7, [100, 300]));
     es.push(g(99, true, [900]), Object.assign(g(98, true, []), { D: null }));   // a game without detail is ignored
     const r = E.heroCoach(es, {});
     eq('hero coach: counts only games with detail, thin under 15', [r.ready, r.n, r.thin], [true, 13, true]);
-    eq('hero coach: picks the habit that splits this hero’s wins', r.focus && r.focus.id, 'early0');
+    eq('hero coach: picks the rule this hero’s losses broke most', r.focus && r.focus.id, 'lane_le1');
   }
 
   // ---------------------------------------------------------------- win chance
@@ -565,7 +589,7 @@
       { key: 'kills', label: 'Kills', you: 3, next: { status: 'par', rel: 0, v: 3 } } ] };
     const plan = E.nextRankPlan(lad);
     eq('plan: biggest gap first, win rate never a target', plan.gaps.map(g => [g.key, g.gap]), [['jungle', 850], ['lane', 900]]);
-    eq('plan: lane maps to a habit', plan.gaps[1].habit, 'ahead12');
+    eq('plan: lane maps to a rule', plan.gaps[1].habit, 'lane_souls');
     eq('plan: strengths + on par', [plan.strengths.map(x => x.label), plan.onPar], [['Deaths'], ['Kills']]);
 
     // calibration on your own games

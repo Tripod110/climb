@@ -29,14 +29,16 @@ rules (`sh()`), `.ledger` rows of figures, and every explanation behind a small 
   (`rankOutlook`: your rank after 20/50/100 more ranked games from your win rate, backtested; and the
   season rank-points chart). A last-session recap and a
   missing-games notice appear on top when they apply.
-- **Coach** (last 30 games): pick one habit to train (a ✓/✗ every game, called after a few
-  games, mastered at a set pass rate); wins vs losses figures; farm at 12:00 vs your lane; deaths
+- **Coach** (last 30 games): the rulebook, seven rules proven on 63k ranked matches, each with how
+  often you keep it, how often you broke it in your losses and what it is worth at your rank, plus one
+  focus to train (a ✓/✗ every game, mastered at a set pass rate); wins vs losses figures; farm at 12:00 vs your lane; deaths
   by phase, zone and killer; Gemini's notes on the whole set; past habits.
 - **Matches**: totals for the filtered games, then games grouped by day with each day's record
   and rank points (`matchTotals`, `matchDays`). Each row: the rank you played at (`matchRanks`), K/D/A, souls, damage, Form, rank
   points. A missing game can be added by match id.
 - **Match page**: your share of your team, you vs an average teammate, form vs your usual on
-  that hero, the win-chance chart with turning points and what each death usually costs, farm
+  that hero, the win-chance chart with turning points and what each death usually costs, the game
+  against the rulebook (`ruleCard`), farm
   by source vs your lane opponents, a Gemini debrief, and the 12-player scoreboard with the lobby and
   team average rank, each player's rank (`playerRankAt`), games and win rate on their hero, and tags
   (`heroTags`).
@@ -67,9 +69,11 @@ rules (`sh()`), `.ledger` rows of figures, and every explanation behind a small 
   0.25 × the extra deaths ratio. It gives the match page's "#2 of 6" team share, shown neutral:
   on 400 games it didn't predict wins. Lobby rows are compact arrays; `LOBBY_V` bumps when they
   grow, and older rows get re-fetched.
-- **Habits** (`HABITS`, `habitCatalog`, `focusProgress`): per-game checks measured before the
-  game is decided (ahead at 12:00, no deaths before 10:00, …). Only habits that split your wins
-  from your losses can be picked.
+- **Rulebook** (`RULES`, `PROVEN`, `habitCatalog`, `focusProgress`): seven rules from
+  `model/habits.py` (62,984 ranked matches): each rule's effect is the same player's win rate keeping
+  it vs breaking it, by rank band; mid-game rules are compared from the same 9:00 (and 15:00) team
+  position. The focus suggestion = worth at your rank × how often you broke it in your losses. Old
+  habits stay in `HABITS` for Friends' scorecard and past focuses only (`LEGACY_HABIT`).
 - **Rank comparison** (`rankLadder`):
   - Curve stats (`/v1/analytics/player-performance-curve`, `resolution=0`) at 15 / 20 / 30 min;
     win rate and accuracy from `/v1/analytics/hero-stats`, for every rank (22 calls, cached).

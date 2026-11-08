@@ -55,6 +55,13 @@
     state.details = S.getData('details', {});       // { matchId: compactMatchDetail } (last ~60)
     state.analysis = S.getData('analysis', null);   // { at, lastId, n, model, data } (+ error)
     state.focus = S.getData('focus', { active: null, history: [] });  // the focus loop (see Engine.focusProgress)
+    // A focus on a habit Climb no longer offers (before the rulebook, 0.49) moves to Past habits as 'retired'.
+    const fa = state.focus.active;
+    if (fa && E.isLegacyHabit(fa.habit)) {
+      state.focus.history.unshift({ habit: fa.habit, start: fa.start, end: Math.floor(Date.now() / 1000), baseline: fa.baseline ? fa.baseline.rate : null, rate: null, n: 0, verdict: 'early', outcome: 'retired' });
+      state.focus.active = null;
+      S.setData('focus', state.focus);
+    }
     state.friends = S.getData('friends', null);     // { at, mates: [...mate-stats rows], people: {acct: {name, avatar, badge}} }
     state.squad = S.getData('squad', {});           // { matchId: Engine.squadRow } shared games, last SQUAD_DAYS
     state.matchPlayers = S.getData('matchPlayers', {});   // { matchId: { at, p: { acct: { rank, rec } } } } match page: everyone's rank + hero record
@@ -513,7 +520,7 @@
   const entryOf = m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] });
   function focusEntries() { return detailGames().map(entryOf); }
   /* The habit catalog over your last ANALYSIS_N games (the baseline any new habit starts from). */
-  function focusCatalog() { return E.habitCatalog(lastGames().map(entryOf), state.items && state.items.map); }
+  function focusCatalog() { return E.habitCatalog(lastGames().map(entryOf), state.items && state.items.map, model().badge); }
   function focusNow() {
     const f = state.focus.active;
     return f ? E.focusProgress(f, focusEntries(), state.items && state.items.map) : null;
@@ -553,18 +560,18 @@
       await ensureDetails();
       const cat = focusCatalog();
       const eligible = cat.filter(c => c.eligible);
-      if (!eligible.length) throw new Error('No habit splits your wins from your losses clearly enough yet. Play a few more games.');
+      if (!eligible.length) throw new Error('Not enough of your recent games have match detail to check the rules yet. Play a few more games.');
       if (!state.coach.key || !state.coach.model) {
         const s = E.suggestHabit(cat);
-        startFocus(s.id, `Climb’s pick: you win ${Math.round(s.wrPass * 100)}% of games when you pass it vs ${Math.round(s.wrFail * 100)}% when you don’t, and you pass it in ${Math.round(s.passRate * 100)}% of games.`, null, 'climb');
+        startFocus(s.id, `Climb’s pick: at your rank it’s worth about +${Math.round(s.worth[1] * 100)} win-rate points, you broke it in ${Math.round((s.missLoss || 0) * 100)}% of your losses, and you keep it in ${Math.round(s.passRate * 100)}% of games.`, s.how ? [s.how] : null, 'climb');
         return;
       }
       const agg = E.aggregateGames(analysisEntries(), state.items && state.items.map, heroName);
       const pc = v => v == null ? null : Math.round(v * 100) + '%';
       const brief = {
         recent_stats: E.analysisBrief(agg, {}),
-        habit_catalog: cat.map(c => ({ id: c.id, habit: c.label, eligible: c.eligible, outcome: c.outcome, you_pass_it: pc(c.passRate),
-          win_rate_when_passed: pc(c.wrPass), win_rate_when_not: pc(c.wrFail), games: c.n })),
+        habit_catalog: cat.map(c => ({ id: c.id, habit: c.label, eligible: c.eligible, worth_at_your_rank: c.worth ? `+${Math.round(c.worth[0] * 100)} to +${Math.round(c.worth[1] * 100)} win-rate points` : null,
+          you_keep_it: pc(c.passRate), broken_in_your_losses: pc(c.missLoss), win_rate_when_kept: pc(c.wrPass), win_rate_when_broken: pc(c.wrFail), games: c.n })),
         past_habits: state.focus.history.slice(0, 5).map(h => ({ habit: (E.habitById(h.habit) || {}).label, outcome: h.outcome, pass_rate_before: pc(h.baseline), pass_rate_during: pc(h.rate) })),
       };
       setA('Coach is choosing your habit…');

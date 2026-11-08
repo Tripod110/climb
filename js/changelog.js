@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 49, date: '2026-11-08', title: 'The rulebook',
+      items: [
+        'Habits are now a rulebook of seven rules proven on 63,000 ranked matches to raise win rate for the same player, at every rank and on almost every hero: win your lane, ≤1 death in lane, ≤2 mid-game deaths, don’t die alone, hit objectives, bank your souls, never get caught out.',
+        'Coach shows how often you keep each one, how often you broke it in your losses, and what it’s worth at your rank. The ★ one is costing you the most: train it.',
+        'Every match page shows which rules that game kept and broke. Lane checks now happen at 9:00, when the lane phase ends.',
+        'A focus on one of the old habits moves to Past habits as Retired.',
+      ],
+    },
+    {
       v: 48, date: '2026-11-08', title: 'Match tags',
       items: [
         'Every game gets plaques for what it was, like the heroes’ own: Hard-Carry, Untouchable, Unstoppable, Comeback, Fed, Thrown, Lane-Bully, Glass-Cannon and 25 more.',

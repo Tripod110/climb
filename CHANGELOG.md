@@ -4,6 +4,20 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.49 (2026-11-08): The rulebook
+- `Engine.RULES`: seven rules from `model/habits.py` (62,984 ranked matches, within-player effects): lane_souls,
+  lane_le1, mid_le2, mid_nolone, mid_obj, mid_bank, mid_nocaught. `PROVEN` holds each effect overall, by rank band
+  (`rankBandOf`) and, for mid-game rules, the stricter 15:00-position effect (`lo`); `ruleWorth(id, badge)` → [lo, hi].
+- `habitCatalog(entries, items, badge)` now covers only the rules: kept rate, own win rate kept/broken, `missLoss`
+  (broken in your losses), `worth`, `priority` = worth × missLoss; eligible with 5+ checked games. `suggestHabit` picks by
+  priority. `ruleCard` checks one game. Old habits stay in `HABITS` (Friends' scorecard, past focuses); `LEGACY_HABIT`
+  / `isLegacyHabit` map them, and app.js moves an active legacy focus to history as `retired`.
+- `DETAIL_V` 5: snapshots add objective damage and souls lost to deaths (cached details re-fetch). `earlyRates` →
+  `laneWon` / `laneSafe` at 9:00 (Overview and Heroes ledgers), `LADDER_HABIT` → the lane rules, Gemini's focus brief
+  and prompt describe the rulebook.
+- Coach: `rulebook()` replaces `habitPicks` / `habitPicker` (no fold). Match page: `ruleCardHtml`. Glossary updated.
+  14 new tests, rule checks and catalog rewritten (280).
+
 ## 0.48 (2026-11-08): Match tags
 - `Engine.MATCH_TAGS` (33 tags: label, tone, weight, rule) and `Engine.matchTags({ m, L, D, form, wp, past })` →
   tags strongest first. Lobby-relative rules from the v2 lobby row (MVP, Hard-Carry, Lone-Wolf, Passenger, Fed,
