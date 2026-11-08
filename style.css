@@ -885,3 +885,21 @@ a.mr2.gold::before { background: var(--gold); }
 .ptag-otp, .ptag-main, .ptag-vet { color: var(--brass-hi); border-color: var(--brass-lo); }
 /* Phones: the scoreboard's name column is narrow, so the portrait gives way to the name, rank and record. */
 @media (max-width: 640px) { .sb:not(.sb-h) .mh > .hero-ic { display: none; } }
+/* Match tags: slanted plaques, one word or two (Engine.matchTags). Brass = good, gold = MVP,
+   dark red = bad, outlined = neutral. A tap shows the rule in the same popover as the "i" notes. */
+.plq {
+  display: inline-block; border: 0; cursor: pointer; white-space: nowrap;
+  font: 700 10.5px/1 var(--display); letter-spacing: .07em; text-transform: uppercase;
+  padding: 4px 7px 3px; border-radius: 2px; transform: rotate(-2deg);
+  background: var(--brass); color: #16130d; box-shadow: 0 1px 0 rgba(0, 0, 0, .5);
+}
+.plq:nth-child(even) { transform: rotate(1.5deg); }
+.plq:hover { filter: brightness(1.12); }
+.plq-gold { background: var(--gold); }
+.plq-bad { background: color-mix(in oklab, var(--bad) 62%, #1a0d0d); color: #fbe9e7; }
+.plq-neutral { background: transparent; color: var(--brass-hi); box-shadow: inset 0 0 0 1px var(--brass-lo); }
+.mr-tags { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+.mr-tags .plq { font-size: 9.5px; padding: 3px 6px 2px; }
+.fm-chips .plq { font-size: 9px; padding: 3px 5px 2px; }
+.plq-row { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: -4px 0 18px; }
+.plq-row .plq { font-size: 13px; padding: 6px 11px 5px; }

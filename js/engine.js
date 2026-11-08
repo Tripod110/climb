@@ -374,6 +374,7 @@
      (1.74). Steps per game = OUTLOOK_DRIFT + OUTLOOK_STEP × (2 × win rate − 1). OUTLOOK_DRIFT is the climb Season 1 players
      had even at 50% (demotion shields stop some drops); Season 2 has fewer shields, so refit it once Season 2 has games.
      OUTLOOK_BAND: the middle 60% of real outcomes around the guess, in steps. Clamped to Initiate 1 .. Eternus 6. */
+  const LANE_END = 540;   // the laning phase ends at 9:00 in the game (owner, 2026-11-07)
   const RANK_PROJ_AT = [20, 50, 100];
   const OUTLOOK_N = 40, OUTLOOK_K = 20, OUTLOOK_DRIFT = 0.0345, OUTLOOK_STEP = 0.0921;
   const OUTLOOK_BAND = {"20":[-0.94,1.31],"50":[-1.73,1.58],"100":[-2.68,2.08]};
@@ -447,6 +448,113 @@
     if (rec.n >= 20 && adj >= 0.56) tags.push({ id: 'wins', label: 'Wins a lot on it' });
     if (rec.n >= 20 && adj <= 0.44) tags.push({ id: 'loses', label: 'Loses a lot on it' });
     return { adj, tags };
+  }
+
+  /* ---- match tags: what a game was, in a word or two, like the heroes' own plaques ----
+     Every rule is against that match's lobby (or your lane opponents, or your own games on the hero), so a
+     tag means the same at Initiate and Eternus and on any hero. A game can earn many; views show the top
+     few by weight. tone: 'good' | 'bad' | 'neutral'. Lobby row: [team, souls, k, d, a, dmg, heal, hero, obj,
+     dmgTaken, lastHits, denies, mvp, lane, accuracy, account]. */
+  const MATCH_TAGS = {
+    comeback: ['Comeback', 'good', 95, 'Won after your team’s win chance fell to 25% or less'],
+    mvp: ['MVP', 'good', 92, 'Valve named you MVP: 1st in the lobby'],
+    untouchable: ['Untouchable', 'good', 90, 'No deaths in a game of 15+ minutes'],
+    thrown: ['Thrown', 'bad', 88, 'Lost after your team’s win chance reached 75% or more'],
+    unstoppable: ['Unstoppable', 'good', 86, '5+ kills in a row without dying'],
+    hardcarry: ['Hard-Carry', 'good', 80, 'Won as your team’s clear #1 by impact (1.3+ of an average teammate)'],
+    best: ['Career-Best', 'good', 76, 'More souls than any of your 10+ earlier games on this hero'],
+    fed: ['Fed', 'bad', 72, '10+ deaths, or the most in the lobby with 8+'],
+    glass: ['Glass-Cannon', 'neutral', 66, 'Top-2 damage and top-2 deaths in the lobby'],
+    onfire: ['On-Fire', 'good', 62, 'Form +1.0 or better: a clearly better game than your usual on this hero'],
+    lonewolf: ['Lone-Wolf', 'good', 60, 'Lost, but your team’s clear #1 by impact'],
+    executioner: ['Executioner', 'good', 56, 'Most kills in the lobby (8+)'],
+    offday: ['Off-Day', 'bad', 55, 'Form −1.0 or worse: a clearly worse game than your usual on this hero'],
+    heavy: ['Heavy-Hitter', 'good', 52, 'Most hero damage in the lobby'],
+    bully: ['Lane-Bully', 'good', 50, '25%+ more souls than your lane opponents at 9:00'],
+    farmer: ['Farmer', 'good', 50, 'Most souls in the lobby'],
+    healer: ['Healer', 'good', 50, 'Most healing in the lobby (3,000+, 1.5× the lobby average)'],
+    caught: ['Caught-Out', 'bad', 46, '3+ deaths within 5s of first taking damage'],
+    playmaker: ['Playmaker', 'good', 45, 'Most kills + assists in the lobby'],
+    demolisher: ['Demolisher', 'good', 45, 'Most objective damage in the lobby'],
+    starved: ['Starved', 'bad', 44, 'Under 70% of the lobby’s average souls'],
+    rough: ['Rough-Start', 'bad', 42, '3+ deaths before 9:00'],
+    bullied: ['Out-Laned', 'bad', 40, '20%+ fewer souls than your lane opponents at 9:00'],
+    survivor: ['Survivor', 'good', 40, 'Fewest deaths in the lobby (3 or fewer)'],
+    sharp: ['Sharpshooter', 'good', 38, 'Best accuracy in the lobby'],
+    frontline: ['Frontline', 'neutral', 35, 'Took the most damage in the lobby'],
+    jungler: ['Jungler', 'good', 34, 'Most jungle souls in the lobby'],
+    passenger: ['Passenger', 'neutral', 32, 'Won near the bottom of your team by impact, and not the lobby’s best at anything: they carried this one'],
+    stomp: ['Stomp', 'good', 30, 'Won in under 20 minutes'],
+    stomped: ['Stomped', 'bad', 30, 'Lost in under 20 minutes'],
+    treasure: ['Treasure-Hunter', 'neutral', 25, 'Most box + treasure souls in the lobby'],
+    marathon: ['Marathon', 'neutral', 24, 'A 45+ minute game'],
+    denier: ['Denier', 'neutral', 20, 'Most denies in the lobby (10+)'],
+  };
+  /* x: { m (match), L (v2 lobby), D (match detail, optional), form (perf score, optional),
+     wp ([{ t, p }] your team's win chance, optional), past (earlier matches on the same hero, optional) }
+     -> [{ id, label, tone, w, why }] strongest first. */
+  function matchTags(x) {
+    const { m, L, D } = x, out = [];
+    const add = id => { const t = MATCH_TAGS[id]; out.push({ id, label: t[0], tone: t[1], w: t[2], why: t[3] }); };
+    if (L && L.v === LOBBY_V) {
+      const P = L.p, i = L.me, me = P[i], g = gameRole(L, m.won);
+      const col = k => P.map(p => p[k]), most = (k, hi) => rankOf(col(k), i, hi !== false) === 1;
+      const avg = k => mean(col(k));
+      if (me[12] === 1) add('mvp');
+      if (m.dur >= 900 && me[3] === 0) add('untouchable');
+      else if (most(3, false) && me[3] <= 3) add('survivor');
+      if (me[3] >= 10 || (most(3) && me[3] >= 8)) add('fed');
+      if (g && m.won && g.teamRank === 1 && g.impact >= 1.3) add('hardcarry');
+      if (g && !m.won && g.teamRank === 1 && g.impact >= 1.3) add('lonewolf');
+      if (g && m.won && g.teamRank >= g.teamSize - 1) add('passenger');
+      if (most(2) && me[2] >= 8) add('executioner');
+      if (rankOf(P.map(p => p[2] + p[4]), i, true) === 1) add('playmaker');
+      if (most(5)) add('heavy');
+      if (rankOf(col(5), i, true) <= 2 && rankOf(col(3), i, true) <= 2 && me[3] >= 5) add('glass');
+      if (most(1)) add('farmer');
+      else if (me[1] < 0.7 * avg(1)) add('starved');
+      if (most(6) && me[6] >= 3000 && me[6] >= 1.5 * avg(6)) add('healer');
+      if (most(8) && me[8] > 0) add('demolisher');
+      if (most(9) && me[9] > 0) add('frontline');
+      if (most(14) && me[14] > 0) add('sharp');
+      if (most(11) && me[11] >= 10) add('denier');
+    }
+    if (m.dur && m.dur < 1200) add(m.won ? 'stomp' : 'stomped');
+    if (m.dur >= 2700) add('marathon');
+    if (x.form != null) { if (x.form >= 1) add('onfire'); else if (x.form <= -1) add('offday'); }
+    if (D && D.v === DETAIL_V) {
+      const me = meOf(D);
+      if (me) {
+        // kills in a row: your kills are other players' deaths with your slot as the killer
+        const kills = D.players.filter(p => p.team !== me.team).flatMap(p => (p.deaths || []).filter(d => d[1] === me.slot).map(d => d[0]));
+        const ev = [...kills.map(t => [t, 1]), ...(me.deaths || []).map(d => [d[0], -1])].sort((a, b) => a[0] - b[0]);
+        let run = 0, best = 0;
+        for (const [, k] of ev) { run = k > 0 ? run + 1 : 0; best = Math.max(best, run); }
+        if (best >= 5) add('unstoppable');
+        if ((me.deaths || []).filter(d => d[4] > 0 && d[4] <= FAST_DEATH_S).length >= 3) add('caught');
+        if ((me.deaths || []).filter(d => d[0] < LANE_END).length >= 3) add('rough');
+        if (D.dur >= LANE_END) {
+          const mine = snapAtT(me, LANE_END), opps = D.players.filter(p => p.team !== me.team && p.lane === me.lane).map(p => snapAtT(p, LANE_END)).filter(Boolean);
+          if (mine && opps.length) { const o = mean(opps.map(q => q[1])); if (o > 0 && mine[1] >= 1.25 * o) add('bully'); else if (o > 0 && mine[1] <= 0.8 * o) add('bullied'); }
+        }
+        const last = p => p.snaps.length ? p.snaps[p.snaps.length - 1] : null, lasts = D.players.map(last).filter(Boolean), ml = last(me);
+        if (ml && lasts.length > 1) {
+          if (ml[7] > 0 && ml[7] >= Math.max(...lasts.map(q => q[7]))) add('jungler');
+          const tr = q => (q[9] || 0) + (q[10] || 0);
+          if (tr(ml) > 0 && tr(ml) >= Math.max(...lasts.map(tr))) add('treasure');
+        }
+      }
+    }
+    if (x.wp && x.wp.length) {
+      const ps = x.wp.map(q => q.p);
+      if (m.won && Math.min(...ps) <= 0.25) add('comeback');
+      if (!m.won && Math.max(...ps) >= 0.75) add('thrown');
+    }
+    if (x.past && x.past.length >= 10 && m.souls > Math.max(...x.past.map(q => q.souls || 0))) add('best');
+    // Passenger only when you weren't the lobby's best at anything: Farmer + Passenger contradicts itself.
+    const STAR = ['mvp', 'hardcarry', 'executioner', 'playmaker', 'heavy', 'farmer', 'healer', 'demolisher', 'sharp', 'unstoppable', 'onfire', 'best'];
+    if (out.some(t => STAR.includes(t.id))) { const k = out.findIndex(t => t.id === 'passenger'); if (k >= 0) out.splice(k, 1); }
+    return out.sort((a, b) => b.w - a.w);
   }
 
   /* Matches tab: totals for a list of matches (any order). net/ranked only count games with a rank delta. */
@@ -1794,7 +1902,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, versus, friendBoard, scorecard, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankStatus, roadTier, rankOutlook, OUTLOOK_N, OUTLOOK_K, OUTLOOK_DRIFT, OUTLOOK_STEP, matchRanks, playerRankAt, avgBadge, heroRecord, heroTags, TAG_K, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankStatus, roadTier, rankOutlook, OUTLOOK_N, OUTLOOK_K, OUTLOOK_DRIFT, OUTLOOK_STEP, matchRanks, MATCH_TAGS, matchTags, LANE_END, playerRankAt, avgBadge, heroRecord, heroTags, TAG_K, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

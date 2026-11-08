@@ -626,6 +626,34 @@
     eq('scorecard: cost metric names the better player', sc.metrics.find(x => x.id === 'cost').better, 'them');
   }
 
+  // ---------------------------------------------------------------- match tags
+  {
+    // [team, souls, k, d, a, dmg, heal, hero, obj, dmgTaken, lh, denies, mvp, lane, acc, acct]
+    const row = (team, o) => Object.assign([team, 30000, 4, 6, 8, 20000, 500, 1, 2000, 25000, 100, 4, 0, 1, 40, 0], o || {});
+    const mk = me => ({ v: E.LOBBY_V, me: 0, dur: 1800, win: 0, p: [row(0, me), ...[0, 0, 0, 0, 0].map(t => row(t)), ...Array.from({ length: 6 }, () => row(1))] });
+    const ids = (x) => E.matchTags(x).map(t => t.id);
+    const big = mk({ 1: 60000, 2: 14, 3: 0, 4: 12, 5: 50000, 8: 9000, 12: 1, 14: 55 });
+    const t1 = ids({ m: { won: true, dur: 1800, souls: 60000 }, L: big });
+    eq('tags: a carry game', ['mvp', 'untouchable', 'hardcarry', 'executioner', 'playmaker', 'heavy', 'farmer', 'demolisher', 'sharp'].every(k => t1.includes(k)), true);
+    eq('tags: strongest first', t1[0], 'mvp');
+    eq('tags: every label is one word or two joined by a hyphen', Object.values(E.MATCH_TAGS).every(t => /^(MVP|[A-Z][a-z]+(-[A-Z][a-z]+)?)$/.test(t[0])), true);
+    const t2 = ids({ m: { won: false, dur: 1100 }, L: mk({ 1: 15000, 3: 12, 2: 1, 5: 8000 }) });
+    eq('tags: a rough loss: fed, starved, stomped', ['fed', 'starved', 'stomped'].every(k => t2.includes(k)) && !t2.includes('farmer'), true);
+    const quiet = mk({ 1: 22000, 2: 1, 4: 3, 5: 9000, 8: 0, 14: 20 }), loud = mk({ 1: 60000, 2: 1, 4: 3, 5: 9000, 8: 0, 14: 20 });
+    eq('tags: passenger only when you were the lobby best at nothing', [ids({ m: { won: true, dur: 1800 }, L: quiet }).includes('passenger'), ids({ m: { won: true, dur: 1800 }, L: loud }).includes('passenger')], [true, false]);
+    eq('tags: glass cannon = top-2 damage and top-2 deaths', ids({ m: { won: false, dur: 1800 }, L: mk({ 5: 50000, 3: 11 }) }).includes('glass'), true);
+    eq('tags: form', [ids({ m: { won: true, dur: 1800 }, form: 1.2 }), ids({ m: { won: true, dur: 1800 }, form: -1.4 })], [['onfire'], ['offday']]);
+    eq('tags: comeback / thrown from the win-chance timeline', [ids({ m: { won: true, dur: 1800 }, wp: [{ p: 0.5 }, { p: 0.2 }, { p: 0.9 }] }), ids({ m: { won: false, dur: 1800 }, wp: [{ p: 0.5 }, { p: 0.8 }, { p: 0.1 }] })], [['comeback'], ['thrown']]);
+    eq('tags: career best needs 10+ earlier games', [ids({ m: { won: true, dur: 1800, souls: 50 }, past: Array(10).fill({ souls: 40 }) }), ids({ m: { won: true, dur: 1800, souls: 50 }, past: Array(9).fill({ souls: 40 }) })], [['best'], []]);
+    // detail: you (slot 1) kill five enemies in a row, die 3 times before 9:00, and lead your lane opponent 30% at 9:00
+    const snap = (t, souls) => [t, souls, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const D = { v: E.DETAIL_V, dur: 1800, players: [
+      { slot: 1, team: 0, lane: 1, items: [], snaps: [snap(540, 6500)], deaths: [[100, 9, 0, 0, 2], [200, 9, 0, 0, 3], [300, 9, 0, 0, 4]] },
+      { slot: 9, team: 1, lane: 1, items: null, snaps: [snap(540, 5000)], deaths: [400, 500, 600, 700, 800].map(t => [t, 1, 0, 0, 9]) }] };
+    const t3 = ids({ m: { won: true, dur: 1800 }, D });
+    eq('tags: from match detail', ['unstoppable', 'caught', 'rough', 'bully'].every(k => t3.includes(k)), true);
+  }
+
   // ---------------------------------------------------------------- freshness
   {
     const ms = [{ id: 1, t: 1000, dur: 1800 }, { id: 2, t: 5000, dur: 2000 }];   // newest ends at 7000

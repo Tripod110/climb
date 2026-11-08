@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 48, date: '2026-11-08', title: 'Match tags',
+      items: [
+        'Every game gets plaques for what it was, like the heroes’ own: Hard-Carry, Untouchable, Unstoppable, Comeback, Fed, Thrown, Lane-Bully, Glass-Cannon and 25 more.',
+        'Each one is measured against that game’s lobby, so it means the same at any rank and on any hero. Tap a plaque to see its exact rule.',
+        'You’ll see the top two on each match in Matches and the Film room, and every tag a game earned on its match page.',
+      ],
+    },
+    {
       v: 47, date: '2026-11-08', title: 'Where you’re heading, and who you played',
       items: [
         'Overview’s rank projection now comes from your win rate, not your recent streak. Tested on 45 other players’ seasons, carrying a streak forward was the worst guess and win rate the best; your lobbies’ rank didn’t help, so it isn’t used.',

@@ -6,20 +6,17 @@
   // ---------------------------------------------------------------- shared bits
   const ICONV = { improving: '▲', holding: '■', slipping: '▼', unknown: '·' };
   const WORD = { improving: 'Improving', holding: 'Holding', slipping: 'Slipping', unknown: 'Not enough games' };
-  const firstChip = g => g && g.lobbyFirst ? '<span class="first" title="Valve named you MVP: 1st in the lobby">★ MVP</span>' : '';
-  /* Team share is neutral on purpose: on the user's 400 games it didn't predict results (see
-     the team-share note in engine.js). Gold ★ 1st (Valve's MVP) is the only highlight. */
-  /* How the game went compared with YOUR usual on that hero (the form score), only when it is clearly
-     above or below. It replaces "Top/Mid/Low share", which described your team's split and said
-     nothing about how you played. */
+  /* Match tags (Engine.matchTags): what a game was, in a word or two, as slanted plaques like the heroes' own.
+     A tap shows the exact rule (the same popover as the "i" notes). Top `max` by weight. */
+  function tagsFor(c, m) {
+    const st = c.state, L = st.lobbies[m.id], D = st.details[m.id], p = c.M.perf.get(m.id), w = c.matchWin(m.id);
+    return c.E.matchTags({ m, L, D: D && D.v === c.E.DETAIL_V ? D : null, form: p ? p.score : null, wp: w ? w.timeline : null,
+      past: c.M.all.filter(x => x.hero === m.hero && x.t < m.t) });
+  }
+  const plaques = (c, m, max) => tagsFor(c, m).slice(0, max).map(t =>
+    `<button type="button" class="plq plq-${t.id === 'mvp' ? 'gold' : t.tone}" data-note="${c.esc(t.why)}">${c.esc(t.label)}</button>`).join('');
+  /* How the game went compared with YOUR usual on that hero (the form score): the Matches "how you played" filter. */
   const FORM_GAME = 0.4;
-  const roleChip = (c, g, id) => {
-    if (!g) return id != null && c.state.lobbies[id] === null ? '<span class="role pending">No lobby data</span>' : '<span class="role pending">Reading lobby…</span>';
-    const p = c.M.perf.get(id);
-    const f = !p ? '' : p.score >= FORM_GAME ? '<span class="role good" title="You played above your usual on this hero (souls, farm by 12:00 vs your lane, damage, kills + assists, staying alive vs your other games on it).">Above your usual</span>'
-      : p.score <= -FORM_GAME ? '<span class="role bad" title="You played below your usual on this hero (souls, farm by 12:00 vs your lane, damage, kills + assists, staying alive vs your other games on it).">Below your usual</span>' : '';
-    return firstChip(g) + f;
-  };
 
   /* Where a number comes from. Tap a badge to see how it was worked out. Kinds:
      yours = counted from your own games · model = Climb's trained win model · ranks = averages
@@ -28,9 +25,12 @@
   const SRC = { yours: 'Your games', model: 'Trained model', ranks: 'Rank data', valve: 'Valve', rule: 'Climb rule', ai: 'AI' };
   const src = (kind, note) => `<button type="button" class="src src-${kind}" data-note="${String(note).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" aria-label="${SRC[kind]}: how this was worked out">${SRC[kind]}</button>`;
   let popover = null;
+  // A popover belongs to the page it was opened on: close it when the page changes.
+  window.addEventListener('hashchange', () => { if (popover) { popover.remove(); popover = null; } });
   document.addEventListener('click', e => {
-    const b = e.target.closest && e.target.closest('.src');
+    const b = e.target.closest && e.target.closest('.src, .plq');
     if (popover && (!b || popover.dataset.for !== b.dataset.note)) { popover.remove(); popover = null; }
+    if (b && b.classList.contains('plq')) e.preventDefault();   // a plaque sits inside a match link: show its rule, don't open the match
     if (!b || popover) return;
     popover = document.createElement('div');
     popover.className = 'src-pop'; popover.dataset.for = b.dataset.note;
@@ -209,7 +209,7 @@
             <b class="fm-hero">${c.esc(c.heroName(m.hero))}</b>
             <span class="fm-kda">${kda(m)}</span>
             <span class="fm-foot">${m.delta == null ? deltaHtml(c, m) : `<span>${deltaHtml(c, m)} <span class="muted">pts</span></span>`}<span class="muted">${c.ago(m.t)}</span></span>
-            ${g ? `<span class="fm-chips">${roleChip(c, g, m.id)}</span>` : ''}</a></li>`;
+            <span class="fm-chips">${plaques(c, m, 2)}</span></a></li>`;
         }).join('')}</ol>
       </section>
 
@@ -832,8 +832,8 @@
     const form = !p ? '<span class="muted">—</span>' : `<span class="${p.score >= 0.2 ? 'pos' : p.score <= -0.2 ? 'neg' : 'muted'}">${form1(p.score)}</span>`;
     const t = when === 'clock' ? new Date(m.t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : c.ago(m.t);
     return `<a class="mr2 ${m.won ? 'w' : 'l'}${g && g.lobbyFirst ? ' gold' : ''}" href="#/match/${m.id}">
-      <span class="mh">${icon(c, m.hero, 30)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small mr-sub">${rankMark(c, m, 18)}${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
-      <span class="mr-marks">${mark || ''}${firstChip(g)}</span>
+      <span class="mh">${icon(c, m.hero, 30)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small mr-sub">${rankMark(c, m, 18)}${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span>${(t => t ? `<span class="mr-tags">${t}</span>` : '')(plaques(c, m, 2))}</span></span>
+      <span class="mr-marks">${mark || ''}</span>
       <span class="mr-res ${m.won ? 'win' : 'loss'}">${m.won ? 'W' : 'L'}</span>
       <span class="n mr-kda">${kda(m)}</span>
       <span class="n hide-s">${c.kfmt(m.souls)}</span>
@@ -925,7 +925,8 @@
           <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${(() => { const r = M.ranks.get(m.id); return !r || !r.kind ? '' : r.kind === 'placement' ? ' · placement game' : ' · you ' + (r.kind === 'before' ? 'were ' : 'played at ') + c.esc(E.badgeName(r.badge, c.tiers())); })()}${lobbyAvg ? ` · lobby avg <b class="ink">${c.esc(E.badgeName(lobbyAvg, c.tiers()))}</b>` : ''} · #${m.id}${m.added ? ' · added by id' : ''}</div></div>
         </div>
         <div class="big-delta">${m.delta == null ? '' : `${deltaHtml(c, m)}<span class="muted small">rank pts</span>`}</div>
-      </div>`;
+      </div>
+      ${(t => t ? `<div class="plq-row">${t}</div>` : '')(plaques(c, m, 6))}`;
     if (!L || L.v !== E.LOBBY_V) {
       host.innerHTML = head + `<section class="card"><p class="muted">${L === null ? 'deadlock-api has no lobby data for this match.' : 'Lobby data is still loading…'}</p></section>`;
       return;
@@ -1215,6 +1216,7 @@
     ['−6% win chance (a death)', 'What a death like that usually costs at that minute, not an exact measure of that one.'],
     ['Creeps last-hit', 'Lane creeps you last-hit, out of those you could reach.'],
     ['★ MVP', 'Valve named you MVP: 1st in the lobby.'],
+    ['Match tags', 'Plaques like Hard-Carry, Untouchable, Comeback or Fed: what a game was, each against that match’s lobby so it means the same at any rank. Tap one for its exact rule.'],
     ['Rank badge on a match', 'The rank you played that game at. Dimmer on unranked games: your rank at the time.'],
     ['Scoreboard ranks · tags', 'Each player’s rank in that game (dimmer: their rank now), games and win rate on the hero, and tags like One-trick or Wins a lot on it.'],
     ['#2 of 6 · impact', 'Your place on your own team by share of souls, damage or healing, kills + assists and objectives. 1.00 = an average teammate. Neutral: it doesn’t predict wins.'],

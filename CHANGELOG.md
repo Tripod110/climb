@@ -4,6 +4,19 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.48 (2026-11-08): Match tags
+- `Engine.MATCH_TAGS` (33 tags: label, tone, weight, rule) and `Engine.matchTags({ m, L, D, form, wp, past })` →
+  tags strongest first. Lobby-relative rules from the v2 lobby row (MVP, Hard-Carry, Lone-Wolf, Passenger, Fed,
+  Untouchable, Survivor, Executioner, Playmaker, Heavy-Hitter, Glass-Cannon, Farmer, Starved, Healer, Demolisher,
+  Frontline, Sharpshooter, Denier), game length (Stomp, Stomped, Marathon), Form (On-Fire, Off-Day), match detail
+  (Unstoppable = 5+ kills in a row from other players' deaths with your slot as killer; Caught-Out, Rough-Start,
+  Lane-Bully / Out-Laned at `LANE_END` 9:00, Jungler, Treasure-Hunter), the win-chance timeline (Comeback ≤ 25%,
+  Thrown ≥ 75%) and your earlier games on the hero (Career-Best, 10+). Passenger is dropped when you were the lobby's
+  best at anything. Labels are one word or two joined by a hyphen (tested). 10 tests (270).
+- Views: `tagsFor` / `plaques` replace `firstChip` / `roleChip`; plaques under the hero on Matches rows (top 2), in
+  the Film room (top 2) and on the match page (up to 6). Plaques open the "i" popover with their rule and don't follow
+  the match link. Popovers now close on page change (an open one used to linger off-screen).
+
 ## 0.47 (2026-11-08): Where you're heading, and who you played
 - `Engine.rankOutlook(ranked)` replaces `rankProjection` (pace carried forward). Backtest, 2026-11-08: 45 accounts across
   all tiers, Season 1 ranked games + each lobby's `average_badge`, leave-one-account-out, rank change in steps after
