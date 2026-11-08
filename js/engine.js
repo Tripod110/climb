@@ -367,25 +367,32 @@
     return { ...base, call: 'mixed' };
   }
 
-  /* Where that pace lands you after more games: the forecast's divisions-per-game carried forward,
-     with the low/high badge from its range. Only for a direction both halves agreed on (climbing or
-     sliding); clamped to Initiate 1 .. Eternus 6. fc: a rankForecast result. */
+  /* Where your rank is heading after 20 / 50 / 100 more ranked games. Backtested 2026-11-08 on 27 players'
+     Season 1 ranked games, training on all but one player and testing on that one: carrying your recent pace forward was the
+     worst guess (off by 2.44 steps after 50 games, vs 2.14 for "no change"); the lobbies' average rank didn't help (if anything
+     it pointed the wrong way); your win rate over the last OUTLOOK_N ranked games, pulled toward 50% by OUTLOOK_K games, was best
+     (1.74). Steps per game = OUTLOOK_DRIFT + OUTLOOK_STEP × (2 × win rate − 1). OUTLOOK_DRIFT is the climb Season 1 players
+     had even at 50% (demotion shields stop some drops); Season 2 has fewer shields, so refit it once Season 2 has games.
+     OUTLOOK_BAND: the middle 60% of real outcomes around the guess, in steps. Clamped to Initiate 1 .. Eternus 6. */
   const RANK_PROJ_AT = [20, 50, 100];
+  const OUTLOOK_N = 40, OUTLOOK_K = 20, OUTLOOK_DRIFT = 0.0345, OUTLOOK_STEP = 0.0921;
+  const OUTLOOK_BAND = {"20":[-0.94,1.31],"50":[-1.73,1.58],"100":[-2.68,2.08]};
   const unladder = L => Math.floor((L - 1) / 6) * 10 + ((L - 1) % 6) + 1;
-  function rankProjection(fc, at) {
-    if (!fc || (fc.call !== 'climbing' && fc.call !== 'sliding') || !fc.gain) return null;
-    const L0 = ladder(fc.now), dir = Math.sign(fc.gain), per = (fc.n - 1) / Math.abs(fc.gain);
-    const span = fc.range || [per, per];
-    const top = (TIER_NAMES.length - 1) * 6 + 6, bottom = 7;
-    const land = (g, p) => unladder(Math.max(bottom, Math.min(top, L0 + dir * Math.floor(g / p))));
+  function rankOutlook(ranked, at) {
+    const rows = (ranked || []).filter(m => m.mode === 'ranked' && !m.calib && m.badge > 0).slice(-OUTLOOK_N);
+    const n = rows.length;
+    if (n < RANK_FC_MIN) return null;
+    const wins = rows.filter(m => m.won).length, wr = (wins + OUTLOOK_K / 2) / (n + OUTLOOK_K);
+    const per = OUTLOOK_DRIFT + OUTLOOK_STEP * (2 * wr - 1);
+    const now = rows[n - 1].badge, L0 = ladder(now);
+    const land = L => unladder(Math.max(7, Math.min(TOP_TIER * 6 + 6, Math.round(L))));
     const steps = (at || RANK_PROJ_AT).map(g => {
-      const a = land(g, span[1]), b = land(g, span[0]);
-      return { games: g, badge: land(g, per), lo: Math.min(a, b), hi: Math.max(a, b) };
+      const band = OUTLOOK_BAND[g] || [0, 0], mid = L0 + per * g;
+      return { games: g, badge: land(mid), lo: land(mid + band[0]), hi: land(mid + band[1]) };
     });
-    // Games to the next tier's first division (climbing only).
-    const tierUp = dir > 0 && Math.floor(fc.now / 10) < TIER_NAMES.length - 1
-      ? { badge: (Math.floor(fc.now / 10) + 1) * 10 + 1, games: Math.ceil((ladder((Math.floor(fc.now / 10) + 1) * 10 + 1) - L0) * per) } : null;
-    return { dir, per, steps, tierUp };
+    const nt = Math.floor(now / 10) + 1;
+    const tierUp = per > 0 && nt <= TOP_TIER ? { badge: nt * 10 + 1, games: Math.ceil((ladder(nt * 10 + 1) - L0) / per) } : null;
+    return { n, wins, wr, per, now, steps, tierUp, dir: per > 0.005 ? 1 : per < -0.005 ? -1 : 0 };
   }
 
   /* The rank you played at in each match, for the Matches list and the match page. A ranked game: its own badge
@@ -401,6 +408,45 @@
       out.set(m.id, last ? { badge: last, kind: 'before' } : { badge: null, kind: null });
     }
     return out;
+  }
+
+  /* ---- everyone in a match: their rank and how they do on the hero they played ----
+     deadlock-api has no per-player rank inside a match, only each player's rank after their latest ranked
+     game (/v1/players/rank). That IS their rank in this match when this was their latest ranked game (then the
+     rank they entered it with) or they haven't played ranked since; otherwise it's their rank now. */
+  function playerRankAt(row, match) {
+    if (!row || !(row.badge > 0)) return null;
+    const lm = row.last_match;
+    if (lm && lm.match_id === match.id && lm.player_rank_initial_display_rank > 0) return { badge: lm.player_rank_initial_display_rank, exact: true };
+    return { badge: row.badge, exact: !!(lm && lm.start_time <= match.t) };
+  }
+  /* The average of some badges, as a badge (averaged on the subrank ladder). Null without any. */
+  function avgBadge(badges) {
+    const xs = (badges || []).filter(b => b > 0).map(ladder);
+    return xs.length ? unladder(Math.round(mean(xs))) : null;
+  }
+  /* One player's record on one hero from /v1/players/hero-stats rows (all their heroes), compacted:
+     { n, wins, share (of all their games), k, d, a (per game) } or null if they have none on it. */
+  function heroRecord(rows, hero) {
+    const all = rows || [], h = all.find(x => x.hero_id === hero);
+    const total = all.reduce((t, x) => t + (x.matches_played || 0), 0);
+    if (!h || !h.matches_played) return null;
+    const n = h.matches_played, per = k => Math.round((h[k] || 0) / n * 10) / 10;
+    return { n, wins: h.wins || 0, share: total ? n / total : 0, k: per('kills'), d: per('deaths'), a: per('assists') };
+  }
+  /* Tags for a player on their hero, Statlocker-style but only from counts that mean something:
+     win rate is pulled toward 50% by TAG_K games before it can earn a tag. -> { adj, tags: [{ id, label }] } */
+  const TAG_K = 20;
+  function heroTags(rec) {
+    if (!rec) return { adj: null, tags: [{ id: 'first', label: 'First game on it' }] };
+    const adj = (rec.wins + TAG_K * 0.5) / (rec.n + TAG_K), tags = [];
+    if (rec.n < 5) tags.push({ id: 'new', label: 'New on it' });
+    else if (rec.share >= 0.6 && rec.n >= 50) tags.push({ id: 'otp', label: 'One-trick' });
+    else if (rec.share >= 0.3 && rec.n >= 30) tags.push({ id: 'main', label: 'Main' });
+    if (rec.n >= 200) tags.push({ id: 'vet', label: rec.n >= 500 ? '500+ games' : '200+ games' });
+    if (rec.n >= 20 && adj >= 0.56) tags.push({ id: 'wins', label: 'Wins a lot on it' });
+    if (rec.n >= 20 && adj <= 0.44) tags.push({ id: 'loses', label: 'Loses a lot on it' });
+    return { adj, tags };
   }
 
   /* Matches tab: totals for a list of matches (any order). net/ranked only count games with a rank delta. */
@@ -1748,7 +1794,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, versus, friendBoard, scorecard, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankStatus, roadTier, rankProjection, matchRanks, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankStatus, roadTier, rankOutlook, OUTLOOK_N, OUTLOOK_K, OUTLOOK_DRIFT, OUTLOOK_STEP, matchRanks, playerRankAt, avgBadge, heroRecord, heroTags, TAG_K, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

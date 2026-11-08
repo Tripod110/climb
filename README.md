@@ -26,17 +26,20 @@ rules (`sh()`), `.ledger` rows of figures, and every explanation behind a small 
   win rate, ahead at 12:00, clean to 10:00 and deaths a game for *last session*, *last 20* or
   *season*; **Training** (your focus habit and the pace of your climb); **Scouting** (the habits
   that split your wins from losses, `splitBar`); **Film room** (last 8 games); **The climb**
-  (`rankProjection` badges and the season rank-points chart). A last-session recap and a
+  (`rankOutlook`: your rank after 20/50/100 more ranked games from your win rate, backtested; and the
+  season rank-points chart). A last-session recap and a
   missing-games notice appear on top when they apply.
 - **Coach** (last 30 games): pick one habit to train (a ✓/✗ every game, called after a few
   games, mastered at a set pass rate); wins vs losses figures; farm at 12:00 vs your lane; deaths
   by phase, zone and killer; Gemini's notes on the whole set; past habits.
 - **Matches**: totals for the filtered games, then games grouped by day with each day's record
-  and rank points (`matchTotals`, `matchDays`). Each row: K/D/A, souls, damage, Form, rank
+  and rank points (`matchTotals`, `matchDays`). Each row: the rank you played at (`matchRanks`), K/D/A, souls, damage, Form, rank
   points. A missing game can be added by match id.
 - **Match page**: your share of your team, you vs an average teammate, form vs your usual on
   that hero, the win-chance chart with turning points and what each death usually costs, farm
-  by source vs your lane opponents, a Gemini debrief, and the 12-player scoreboard.
+  by source vs your lane opponents, a Gemini debrief, and the 12-player scoreboard with the lobby and
+  team average rank, each player's rank (`playerRankAt`), games and win rate on their hero, and tags
+  (`heroTags`).
 - **Heroes**: a scouting row (best hero, one to park, most and least rank points, on the rise,
   most played) and the hero pool grouped by how each hero does for you (`heroInsights`, win rates
   shrunk toward your overall). Per hero: a ledger, then **Rank road** (your gaps vs the next

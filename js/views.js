@@ -90,7 +90,7 @@
     const E = c.E, fc = E.rankForecast(c.M.all.filter(m => m.mode === 'ranked'));
     if (fc.call === 'thin') return '';
     const nm = b => c.esc(E.badgeName(b, c.tiers()));
-    const info = src('rule', `A rank step is one division, e.g. Ritualist 1 → Ritualist 2. Counts the steps you moved in your last ${E.RANK_FC_N} ranked games (placement games excluded) and only calls a direction when both halves of that stretch agree. It does not predict rank points, because Valve’s points don’t convert to steps at a fixed rate.`);
+    const info = src('rule', `A rank step is one division, e.g. Ritualist 1 → Ritualist 2 (in Season 2, 1,000 rank points; the last step of a rank 1,500). Counts the steps you actually moved in your last ${E.RANK_FC_N} ranked games (placement games excluded) and only calls a direction when both halves of that stretch agree. This is where you’ve been; “Where your win rate takes you” below is where you’re heading.`);
     // Numbers first: games per division (or the call), then the stretch it was read from.
     const big = fc.call === 'climbing' ? `<span class="pace-n">${Math.round(fc.perDivision)}</span><span class="muted">games / rank step</span>`
       : `<span class="pace-w ${fc.call === 'sliding' ? 'neg' : ''}">${fc.call === 'sliding' ? '▼ Sliding' : fc.call === 'flat' ? '■ Flat' : '· Mixed'}</span>`;
@@ -99,18 +99,18 @@
       ${fc.call === 'climbing' ? `<span>${fc.range[0]}–${fc.range[1]} games</span>${fc.next ? `<span>next <b>${nm(fc.next)}</b></span>` : ''}` : ''}</div></div>`;
   }
 
-  /* Rank projection: the pace above carried forward, as badges after +20/+50/+100 games (Engine.rankProjection). */
+  /* Where your rank is heading: badges after +20/+50/+100 ranked games from your win rate (Engine.rankOutlook). */
   function projRow(c) {
-    const E = c.E, fc = E.rankForecast(c.M.all.filter(m => m.mode === 'ranked')), pj = E.rankProjection(fc);
+    const E = c.E, pj = E.rankOutlook(c.M.all.filter(m => m.mode === 'ranked'));
     if (!pj) return '';
     const nm = b => c.esc(E.badgeName(b, c.tiers()));
     // "Mystic 2 – Mystic 5" reads as "Mystic 2–5" when both ends are in one tier.
     const span = (lo, hi) => Math.floor(lo / 10) === Math.floor(hi / 10) ? `${nm(lo)}–${hi % 10}` : `${nm(lo)} – ${nm(hi)}`;
     const rung = (k, b, sub, cls) => `<li class="rung ${cls || ''}"><span class="rung-k">${k}</span><img src="${c.A.rankImage(b)}" alt="" width="44" height="44"><b>${nm(b)}</b><span class="rung-r">${sub || '&nbsp;'}</span></li>`;
-    const info = src('rule', `Your last ${fc.n} ranked games moved you ${Math.abs(fc.gain)} rank step${Math.abs(fc.gain) === 1 ? '' : 's'} (${pj.per.toFixed(1)} games each). This carries that pace forward; the small range under each badge uses the fastest and slowest half of that stretch. Rank points are not projected, because Valve’s points don’t convert to rank steps at a fixed rate.`);
-    return `<div class="proj ${pj.dir < 0 ? 'down' : 'up'}"><div class="t-label">Where this pace takes you ${info}</div>
-      <ol class="rungs">${rung('Today', fc.now, '')}${pj.steps.map(s => rung(`in ${s.games} games`, s.badge, s.lo === s.hi ? '' : 'range ' + span(s.lo, s.hi), pj.dir < 0 ? 'neg' : '')).join('')}</ol>
-      ${pj.tierUp && pj.tierUp.badge !== fc.next ? `<div class="muted small num-line"><span><b>${nm(pj.tierUp.badge)}</b> in ~${pj.tierUp.games} games</span></div>` : ''}</div>`;
+    const info = src('model', `From your win rate in your last ${pj.n} ranked games (${pj.wins}–${pj.n - pj.wins}), pulled toward 50% by ${E.OUTLOOK_K} games so a hot or cold streak doesn’t run away with it. Tested on 27 players’ Season 1 games: this was the best guess. Carrying your recent pace forward was the worst, and your lobbies’ average rank didn’t help. Even at 50%, Season 1 players drifted up about ${(E.OUTLOOK_DRIFT * 50).toFixed(1)} rank steps per 50 games (demotion shields stop some drops); that drift is included and gets re-checked once Season 2 has games. The range under each badge is where 6 in 10 players with that win rate ended up.`);
+    return `<div class="proj ${pj.dir < 0 ? 'down' : 'up'}"><div class="t-label">Where your win rate takes you ${info}</div>
+      <ol class="rungs">${rung('Today', pj.now, `${c.pct(pj.wr)} adj. win rate`)}${pj.steps.map(s => rung(`in ${s.games} games`, s.badge, s.lo === s.hi ? '' : 'range ' + span(s.lo, s.hi), pj.dir < 0 ? 'neg' : '')).join('')}</ol>
+      ${pj.tierUp && pj.tierUp.games <= 300 ? `<div class="muted small num-line"><span><b>${nm(pj.tierUp.badge)}</b> in ~${pj.tierUp.games} games</span></div>` : ''}</div>`;
   }
 
   /* The rank line, for any player: a badge name, "Calibrating" during placement games, or "Unranked". */
@@ -815,6 +815,18 @@
     const t = r.kind === 'ranked' ? nm + ': your rank in this game' : nm + ': your rank at the time (unranked game)';
     return `<img class="mr-rank${r.kind === 'before' ? ' then' : ''}" src="${c.A.rankImage(r.badge)}" alt="${nm}" title="${t}" width="${size}" height="${size}" loading="lazy">`;
   }
+  /* A player's rank in a match (Engine.playerRankAt): their rank in that game, or dimmer when it's only their rank now. */
+  function playerRank(c, rk) {
+    if (!rk) return '<span class="sb-rank none" title="No rank: unranked or in placement games"></span>';
+    const nm = c.esc(c.E.badgeName(rk.badge, c.tiers()));
+    return `<img class="sb-rank${rk.exact ? '' : ' then'}" src="${c.A.rankImage(rk.badge)}" alt="${nm}" title="${nm}: ${rk.exact ? 'their rank in this game' : 'their rank now (they’ve played ranked since)'}" width="18" height="18" loading="lazy">`;
+  }
+  /* Under a player's hero: games and win rate on it (all modes, all time), then tags (Engine.heroTags). */
+  function heroLine(c, rec, badge) {
+    const t = c.E.heroTags(rec);
+    const tags = t.tags.map(x => `<span class="ptag ptag-${x.id}">${c.esc(x.label)}</span>`).join('');
+    return `<span class="sb-sub">${badge || ''}${rec ? `<span>${c.fmtInt(rec.n)} games · ${c.pct(rec.wins / rec.n)}</span>` : ''}${tags}</span>`;
+  }
   function matchRow(c, m, mark, when) {
     const L = c.state.lobbies[m.id], g = c.E.gameRole(L, m.won), me = L && L.p[L.me], p = c.M.perf.get(m.id);
     const form = !p ? '<span class="muted">—</span>' : `<span class="${p.score >= 0.2 ? 'pos' : p.score <= -0.2 ? 'neg' : 'muted'}">${form1(p.score)}</span>`;
@@ -901,13 +913,16 @@
     if (!m) { host.innerHTML = '<div class="empty-state">That match isn’t in your history. <a href="#/matches">Back to matches</a></div>'; return; }
     const L = c.state.lobbies[m.id];
     const g = E.gameRole(L, m.won);
+    const mp = c.state.matchPlayers[m.id];
+    const rankOf = acct => mp && mp.p[acct] ? mp.p[acct].rank : null;
+    const lobbyAvg = L && L.avgBadge ? L.avgBadge : mp ? E.avgBadge(Object.values(mp.p).map(x => x.rank && x.rank.badge)) : null;
     const p = M.perf.get(m.id);
     const head = `
       <a href="#/matches" class="back">← Matches</a>
       <div class="page-head match-head">
         <div class="ident">${icon(c, m.hero, 56)}
           <div><div class="rank-name">${c.esc(c.heroName(m.hero))} <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span></div>
-          <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${(() => { const r = M.ranks.get(m.id); return !r || !r.kind ? '' : r.kind === 'placement' ? ' · placement game' : ' · you ' + (r.kind === 'before' ? 'were ' : 'played at ') + c.esc(E.badgeName(r.badge, c.tiers())); })()}${L && L.avgBadge ? ' · lobby ' + c.esc(E.badgeName(L.avgBadge, c.tiers())) : ''} · #${m.id}${m.added ? ' · added by id' : ''}</div></div>
+          <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${(() => { const r = M.ranks.get(m.id); return !r || !r.kind ? '' : r.kind === 'placement' ? ' · placement game' : ' · you ' + (r.kind === 'before' ? 'were ' : 'played at ') + c.esc(E.badgeName(r.badge, c.tiers())); })()}${lobbyAvg ? ` · lobby avg <b class="ink">${c.esc(E.badgeName(lobbyAvg, c.tiers()))}</b>` : ''} · #${m.id}${m.added ? ' · added by id' : ''}</div></div>
         </div>
         <div class="big-delta">${m.delta == null ? '' : `${deltaHtml(c, m)}<span class="muted small">rank pts</span>`}</div>
       </div>`;
@@ -927,11 +942,12 @@
     const team = t => {
       const idx = L.p.map((x, i) => i).filter(i => L.p[i][0] === t).sort((a, b) => L.p[b][1] - L.p[a][1]);
       const won = L.win == null ? null : L.win === t;
-      return `<div class="team"><div class="team-h"><b>${t === L.p[L.me][0] ? 'Your team' : 'Enemy team'}</b>${won == null ? '' : `<span class="${won ? 'win' : 'loss'}">${won ? 'Won' : 'Lost'}</span>`}</div>
+      const tAvg = mp ? E.avgBadge(idx.map(i => { const rk = rankOf(L.p[i][15]); return rk && rk.badge; })) : null;
+      return `<div class="team"><div class="team-h"><b>${t === L.p[L.me][0] ? 'Your team' : 'Enemy team'}${tAvg ? ` <span class="muted small">avg ${c.esc(E.badgeName(tAvg, c.tiers()))}</span>` : ''}</b>${won == null ? '' : `<span class="${won ? 'win' : 'loss'}">${won ? 'Won' : 'Lost'}</span>`}</div>
         <div class="sb sb-h"><span>Hero</span><span class="n">K/D/A</span><span class="n">Souls</span><span class="n">Damage</span><span class="n hide-s">Heal</span><span class="n hide-s">Obj</span><span class="hide-s">Impact</span></div>
         ${idx.map(i => {
           const r = L.p[i], you = i === L.me;
-          return `<div class="sb${you ? ' you' : ''}"><span class="mh">${icon(c, r[7], 26)}<span>${c.esc(c.heroName(r[7]))}${you ? ' <span class="you-tag">You</span>' : ''}${r[12] === 1 ? ' <span class="first">★ MVP</span>' : r[12] >= 2 && r[12] <= 3 ? ` <span class="tag">MVP ${r[12]}</span>` : ''}</span></span>
+          return `<div class="sb${you ? ' you' : ''}"><span class="mh">${icon(c, r[7], 26)}<span><span class="sb-name"><b>${c.esc(c.heroName(r[7]))}</b>${you ? ' <span class="you-tag">You</span>' : ''}${r[12] === 1 ? ' <span class="first">★ MVP</span>' : r[12] >= 2 && r[12] <= 3 ? ` <span class="tag">MVP ${r[12]}</span>` : ''}</span>${mp && mp.p[r[15]] ? heroLine(c, mp.p[r[15]].rec, playerRank(c, rankOf(r[15]))) : ''}</span></span>
             <span class="n">${r[2]}<span class="sl">/</span>${r[3]}<span class="sl">/</span>${r[4]}</span><span class="n">${c.kfmt(r[1])}</span><span class="n">${c.kfmt(r[5])}</span>
             <span class="n hide-s">${c.kfmt(r[6])}</span><span class="n hide-s">${c.kfmt(r[8])}</span><span class="hide-s">${impactBar(imp[i].impact)}</span></div>`;
         }).join('')}</div>`;
@@ -955,8 +971,9 @@
       ${wpCard(c, m)}
       ${farmMatchCard(c, m)}
       ${coachCard(c, m)}
-      <section class="card flush scoreboard">${team(myTeam)}${team(1 - myTeam)}</section>`;
+      <section class="card flush scoreboard"><div class="sb-info small muted">Rank, games and win rate on the hero ${src('yours', `Each badge is the player’s rank in this game when deadlock-api can tell (this was their latest ranked game, or they haven’t played ranked since); a dimmer badge is their rank now. Under each hero: their games and win rate on it, all modes, all time. Tags: One-trick (60%+ of their games, 50+ games), Main (30%+, 30+ games), New on it (under 5 games), and Wins / Loses a lot on it, from a win rate pulled toward 50% by ${E.TAG_K} games so a short streak can’t earn it.`)}</div>${team(myTeam)}${team(1 - myTeam)}</section>`;
     if (window.WPMODEL && !c.matchWin(m.id)) c.ensureMatchDetail(m.id);
+    c.ensureMatchPlayers(m.id);
     bindSeg(host, '#ft', v2 => { farmTab = v2; c.render(); });
     const cb = host.querySelector('[data-coach]');
     if (cb) cb.addEventListener('click', () => c.runDebrief(m.id, cb.dataset.coach === 'again'));
@@ -1185,7 +1202,8 @@
     ['Calibrating', 'Still in placement games: no rank yet, so rank comparisons use Initiate.'],
     ['Form', 'How a game went vs your usual on that hero. 0 = a normal game for you, +1.0 clearly better, −1.0 clearly worse. Needs 5+ games on the hero.'],
     ['Rough games', 'Losses where you also played below your usual (Form under 0).'],
-    ['Rank step · Pace', 'One division, e.g. Ritualist 1 → 2. Pace = ranked games per step lately.'],
+    ['Rank step · Pace', 'One division, e.g. Ritualist 1 → 2 (1,000 rank points in Season 2). Pace = ranked games per step lately.'],
+    ['Where your win rate takes you', 'Your rank after 20 / 50 / 100 more ranked games, from your recent win rate pulled toward 50%. Tested on other players’ seasons; the range is where 6 in 10 ended up.'],
     ['Souls lead at 12:00', 'Games where your souls beat your lane opponents’ average at 12:00.'],
     ['No deaths to 10:00', 'Games with zero deaths in the first 10 minutes.'],
     ['Habit', 'One thing to practise, checked ✓ or ✗ every game. Pass rate = how often you do it; mastered at ' + E.FOCUS_GRAD[0] + ' of your last ' + E.FOCUS_GRAD[1] + '.'],
@@ -1198,6 +1216,7 @@
     ['Creeps last-hit', 'Lane creeps you last-hit, out of those you could reach.'],
     ['★ MVP', 'Valve named you MVP: 1st in the lobby.'],
     ['Rank badge on a match', 'The rank you played that game at. Dimmer on unranked games: your rank at the time.'],
+    ['Scoreboard ranks · tags', 'Each player’s rank in that game (dimmer: their rank now), games and win rate on the hero, and tags like One-trick or Wins a lot on it.'],
     ['#2 of 6 · impact', 'Your place on your own team by share of souls, damage or healing, kills + assists and objectives. 1.00 = an average teammate. Neutral: it doesn’t predict wins.'],
     ['Adjusted win rate', 'A hero’s win rate pulled toward your overall by ' + E.HERO_INS_K + ' games, so 4–0 can’t beat 30–20.'],
     ['Overall · 100%', 'Friends: souls, damage or healing, kills + assists and staying alive vs the lobby average. 100 = average.'],

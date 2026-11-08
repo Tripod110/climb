@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 47, date: '2026-11-08', title: 'Where you’re heading, and who you played',
+      items: [
+        'Overview’s rank projection now comes from your win rate, not your recent streak. Tested on 45 other players’ seasons, carrying a streak forward was the worst guess and win rate the best; your lobbies’ rank didn’t help, so it isn’t used.',
+        'A match page shows the lobby’s average rank and each team’s, plus every player’s rank (dimmer when it’s only their rank now).',
+        'Under each player: their games and win rate on the hero they played, and tags like One-trick, Main, New on it or Wins a lot on it.',
+      ],
+    },
+    {
       v: 46, date: '2026-11-07', title: 'Your rank on every match',
       items: [
         'Every game in Matches (and on a friend’s page) has a small badge for the rank you played it at.',

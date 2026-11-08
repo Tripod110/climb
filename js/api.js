@@ -71,6 +71,8 @@
     steamProfiles: ids => ids.length ? polite(() => getJSON('/v1/players/steam?account_ids=' + ids.join(','))) : Promise.resolve([]),
     playerRanks: ids => ids.length ? polite(() => getJSON('/v1/players/rank?account_ids=' + ids.join(','))) : Promise.resolve([]),
     rank: acct => polite(() => getJSON('/v1/players/' + acct + '/rank')),
+    /* Every hero's totals for each account (all their heroes: the match page needs each player's share too). */
+    playerHeroStats: ids => ids.length ? polite(() => getJSON('/v1/players/hero-stats?account_ids=' + ids.join(','))) : Promise.resolve([]),
     /* Whole-game totals per hero (win rate, accuracy) for one account or one lobby-badge range. */
     heroStats: (from, who) => polite(() => getJSON('/v1/analytics/hero-stats?game_mode=normal&min_unix_timestamp=' + Math.floor(from) +
       (who.account ? '&account_ids=' + who.account : '') +

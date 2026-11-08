@@ -4,6 +4,22 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.47 (2026-11-08): Where you're heading, and who you played
+- `Engine.rankOutlook(ranked)` replaces `rankProjection` (pace carried forward). Backtest, 2026-11-08: 45 accounts across
+  all tiers, Season 1 ranked games + each lobby's `average_badge`, leave-one-account-out, rank change in steps after
+  20/50/100 games. MAE after 50 games: no change 2.14, pace carried forward 2.44 (worst at every horizon), lobby gap
+  1.79, win rate 1.74 (best at every horizon), win rate + lobby gap 1.76. Lobby gap correlates −0.13 with future moves,
+  so it's left out. Fit: steps/game = `OUTLOOK_DRIFT` 0.0345 + `OUTLOOK_STEP` 0.0921 × (2·wr − 1), wr over the last 40
+  ranked games pulled to 50% by 20; `OUTLOOK_BAND` = 20th/80th percentile residuals. The drift (+1.7 steps per 50 games
+  at 50%) is Season 1's; refit on Season 2 data. 8 tests.
+- Pace's note: Season 2 subranks are 1,000 points (1,500 the last), per `/v1/assets/ranked-seasons`.
+- Match page: `playerRankAt` (rank from `/v1/players/rank`: exact when this was their latest ranked game, using the rank
+  they entered it with, or when they haven't played ranked since; else "now", dimmed), `avgBadge` for lobby (Valve's
+  `average_badge` when present) and team averages, `heroRecord` + `heroTags` from `/v1/players/hero-stats` (One-trick,
+  Main, New on it, 200+/500+ games, Wins/Loses a lot on it with win rate pulled to 50% by `TAG_K` 20). Fetched by
+  `ensureMatchPlayers` (2 calls per match, compacted, last 40 matches kept, refreshed after a day). 10 tests.
+- Phones: scoreboard rows drop the hero portrait so name, rank and record fit.
+
 ## 0.46 (2026-11-07): Your rank on every match
 - `Engine.matchRanks(ms)` → Map(id → { badge, kind }): a ranked game's own badge ('ranked'), a placement game
   ('placement'), otherwise your latest ranked badge before it ('before') or nothing. On the model as `M.ranks`. 2 new

@@ -57,6 +57,7 @@
     state.focus = S.getData('focus', { active: null, history: [] });  // the focus loop (see Engine.focusProgress)
     state.friends = S.getData('friends', null);     // { at, mates: [...mate-stats rows], people: {acct: {name, avatar, badge}} }
     state.squad = S.getData('squad', {});           // { matchId: Engine.squadRow } shared games, last SQUAD_DAYS
+    state.matchPlayers = S.getData('matchPlayers', {});   // { matchId: { at, p: { acct: { rank, rec } } } } match page: everyone's rank + hero record
     state.duoCoach = S.getData('duoCoach', {});     // { friendAcct: { at, model, data } | { error } } "Coach us"
   }
   loadAccountData();
@@ -113,7 +114,7 @@
     benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureMatchDetail, matchWin, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
     focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
     ensureFriends, ensureDetailsFor, friendList, entryOf: m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }), dismissRecap, dismissMissing, freshnessNow,
-    addMatch, ensureSquad, squadRows, runDuoCoach,
+    addMatch, ensureSquad, squadRows, runDuoCoach, ensureMatchPlayers,
   };
 
   // ---------------------------------------------------------------- routing + render
@@ -359,6 +360,33 @@
      hero -> a compact brief -> Gemini -> cached per match. `force` re-asks. */
   /* One match's detail for the match page (win chance needs it). Cached with the others; an
      older or missing detail is fetched once per visit. */
+/* Everyone in a match: their rank (/v1/players/rank, one call for all 12) and their record on the hero they
+     played (/v1/players/hero-stats, ~350KB for a lobby, so compacted at once to a few hundred bytes). Kept for
+     the last MP_KEEP matches opened and refreshed after a day, since ranks move. */
+  const MP_KEEP = 40, MP_TTL = 86400 * 1000, mpBusy = new Set();
+  async function ensureMatchPlayers(matchId) {
+    const have = state.matchPlayers[matchId], L = state.lobbies[matchId], m = model().all.find(x => x.id === matchId);
+    if (!L || L.v !== E.LOBBY_V || !m || mpBusy.has(matchId) || (have && Date.now() - have.at < MP_TTL)) return;
+    const ids = L.p.map(p => p[15]).filter(Boolean);
+    if (!ids.length) return;
+    mpBusy.add(matchId);
+    try {
+      const [ranks, heroes] = await Promise.all([A.playerRanks(ids), A.playerHeroStats(ids)]);
+      const p = {};
+      for (const row of L.p) {
+        const acct = row[15]; if (!acct) continue;
+        p[acct] = { rank: E.playerRankAt((ranks || []).find(x => x.account_id === acct), m),
+          rec: E.heroRecord((heroes || []).filter(x => x.account_id === acct), row[7]) };
+      }
+      state.matchPlayers[matchId] = { at: Date.now(), p };
+      const keep = Object.entries(state.matchPlayers).sort((a, b) => b[1].at - a[1].at).slice(0, MP_KEEP);
+      state.matchPlayers = Object.fromEntries(keep);
+      S.setData('matchPlayers', state.matchPlayers);
+    } catch (e) { /* the scoreboard just shows no ranks */ }
+    mpBusy.delete(matchId);
+    render();
+  }
+
   const detailTried = new Set();
   async function ensureMatchDetail(matchId) {
     const have = state.details[matchId];

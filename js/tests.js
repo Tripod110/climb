@@ -416,6 +416,17 @@
     eq('match ranks: none yet, placement, own badge, rank at the time, own badge',
       [1, 2, 3, 4, 5].map(id => mr.get(id)), [{ badge: null, kind: null }, { badge: null, kind: 'placement' },
         { badge: 42, kind: 'ranked' }, { badge: 42, kind: 'before' }, { badge: 43, kind: 'ranked' }]);
+    const mt0 = { id: 100, t: 1000 };
+    eq('player rank: this was their latest ranked game -> the rank they entered it with', E.playerRankAt({ badge: 62, last_match: { match_id: 100, start_time: 1000, player_rank_initial_display_rank: 61 } }, mt0), { badge: 61, exact: true });
+    eq('player rank: no ranked game since -> exact; played since -> rank now', [E.playerRankAt({ badge: 45, last_match: { match_id: 90, start_time: 900 } }, mt0), E.playerRankAt({ badge: 45, last_match: { match_id: 120, start_time: 1200 } }, mt0)], [{ badge: 45, exact: true }, { badge: 45, exact: false }]);
+    eq('player rank: unranked or calibrating -> none', [E.playerRankAt({ badge: 0, last_match: null }, mt0), E.playerRankAt(null, mt0)], [null, null]);
+    eq('avg badge on the subrank ladder (Mystic 6 + Ritualist 2 -> Ritualist 1), none without badges', [E.avgBadge([56, 62]), E.avgBadge([0, null])], [61, null]);
+    const hrows = [{ hero_id: 6, matches_played: 120, wins: 75, kills: 960, deaths: 600, assists: 1200 }, { hero_id: 7, matches_played: 80, wins: 40 }];
+    eq('hero record: games, share of all games, per-game K/D/A', E.heroRecord(hrows, 6), { n: 120, wins: 75, share: 0.6, k: 8, d: 5, a: 10 });
+    eq('hero tags: one-trick and wins a lot (adjusted for games)', E.heroTags(E.heroRecord(hrows, 6)).tags.map(t => t.id), ['otp', 'wins']);
+    eq('hero tags: 3-0 is "new", not a winner', E.heroTags({ n: 3, wins: 3, share: 0.01 }).tags.map(t => t.id), ['new']);
+    eq('hero tags: none on the hero -> first game', E.heroTags(null).tags.map(t => t.id), ['first']);
+    eq('hero tags: 25-35 over 60 games loses a lot; main at 40% share', E.heroTags({ n: 60, wins: 25, share: 0.4 }).tags.map(t => t.id), ['main', 'loses']);
     eq('match ranks: placement after an old rank is still a placement', E.matchRanks([{ id: 1, t: 1, mode: 'ranked', badge: 51 }, { id: 2, t: 2, mode: 'ranked', badge: 0, calib: 2 }]).get(2).kind, 'placement');
     eq('road tier: next rank, Eternus vs itself, Initiate before a rank', [E.roadTier(42), E.roadTier(114), E.roadTier(null), E.roadTier(0)],
       [{ tier: 5, kind: 'next' }, { tier: 11, kind: 'top' }, { tier: 1, kind: 'entry' }, { tier: 1, kind: 'entry' }]);
@@ -462,14 +473,17 @@
     eq('heroInsights: within the 10+ game heroes, best first', hi.rows.filter(h => h.group !== 'few').map(h => h.hero), [1, 4, 3]);
     eq('heroInsights: steady sits between', E.heroInsights([...hg(1, 14, 6), ...hg(2, 10, 10), ...hg(3, 6, 14)], new Map(), NOW).rows.map(h => h.group), ['climb', 'steady', 'park']);
     eq('heroInsights: nobody below average = no avoid', E.heroInsights([...hg(1, 10, 10), ...hg(2, 10, 10)], new Map(), NOW).avoid, null);
-    // rankProjection: fc above is 31 games, +5 divisions from Acolyte 1 → Acolyte 6 (6 games/division).
-    const pj = E.rankProjection(fc, [12, 30]);
-    eq('projection: pace carried forward', pj.steps.map(s => s.badge), [42, 45]);
-    eq('projection: games to next tier', pj.tierUp, { badge: 41, games: 6 });
-    eq('projection: none when flat, mixed or thin', [E.rankProjection(E.rankForecast(rk(Array(20).fill(42)))), E.rankProjection(E.rankForecast(wobble)), E.rankProjection(null)], [null, null, null]);
-    const pjDown = E.rankProjection(E.rankForecast(rk(Array.from({ length: 30 }, (_, i) => 44 - Math.floor(i / 10)))), [100]);
-    eq('projection: sliding goes down, no tier-up', [pjDown.dir, pjDown.steps[0].badge < 42, pjDown.tierUp], [-1, true, null]);
-    eq('projection: clamped at Eternus 6', E.rankProjection({ call: 'climbing', gain: 10, n: 11, now: 115, range: [1, 1] }, [100]).steps[0].badge, 116);
+    // rankOutlook: steps per game = DRIFT + STEP × (2·winRate − 1), win rate pulled to 50% by OUTLOOK_K games
+    const ol = (n, wins, badge) => Array.from({ length: n }, (_, i) => ({ id: i, t: i, mode: 'ranked', badge, won: i < wins }));
+    const o1 = E.rankOutlook(ol(40, 28, 42));
+    near('outlook: win rate pulled toward 50%', o1.wr, (28 + 10) / 60);
+    near('outlook: steps per game from the fit', o1.per, E.OUTLOOK_DRIFT + E.OUTLOOK_STEP * (2 * (38 / 60) - 1));
+    eq('outlook: badges after 20/50/100 games climb, ranges around them', o1.steps.map(s => s.badge > 42 && s.lo <= s.badge && s.hi >= s.badge), [true, true, true]);
+    ok('outlook: games to the next tier', o1.tierUp && o1.tierUp.badge === 51 && o1.tierUp.games > 0, o1.tierUp);
+    eq('outlook: a losing run points down, no tier-up', [E.rankOutlook(ol(40, 2, 42)).dir, E.rankOutlook(ol(40, 2, 42)).tierUp], [-1, null]);
+    eq('outlook: 20% over 40 games is about flat (Season 1 players drifted up even at 50%)', E.rankOutlook(ol(40, 8, 42)).dir, 0);
+    eq('outlook: needs 15 ranked games; placement and unranked ignored', [E.rankOutlook(ol(14, 7, 42)), E.rankOutlook([...ol(14, 7, 42), { id: 99, t: 99, mode: 'unranked', badge: 42 }, { id: 98, t: 98, mode: 'ranked', calib: 3, badge: 0 }])], [null, null]);
+    eq('outlook: clamped at Eternus 6', E.rankOutlook(ol(40, 40, 116)).steps.map(s => s.hi), [116, 116, 116]);
     eq('forecast: calibration and unranked games are ignored', E.rankForecast([...climbing, ...climbing.map(m => ({ ...m, calib: true })), { id: 1, t: 1, mode: 'unranked', badge: 50 }]).n, 31);
   }
 
