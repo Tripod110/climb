@@ -43,7 +43,8 @@ and the helper in depth; this file is the rules.
   `heroInsights`, `stackBoard`) and only call "ahead/behind" when it holds in both halves.
 
 ## Branches and deploying
-- Work and commit on `testing`. `main` is the live site: pushing to it deploys.
+- Work and commit on `testing`, and push `testing` after every commit (the dev PC powers off without
+  warning; GitHub is the safe copy). `main` is the live site: pushing to it deploys.
 - Run `git fsck --full` before committing (the main dev PC has had disk corruption).
 - Deploy only when the owner says so: see `.claude/skills/deploy`.
 - Commit messages: short subject `0.N: what changed`, a body saying why.

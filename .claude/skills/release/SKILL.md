@@ -19,4 +19,6 @@ description: Cut a new Climb version on the testing branch (version bump, both c
 7. Make sure you're on `testing` (`git branch --show-current`), stage only the files you changed,
    and commit `0.NEW: <what changed>` with a short body saying why.
 
-Don't push or deploy here; that's the `deploy` skill, and only when the owner asks.
+8. Push the branch right away: `git push origin testing`. The dev PC powers off without warning and has
+   corrupted files before, so GitHub is the safe copy. This is not a deploy: never push `main` here; that's
+   the `deploy` skill, and only when the owner asks.
