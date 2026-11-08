@@ -4,6 +4,14 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.46 (2026-11-07): Your rank on every match
+- `Engine.matchRanks(ms)` → Map(id → { badge, kind }): a ranked game's own badge ('ranked'), a placement game
+  ('placement'), otherwise your latest ranked badge before it ('before') or nothing. On the model as `M.ranks`. 2 new
+  tests (248).
+- `rankMark()` in views.js: an 18px rank image before "Ranked · 32m" on every `matchRow` (Matches, friend page), dimmed
+  (`.mr-rank.then`) for 'before', "Placement" text for placement games. Match page header adds "you played at X" /
+  "you were X". Glossary line added.
+
 ## 0.45 (2026-11-07): Clearer numbers, at every rank
 - Engine: `rankStatus(ranked, badge)` → ranked (with `top` at Eternus) / calibrating (`placed` = Valve's placement counter)
   / unranked; `roadTier(badge)` → next tier, Eternus vs itself (`top`), or Initiate before a rank (`entry`); `nextBadge`

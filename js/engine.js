@@ -388,6 +388,21 @@
     return { dir, per, steps, tierUp };
   }
 
+  /* The rank you played at in each match, for the Matches list and the match page. A ranked game: its own badge
+     ('ranked'). A placement game before you had a badge: 'placement'. An unranked game (or a ranked one with no
+     badge on record): your latest ranked badge before it ('before'), or nothing if you had none yet.
+     ms: matches, any order. -> Map(id -> { badge, kind }) */
+  function matchRanks(ms) {
+    const out = new Map();
+    let last = null;
+    for (const m of (ms || []).slice().sort((a, b) => a.t - b.t)) {
+      if (m.mode === 'ranked' && m.badge > 0) { last = m.badge; out.set(m.id, { badge: m.badge, kind: 'ranked' }); continue; }
+      if (m.mode === 'ranked' && m.calib) { out.set(m.id, { badge: null, kind: 'placement' }); continue; }
+      out.set(m.id, last ? { badge: last, kind: 'before' } : { badge: null, kind: null });
+    }
+    return out;
+  }
+
   /* Matches tab: totals for a list of matches (any order). net/ranked only count games with a rank delta. */
   function matchTotals(ms) {
     const n = ms.length, wins = ms.filter(m => m.won).length, rk = ms.filter(m => m.delta != null);
@@ -1733,7 +1748,7 @@
     SQUAD_V, SQUAD_DAYS, BOARD_MIN, squadRow, versus, friendBoard, scorecard, DUO_SYSTEM, DUO_SCHEMA, duoBrief,
     earlyRates, nextRankPlan, calibration, lastSession, FRIEND_MIN, friendStats, asPlayer, duo,
     DETAIL_V, wpAt, wpWeights, gapsAt, winTimeline, deathCosts, turningPoints,
-    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankStatus, roadTier, rankProjection, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
+    HERO_COACH_MIN, HERO_COACH_FIRM, heroCoach, focusImpact, FARM_SRC, FARM_T, FARM_MIN_GAMES, FARM_MIN_GAP, laneSide, laneColor, farmAt, farmRatio, farmLanes, farmSeries, farmProfile, IMPACT_BEFORE_N, rankForecast, nextBadge, rankStatus, roadTier, rankProjection, matchRanks, matchTotals, matchDays, heroInsights, HERO_INS_DAYS, HERO_INS_MIN, HERO_INS_K, stackBoard, STACK_K, STACK_MIN, RANK_PROJ_AT, RANK_FC_N, RANK_FC_MIN,
     HABITS, FOCUS_MIN_GAMES, FOCUS_GRAD, FOCUS_MIN_LIFT, habitById, habitResults, habitCatalog, suggestHabit, focusProgress, FOCUS_SYSTEM, focusSchema,
     aggregateGames, analysisBrief, ANALYSIS_SYSTEM, ANALYSIS_SCHEMA, FAST_DEATH_S,
     compactItems, compactMatchDetail, mapZone, debriefBrief, DEBRIEF_SYSTEM, DEBRIEF_SCHEMA,

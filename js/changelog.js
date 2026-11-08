@@ -6,6 +6,14 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 46, date: '2026-11-07', title: 'Your rank on every match',
+      items: [
+        'Every game in Matches (and on a friend’s page) has a small badge for the rank you played it at.',
+        'Unranked games show your rank at the time, dimmer. Placement games say “Placement”.',
+        'A match page names it too: “you played at Ritualist 1”.',
+      ],
+    },
+    {
       v: 45, date: '2026-11-07', title: 'Clearer numbers, at every rank',
       items: [
         'Every number says what it is: “Souls lead at 12:00”, “No deaths to 10:00”, “Rank pts”, “+340 pts”, and changes in % instead of “pts”. The ★ 1st badge is now ★ MVP.',

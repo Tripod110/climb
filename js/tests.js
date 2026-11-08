@@ -409,6 +409,14 @@
     const plc = [{ mode: 'unranked' }, { mode: 'ranked', calib: 1, badge: 0 }, { mode: 'ranked', calib: 2, badge: 0 }];
     eq('rank status: placement games -> calibrating, with the count', [E.rankStatus(plc, 0).state, E.rankStatus(plc, null).placed], ['calibrating', 2]);
     eq('rank status: no ranked games -> unranked', E.rankStatus([{ mode: 'unranked' }], null).state, 'unranked');
+    const mr = E.matchRanks([
+      { id: 5, t: 50, mode: 'ranked', badge: 43 }, { id: 1, t: 10, mode: 'unranked', badge: null },
+      { id: 2, t: 20, mode: 'ranked', badge: 0, calib: 1 }, { id: 3, t: 30, mode: 'ranked', badge: 42 },
+      { id: 4, t: 40, mode: 'unranked', badge: null }]);
+    eq('match ranks: none yet, placement, own badge, rank at the time, own badge',
+      [1, 2, 3, 4, 5].map(id => mr.get(id)), [{ badge: null, kind: null }, { badge: null, kind: 'placement' },
+        { badge: 42, kind: 'ranked' }, { badge: 42, kind: 'before' }, { badge: 43, kind: 'ranked' }]);
+    eq('match ranks: placement after an old rank is still a placement', E.matchRanks([{ id: 1, t: 1, mode: 'ranked', badge: 51 }, { id: 2, t: 2, mode: 'ranked', badge: 0, calib: 2 }]).get(2).kind, 'placement');
     eq('road tier: next rank, Eternus vs itself, Initiate before a rank', [E.roadTier(42), E.roadTier(114), E.roadTier(null), E.roadTier(0)],
       [{ tier: 5, kind: 'next' }, { tier: 11, kind: 'top' }, { tier: 1, kind: 'entry' }, { tier: 1, kind: 'entry' }]);
     eq('forecast: flat', E.rankForecast(rk(Array(20).fill(42))).call, 'flat');

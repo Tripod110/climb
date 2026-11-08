@@ -806,12 +806,21 @@
   // ---------------------------------------------------------------- matches list
   /* One game as a row of numbers (Matches tab, friend page): W/L, K/D/A, souls, damage, Form, points.
      when: 'clock' (time of day, under a day header) or 'ago'. */
+  /* The rank you played at, as a small badge (Engine.matchRanks). Unranked games show your rank at the time, dimmer. */
+  function rankMark(c, m, size) {
+    const r = c.M.ranks && c.M.ranks.get(m.id);
+    if (!r || !r.kind) return '';
+    if (r.kind === 'placement') return '<span class="mr-plc" title="A placement game: no rank yet">Placement</span>';
+    const nm = c.esc(c.E.badgeName(r.badge, c.tiers()));
+    const t = r.kind === 'ranked' ? nm + ': your rank in this game' : nm + ': your rank at the time (unranked game)';
+    return `<img class="mr-rank${r.kind === 'before' ? ' then' : ''}" src="${c.A.rankImage(r.badge)}" alt="${nm}" title="${t}" width="${size}" height="${size}" loading="lazy">`;
+  }
   function matchRow(c, m, mark, when) {
     const L = c.state.lobbies[m.id], g = c.E.gameRole(L, m.won), me = L && L.p[L.me], p = c.M.perf.get(m.id);
     const form = !p ? '<span class="muted">—</span>' : `<span class="${p.score >= 0.2 ? 'pos' : p.score <= -0.2 ? 'neg' : 'muted'}">${form1(p.score)}</span>`;
     const t = when === 'clock' ? new Date(m.t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : c.ago(m.t);
     return `<a class="mr2 ${m.won ? 'w' : 'l'}${g && g.lobbyFirst ? ' gold' : ''}" href="#/match/${m.id}">
-      <span class="mh">${icon(c, m.hero, 30)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small">${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
+      <span class="mh">${icon(c, m.hero, 30)}<span><b>${c.esc(c.heroName(m.hero))}</b><span class="muted small mr-sub">${rankMark(c, m, 18)}${m.mode === 'ranked' ? 'Ranked' : 'Unranked'} · ${mins(m.dur)}</span></span></span>
       <span class="mr-marks">${mark || ''}${firstChip(g)}</span>
       <span class="mr-res ${m.won ? 'win' : 'loss'}">${m.won ? 'W' : 'L'}</span>
       <span class="n mr-kda">${kda(m)}</span>
@@ -898,7 +907,7 @@
       <div class="page-head match-head">
         <div class="ident">${icon(c, m.hero, 56)}
           <div><div class="rank-name">${c.esc(c.heroName(m.hero))} <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span></div>
-          <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${L && L.avgBadge ? ' · lobby ' + c.esc(E.badgeName(L.avgBadge, c.tiers())) : ''} · #${m.id}${m.added ? ' · added by id' : ''}</div></div>
+          <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${(() => { const r = M.ranks.get(m.id); return !r || !r.kind ? '' : r.kind === 'placement' ? ' · placement game' : ' · you ' + (r.kind === 'before' ? 'were ' : 'played at ') + c.esc(E.badgeName(r.badge, c.tiers())); })()}${L && L.avgBadge ? ' · lobby ' + c.esc(E.badgeName(L.avgBadge, c.tiers())) : ''} · #${m.id}${m.added ? ' · added by id' : ''}</div></div>
         </div>
         <div class="big-delta">${m.delta == null ? '' : `${deltaHtml(c, m)}<span class="muted small">rank pts</span>`}</div>
       </div>`;
@@ -1188,6 +1197,7 @@
     ['−6% win chance (a death)', 'What a death like that usually costs at that minute, not an exact measure of that one.'],
     ['Creeps last-hit', 'Lane creeps you last-hit, out of those you could reach.'],
     ['★ MVP', 'Valve named you MVP: 1st in the lobby.'],
+    ['Rank badge on a match', 'The rank you played that game at. Dimmer on unranked games: your rank at the time.'],
     ['#2 of 6 · impact', 'Your place on your own team by share of souls, damage or healing, kills + assists and objectives. 1.00 = an average teammate. Neutral: it doesn’t predict wins.'],
     ['Adjusted win rate', 'A hero’s win rate pulled toward your overall by ' + E.HERO_INS_K + ' games, so 4–0 can’t beat 30–20.'],
     ['Overall · 100%', 'Friends: souls, damage or healing, kills + assists and staying alive vs the lobby average. 100 = average.'],

@@ -867,3 +867,9 @@ a.mr2.gold::before { background: var(--gold); }
   .farm-card .seg-ctl { display: flex; width: 100%; }
   .farm-card .seg-ctl button { flex: 1 1 0; min-width: 0; padding: 6px 4px; white-space: normal; line-height: 1.25; letter-spacing: .06em; }
 }
+
+/* Matches: the rank you played at, a small badge before the mode (dimmer for unranked games) */
+.mr-sub { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.mr-rank { width: 18px; height: 18px; flex: none; object-fit: contain; }
+.mr-rank.then { opacity: .45; filter: grayscale(.6); }
+.mr-plc { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--brass-hi); }

@@ -84,7 +84,7 @@
     const seasonSum = E.summarize(season, perf, state.lobbies);
     const lastRanked = ranked[ranked.length - 1];
     const badge = (state.profile && state.profile.badge) || (lastRanked && lastRanked.badge) || null;
-    return { all, ranked, season, scope, allMode, pool, perf, w, cur, prev, curRanked, v, seasonSum, badge };
+    return { all, ranked, season, scope, allMode, pool, perf, w, cur, prev, curRanked, v, seasonSum, badge, ranks: E.matchRanks(all) };
   }
 
   // ---------------------------------------------------------------- context handed to views
