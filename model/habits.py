@@ -73,8 +73,9 @@ def features(match, tier3):
     deaths_all = sorted(t for p in match for t in (p['dts'] or []))
     for p in match:
         p['tm'] = team_of(p['team'])
-    souls9 = defaultdict(float)
-    for p in match: souls9[p['tm']] += at(p['ts'], p['nw'], LANE_END)
+    souls9, souls15 = defaultdict(float), defaultdict(float)
+    for p in match:
+        souls9[p['tm']] += at(p['ts'], p['nw'], LANE_END); souls15[p['tm']] += at(p['ts'], p['nw'], 900)
     long_game = match[0]['dur'] >= MID_END
     lob = lambda f: [f(q) for q in match]
     for p in match:
@@ -121,8 +122,8 @@ def features(match, tier3):
                 if k.startswith('mid_'): r[k] = None
         tier = (p['rank'] or 0) // 10
         if tier <= 0 and p['avg']: tier = -((p['avg'] or 0) // 10)   # calibrating: keep the lobby's tier for reference, negative
-        gap9 = souls9[me] - souls9[1 - me]
-        out.append((p['acct'], p['hero'], bool(p['won']), tier, gap9, r))
+        gap9, gap15 = souls9[me] - souls9[1 - me], souls15[me] - souls15[1 - me]
+        out.append((p['acct'], p['hero'], bool(p['won']), tier, gap9, gap15, r))
     return out
 
 
@@ -154,8 +155,8 @@ def load(nfiles, cache):
                 dts=x[20], ttk=x[21], pos=x[22], it=x[23], ii=x[24]))
         for mid, ps in by.items():
             if len(ps) != 12: continue
-            for a, h, w, tier, gap9, r in features(ps, tier3):
-                rows.append([a, h, int(w), tier, gap9, [r[k] for k in RID]])
+            for a, h, w, tier, gap9, gap15, r in features(ps, tier3):
+                rows.append([a, h, int(w), tier, gap9, gap15, [r[k] for k in RID]])
         print(f'file {n + 1}/{len(files)}: {len(by)} matches, {len(rows):,} player-games so far ({time.time() - t0:.0f}s)', flush=True)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     json.dump(rows, open(cache, 'w'))
@@ -183,16 +184,20 @@ def main():
     ap.add_argument('--files', type=int, default=50)
     ap.add_argument('--fresh', action='store_true', help='ignore the cached player-games')
     a = ap.parse_args()
-    cache = os.path.join(HERE, '.cache', f'habits_{a.files}.json')
+    cache = os.path.join(HERE, '.cache', f'habits_v2_{a.files}.json')
     if a.fresh and os.path.exists(cache): os.remove(cache)
     rows = load(a.files, cache)
     acct = np.array([r[0] for r in rows]); hero = np.array([r[1] for r in rows]); won = np.array([r[2] for r in rows], float)
-    tier = np.array([r[3] for r in rows]); gap9 = np.array([r[4] for r in rows], float)
-    R = np.array([[np.nan if v is None else v for v in r[5]] for r in rows], float)
+    tier = np.array([r[3] for r in rows]); gap9 = np.array([r[4] for r in rows], float); gap15 = np.array([r[5] for r in rows], float)
+    R = np.array([[np.nan if v is None else v for v in r[6]] for r in rows], float)
     # Outcome relative to the 9:00 team position (for 'mid' rules): won minus the win rate of that souls-gap bucket.
     bucket = np.clip(np.round(gap9 / 1500), -8, 8)
     base = {b: won[bucket == b].mean() for b in np.unique(bucket)}
     won_mid = won - np.array([base[b] for b in bucket])
+    # Stricter: from the same 15:00 position. Deaths cause part of a 15:00 deficit, so this understates a mid rule;
+    # the true effect sits between this and the 9:00 one.
+    b15 = np.clip(np.round(gap15 / 1500), -10, 10); base15 = {b: won[b15 == b].mean() for b in np.unique(b15)}
+    won_15 = won - np.array([base15[b] for b in b15])
     half = np.array([zlib.crc32(str(x).encode()) % 2 for x in acct])
     band_of = lambda t: next((b[0] for b in BANDS if b[1] <= t <= b[2]), 'Calibrating') if t > 0 else 'Calibrating'
     band = np.array([band_of(t) for t in tier])
@@ -204,6 +209,7 @@ def main():
         y = (won_mid if win == 'mid' else won)
         eff, players = within(acct[ok], y[ok], p[ok])
         naive = won[ok & p].mean() - won[ok & ~p].mean()
+        strict = within(acct[ok], won_15[ok], p[ok])[0] if win == 'mid' else None
         halves = [within(acct[ok & (half == h)], y[ok & (half == h)], p[ok & (half == h)])[0] for h in (0, 1)]
         bands = {}
         for b, _, _ in BANDS:
@@ -215,7 +221,7 @@ def main():
             if (m & p).sum() >= 300 and (m & ~p).sum() >= 300:
                 heroes.append(within(acct[m], y[m], p[m])[0])
         heroes = [x for x in heroes if x is not None]
-        rec = dict(id=rid, label=label, window=win, n=int(ok.sum()), pass_rate=float(p[ok].mean()), effect=eff,
+        rec = dict(id=rid, label=label, window=win, n=int(ok.sum()), pass_rate=float(p[ok].mean()), effect=eff, strict=strict,
                    naive=float(naive), players=players, halves=halves, bands=bands,
                    heroes_positive=(sum(1 for x in heroes if x > 0) / len(heroes)) if heroes else None, heroes_checked=len(heroes))
         rec['passes'] = bool(eff is not None and eff >= 0.02 and all(x is not None and x > 0 for x in halves)
@@ -224,11 +230,11 @@ def main():
     out['rules'].sort(key=lambda r: -(r['effect'] or -1))
     json.dump(out, open(os.path.join(HERE, 'habits_out.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
     pc = lambda v: '   —' if v is None else f'{v * 100:+5.1f}'
-    print(f"\n{'rule':58} {'keep':>5} {'effect':>6} {'naive':>6} {'halves':>12} {'heroes+':>7}  bands")
+    print(f"\n{'rule':58} {'keep':>5} {'effect':>6} {'15:00':>6} {'naive':>6} {'halves':>12} {'heroes+':>7}  bands")
     for r in out['rules']:
         hp = '—' if r['heroes_positive'] is None else f"{r['heroes_positive'] * 100:.0f}%"
         bands = ' '.join(f"{k.split('–')[0][:4]} {pc(v)}" for k, v in r['bands'].items())
-        print(f"{'✓' if r['passes'] else ' '} {r['label'][:56]:56} {r['pass_rate'] * 100:4.0f}% {pc(r['effect'])} {pc(r['naive'])} "
+        print(f"{'✓' if r['passes'] else ' '} {r['label'][:56]:56} {r['pass_rate'] * 100:4.0f}% {pc(r['effect'])} {pc(r['strict'])} {pc(r['naive'])} "
               f"{pc(r['halves'][0])}/{pc(r['halves'][1])} {hp:>7}  {bands}")
 
 

@@ -1,0 +1,398 @@
+{
+ "made": "2026-11-08T22:41:17+00:00",
+ "files": 50,
+ "player_games": 755808,
+ "players": 235476,
+ "rules": [
+  {
+   "id": "mid_le2",
+   "label": "At most 2 deaths 9:00–20:00",
+   "window": "mid",
+   "n": 754524,
+   "pass_rate": 0.6475460025128426,
+   "effect": 0.12431865292290345,
+   "strict": 0.04965965712203255,
+   "naive": 0.1566532742992252,
+   "players": 96244,
+   "halves": [
+    0.122784789437707,
+    0.12584127569983458
+   ],
+   "bands": {
+    "Calibrating": 0.11823790221187135,
+    "Initiate–Seeker": 0.11973346734293241,
+    "Acolyte–Sentinel": 0.12532130479257764,
+    "Mystic–Ritualist": 0.11837772120782963,
+    "Emissary–Oracle": 0.1294917715884445,
+    "Phantom–Eternus": 0.14158037495134632
+   },
+   "heroes_positive": 1.0,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "lane_souls",
+   "label": "Souls ≥ your lane opponents at 9:00",
+   "window": "lane",
+   "n": 755808,
+   "pass_rate": 0.48976988864896903,
+   "effect": 0.12258005773495624,
+   "strict": null,
+   "naive": 0.13073341860136756,
+   "players": 107469,
+   "halves": [
+    0.12170476655701049,
+    0.12344941952653098
+   ],
+   "bands": {
+    "Calibrating": 0.11499752312314213,
+    "Initiate–Seeker": 0.14493355378479034,
+    "Acolyte–Sentinel": 0.13163794597036185,
+    "Mystic–Ritualist": 0.11342137780287148,
+    "Emissary–Oracle": 0.10993994656839237,
+    "Phantom–Eternus": 0.12723923298521808
+   },
+   "heroes_positive": 1.0,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "lane_le1",
+   "label": "At most 1 death before 9:00",
+   "window": "lane",
+   "n": 755808,
+   "pass_rate": 0.644412337524874,
+   "effect": 0.07870972418127933,
+   "strict": null,
+   "naive": 0.07151118844859211,
+   "players": 95641,
+   "halves": [
+    0.07747064031949512,
+    0.07993887047927452
+   ],
+   "bands": {
+    "Calibrating": 0.08629584482207141,
+    "Initiate–Seeker": 0.09000721261630555,
+    "Acolyte–Sentinel": 0.08894319958290181,
+    "Mystic–Ritualist": 0.07386122347033706,
+    "Emissary–Oracle": 0.0675447800280852,
+    "Phantom–Eternus": 0.07164077861557967
+   },
+   "heroes_positive": 1.0,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "lane_nodeath",
+   "label": "No deaths before 9:00",
+   "window": "lane",
+   "n": 755808,
+   "pass_rate": 0.3156185168720098,
+   "effect": 0.07354459881490909,
+   "strict": null,
+   "naive": 0.06814096671085285,
+   "players": 93855,
+   "halves": [
+    0.0728007784783934,
+    0.07428561759071066
+   ],
+   "bands": {
+    "Calibrating": 0.08040286293789317,
+    "Initiate–Seeker": 0.07935432353724721,
+    "Acolyte–Sentinel": 0.07711291463676168,
+    "Mystic–Ritualist": 0.07018064499451483,
+    "Emissary–Oracle": 0.06418123330713697,
+    "Phantom–Eternus": 0.07803150866090156
+   },
+   "heroes_positive": 1.0,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "mid_nolone",
+   "label": "No lone deaths 9:00–20:00 (nobody else died within 10s)",
+   "window": "mid",
+   "n": 754524,
+   "pass_rate": 0.46682146624891985,
+   "effect": 0.06852618323083974,
+   "strict": 0.024652778431750268,
+   "naive": 0.09645878907498368,
+   "players": 107900,
+   "halves": [
+    0.06649872660678759,
+    0.07053641218282299
+   ],
+   "bands": {
+    "Calibrating": 0.05897542420549052,
+    "Initiate–Seeker": 0.0629458209917775,
+    "Acolyte–Sentinel": 0.07118220473098791,
+    "Mystic–Ritualist": 0.06532164705751768,
+    "Emissary–Oracle": 0.06921016008441076,
+    "Phantom–Eternus": 0.08021786072057736
+   },
+   "heroes_positive": 1.0,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "mid_obj",
+   "label": "Objective damage by 20:00 ≥ the lobby average",
+   "window": "mid",
+   "n": 754524,
+   "pass_rate": 0.4071122986147558,
+   "effect": 0.06684434701647726,
+   "strict": 0.037708793725904015,
+   "naive": 0.10098238461859438,
+   "players": 98841,
+   "halves": [
+    0.06745098560228796,
+    0.06623711951110335
+   ],
+   "bands": {
+    "Calibrating": 0.07192516041118645,
+    "Initiate–Seeker": 0.06322633255423668,
+    "Acolyte–Sentinel": 0.06917997514186451,
+    "Mystic–Ritualist": 0.06258765738369301,
+    "Emissary–Oracle": 0.06839042256822381,
+    "Phantom–Eternus": 0.06373992109756005
+   },
+   "heroes_positive": 1.0,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "mid_bank",
+   "label": "Souls lost to deaths by 20:00 ≤ the lobby median",
+   "window": "mid",
+   "n": 754524,
+   "pass_rate": 0.5012007570335735,
+   "effect": 0.06070547594478973,
+   "strict": 0.028070780419208352,
+   "naive": 0.07194511118570146,
+   "players": 104170,
+   "halves": [
+    0.060432221105937406,
+    0.060976828480747085
+   ],
+   "bands": {
+    "Calibrating": 0.0539301555736534,
+    "Initiate–Seeker": 0.05431561877390516,
+    "Acolyte–Sentinel": 0.05793588563783795,
+    "Mystic–Ritualist": 0.06081677639002587,
+    "Emissary–Oracle": 0.06751933299311577,
+    "Phantom–Eternus": 0.07293897161605607
+   },
+   "heroes_positive": 1.0,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "mid_nocaught",
+   "label": "No caught-out deaths (killed within 5s) before 20:00",
+   "window": "mid",
+   "n": 754524,
+   "pass_rate": 0.8168302134855883,
+   "effect": 0.051268622002556684,
+   "strict": 0.02421400116720287,
+   "naive": 0.09416176131721232,
+   "players": 73989,
+   "halves": [
+    0.0508630191884392,
+    0.05167164373174626
+   ],
+   "bands": {
+    "Calibrating": 0.04549301173094081,
+    "Initiate–Seeker": 0.04387520522745143,
+    "Acolyte–Sentinel": 0.049709248462052394,
+    "Mystic–Ritualist": 0.045907226618638816,
+    "Emissary–Oracle": 0.05725735757428154,
+    "Phantom–Eternus": 0.06576020657914564
+   },
+   "heroes_positive": 1.0,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "lane_denies",
+   "label": "Denies ≥ your lane opponents at 9:00",
+   "window": "lane",
+   "n": 755808,
+   "pass_rate": 0.4971765316059105,
+   "effect": 0.03617483219490933,
+   "strict": null,
+   "naive": 0.03943984523144467,
+   "players": 98571,
+   "halves": [
+    0.038044237524800094,
+    0.034298691071289335
+   ],
+   "bands": {
+    "Calibrating": 0.03973868039306029,
+    "Initiate–Seeker": 0.05778433359545329,
+    "Acolyte–Sentinel": 0.04060821834125122,
+    "Mystic–Ritualist": 0.030454510119763495,
+    "Emissary–Oracle": 0.03121237497119442,
+    "Phantom–Eternus": 0.027913104004164
+   },
+   "heroes_positive": 0.9545454545454546,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "lane_jungle",
+   "label": "Jungle souls ≥ your lane opponents at 9:00",
+   "window": "lane",
+   "n": 755808,
+   "pass_rate": 0.4711170032600872,
+   "effect": 0.03536500296898449,
+   "strict": null,
+   "naive": 0.0410574504211198,
+   "players": 103297,
+   "halves": [
+    0.03526029293553072,
+    0.03546895036710927
+   ],
+   "bands": {
+    "Calibrating": 0.02627977565581344,
+    "Initiate–Seeker": 0.039317358040357665,
+    "Acolyte–Sentinel": 0.03856574931896705,
+    "Mystic–Ritualist": 0.028744188755557624,
+    "Emissary–Oracle": 0.032719563463074204,
+    "Phantom–Eternus": 0.04620812775994596
+   },
+   "heroes_positive": 0.9772727272727273,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "lane_lh",
+   "label": "Last hits ≥ your lane opponents at 9:00",
+   "window": "lane",
+   "n": 755808,
+   "pass_rate": 0.5006244972268089,
+   "effect": 0.02046062561952039,
+   "strict": null,
+   "naive": 0.024000841878110524,
+   "players": 100364,
+   "halves": [
+    0.018123980206221572,
+    0.022784053532774826
+   ],
+   "bands": {
+    "Calibrating": 0.01486117700943324,
+    "Initiate–Seeker": 0.031095953305633164,
+    "Acolyte–Sentinel": 0.021594371030346508,
+    "Mystic–Ritualist": 0.018528914130439427,
+    "Emissary–Oracle": 0.016954965172361447,
+    "Phantom–Eternus": 0.01766047200785666
+   },
+   "heroes_positive": 0.8863636363636364,
+   "heroes_checked": 44,
+   "passes": true
+  },
+  {
+   "id": "mid_t3",
+   "label": "First tier-3 item before 13:00",
+   "window": "mid",
+   "n": 754524,
+   "pass_rate": 0.6007178035423658,
+   "effect": 0.016590055343305536,
+   "strict": 0.00046148662825929885,
+   "naive": 0.03946909263441406,
+   "players": 89707,
+   "halves": [
+    0.01715703836216601,
+    0.016024620292087184
+   ],
+   "bands": {
+    "Calibrating": 0.012403354290726294,
+    "Initiate–Seeker": 0.03022238681229315,
+    "Acolyte–Sentinel": 0.016726613030756735,
+    "Mystic–Ritualist": 0.016538243599612586,
+    "Emissary–Oracle": 0.018486961047714266,
+    "Phantom–Eternus": 0.001006205329517659
+   },
+   "heroes_positive": 0.8863636363636364,
+   "heroes_checked": 44,
+   "passes": false
+  },
+  {
+   "id": "mid_acc",
+   "label": "Accuracy by 20:00 ≥ the lobby average",
+   "window": "mid",
+   "n": 729830,
+   "pass_rate": 0.5179932313004398,
+   "effect": 0.01595657728727572,
+   "strict": 0.008089062766076164,
+   "naive": 0.028637416902707435,
+   "players": 77900,
+   "halves": [
+    0.015749681472233986,
+    0.01616240945364376
+   ],
+   "bands": {
+    "Calibrating": 0.015017050382903827,
+    "Initiate–Seeker": 0.0237318855898831,
+    "Acolyte–Sentinel": 0.023444908645084264,
+    "Mystic–Ritualist": 0.01184715077090514,
+    "Emissary–Oracle": 0.008757350293110611,
+    "Phantom–Eternus": 0.013132250120746002
+   },
+   "heroes_positive": 0.926829268292683,
+   "heroes_checked": 41,
+   "passes": false
+  },
+  {
+   "id": "lane_cs80",
+   "label": "Last-hit 80%+ of the creeps you could reach by 9:00",
+   "window": "lane",
+   "n": 755789,
+   "pass_rate": 0.3444546030704337,
+   "effect": 0.010937901367190753,
+   "strict": null,
+   "naive": 0.011049005474884466,
+   "players": 97751,
+   "halves": [
+    0.012316006824653287,
+    0.009567678421224253
+   ],
+   "bands": {
+    "Calibrating": -0.002511933433817728,
+    "Initiate–Seeker": 0.013556128252836206,
+    "Acolyte–Sentinel": 0.012227480603313079,
+    "Mystic–Ritualist": 0.008277074435388537,
+    "Emissary–Oracle": 0.014540772373107537,
+    "Phantom–Eternus": 0.010332037860408053
+   },
+   "heroes_positive": 0.8636363636363636,
+   "heroes_checked": 44,
+   "passes": false
+  },
+  {
+   "id": "mid_nodeep",
+   "label": "No deaths in the enemy half 9:00–20:00",
+   "window": "mid",
+   "n": 754524,
+   "pass_rate": 0.6847721212313989,
+   "effect": -0.019289643284102785,
+   "strict": -0.012878404629751145,
+   "naive": -0.0453641239974551,
+   "players": 93813,
+   "halves": [
+    -0.020075469296971363,
+    -0.01850348420604135
+   ],
+   "bands": {
+    "Calibrating": -0.027839792734089975,
+    "Initiate–Seeker": -0.01877754322120979,
+    "Acolyte–Sentinel": -0.022404498127076733,
+    "Mystic–Ritualist": -0.020119058767657325,
+    "Emissary–Oracle": -0.012823359529076908,
+    "Phantom–Eternus": -0.004138318739566655
+   },
+   "heroes_positive": 0.09090909090909091,
+   "heroes_checked": 44,
+   "passes": false
+  }
+ ]
+}
