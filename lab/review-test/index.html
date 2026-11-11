@@ -165,10 +165,20 @@ function review() {
   };
   // objective icons from deadlock-api's copy of the game's minimap art, tinted per team on a small offscreen canvas
   const MM = 'https://assets-bucket.deadlock-api.com/assets-api-res/icons/minimap/';
-  const OBJ_SRC = { guardian: 'objective_icon_t1.svg', basegd: 'objective_icon_t1.svg', walker: 'objective_icon_t2.svg', patron: 'objective_icon_t2.svg', midboss: 'boss_marker_neutral_psd.png' };
-  const OBJ_SIZE = { guardian: 18, basegd: 13, walker: 24, patron: 32, midboss: 26 };
+  // The shrine has no minimap icon in the asset set, so it's drawn here in the same flat-white style: a temple with an eye.
+  const SHRINE_SVG = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><g fill="white">' +
+    '<path d="M256 36 470 168H42z"/><rect x="58" y="186" width="396" height="32"/><rect x="86" y="236" width="58" height="178"/>' +
+    '<rect x="368" y="236" width="58" height="178"/><rect x="36" y="432" width="440" height="44"/>' +
+    '<path fill-rule="evenodd" d="M256 252c-46 0-80 34-92 72 12 38 46 72 92 72s80-34 92-72c-12-38-46-72-92-72zm0 36a36 36 0 1 0 0 72 36 36 0 1 0 0-72z"/></g></svg>');
+  const NPC = 'https://assets-bucket.deadlock-api.com/assets-api-res/images/npcs/';
+  const OBJ_SRC = { guardian: MM + 'objective_icon_t1.svg', basegd: MM + 'objective_icon_t1.svg', walker: MM + 'objective_icon_t2.svg',
+    shrine: SHRINE_SVG, midboss: MM + 'boss_marker_neutral_psd.png' };
+  const OBJ_SIZE = { guardian: 18, basegd: 13, walker: 24, shrine: 20, midboss: 26 };
+  // the Patron is drawn as its portrait: team 2 (Amber Hand) is the Hidden King, team 3 (Sapphire Flame) the Archmother
+  const patronImg = { 2: NPC + 'patron_hiddenking.png', 3: NPC + 'patron_archmother.png' };
+  for (const k in patronImg) { const i = new Image(); i.src = patronImg[k]; patronImg[k] = i; }
   const objImg = {}, tintCache = {};
-  for (const [k, f] of Object.entries(OBJ_SRC)) { const i = new Image(); i.src = MM + f; objImg[k] = i; }
+  for (const [k, f] of Object.entries(OBJ_SRC)) { const i = new Image(); i.src = f; objImg[k] = i; }
   function tinted(kind, col) {
     const key = kind + col, src = objImg[kind];
     if (tintCache[key]) return tintCache[key];
@@ -180,6 +190,20 @@ function review() {
   }
   // the last second (within 30 s) your team saw hero i on the map
   const lastSeen = (s, i) => { if (!M.vis) return s; for (let u = s; u >= Math.max(0, s - 30); u--) if (M.vis[u] >> i & 1) return u; return null; };
+  // Patron: portrait in a team ring. Until it drops (both shrines down), a second outer ring is its shield;
+  // once dropped, the shield ring is gone and a small ▼ marks it as exposed. Destroyed = grey.
+  function drawPatron(o, t, gone) {
+    const [x, y] = px(o.x, o.y), r = 15 * Math.sqrt(cam.s), img = patronImg[o.team];
+    const col = gone ? '#5b5750' : o.team === M.myTeam ? C.ally : C.enemy, dropped = o.dropped != null && t >= o.dropped;
+    g.globalAlpha = gone ? .45 : focus ? .6 : 1;
+    if (!gone && !dropped) { g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([3, 3]); g.beginPath(); g.arc(x, y, r + 7, 0, 7); g.stroke(); g.setLineDash([]); }
+    g.beginPath(); g.arc(x, y, r + 3, 0, 7); g.fillStyle = col; g.fill();
+    g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip(); g.fillStyle = '#111'; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    if (img && img.complete && img.naturalWidth) { if (gone) g.filter = 'grayscale(1)'; g.drawImage(img, x - r, y - r, 2 * r, 2 * r); g.filter = 'none'; }
+    g.restore();
+    if (dropped && !gone) { g.fillStyle = col; g.font = `600 ${Math.round(11 * Math.sqrt(cam.s))}px Bahnschrift, sans-serif`; g.textAlign = 'center'; g.fillText('▼ dropped', x, y + r + 16); g.textAlign = 'start'; }
+    g.globalAlpha = 1;
+  }
   function draw(t) {
     aim(t);
     g.clearRect(0, 0, W, W);
@@ -189,6 +213,7 @@ function review() {
       if (t < o.born) continue;
       const gone = o.died != null && o.died <= t;
       if (gone && o.kind === 'midboss') continue;
+      if (o.kind === 'patron') { drawPatron(o, t, gone); continue; }
       const [x, y] = px(o.x, o.y), s = OBJ_SIZE[o.kind] * Math.sqrt(cam.s);
       const col = gone ? '#5b5750' : o.team === 4 ? '#c9a3ff' : o.team === M.myTeam ? C.ally : C.enemy;
       const img = tinted(o.kind, col);
