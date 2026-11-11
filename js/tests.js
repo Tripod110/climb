@@ -695,6 +695,66 @@
   eq('badge null', E.badgeName(null), 'Unranked');
   eq('rank series cumulative', E.rankSeries([{ delta: 300 }, { delta: null }, { delta: -100 }]).map(p => p.cum), [300, 200]);
 
+  // ---------------------------------------------------------------- match review (review.js)
+  if (typeof require === 'function' && !root.Review) require('./review.js');
+  const Rv = root.Review;
+  {
+    // A tiny match: 6 heroes (0 = you, 1-2 your team, 3-5 theirs), 120 s, everyone 1000 souls.
+    // Heroes stand far apart; scenarios move some of them next to you.
+    const mk = (place, opts) => {
+      opts = opts || {};
+      const end = 120, frames = [];
+      for (let s = 0; s <= end; s++) {
+        const row = [];
+        for (let i = 0; i < 6; i++) { const p = place(s, i) || [i * 5000 - 9000, 9000]; row.push(p[0], p[1], 100, opts.dead && opts.dead(s, i) ? 0 : 1); }
+        frames.push(row);
+      }
+      const souls = []; for (let s = 0; s <= end; s += 10) souls.push((opts.souls || [1000, 1000, 1000, 1000, 1000, 1000]).slice());
+      return { end, me: 0, myTeam: 2, heroes: [2, 2, 2, 3, 3, 3].map((team, i) => ({ id: i + 1, team })), frames, souls,
+        vis: opts.vis || null, objs: opts.objs || [], troop: {}, kills: opts.kills || [] };
+    };
+    // you alone at (0,0); enemies 3 and 4 walk up from 60 s and kill you at 70 s
+    const gank = mk((s, i) => i === 0 ? [0, 0] : (i === 3 || i === 4) && s >= 60 ? [500 + i * 100, 0] : null,
+      { kills: [{ t: 70, v: 0, a: 3, gold: 800 }], dead: (s, i) => i === 0 && s >= 70 });
+    const sit = Rv.situation(gank, 62, 2600);
+    eq('review: situation counts the two enemies next to you', [sit.allies.length, sit.enemies.length], [0, 2]);
+    eq('review: fight maths = their souls / yours in the fight', sit.fight, { us: 1000, them: 2000 });
+    ok('review: 1v2 at equal souls (2.0x) is clearly bad', Rv.severity(sit) > 0, Rv.severity(sit));
+    eq('review: an even 1v1 is never a question', Rv.severity({ enemies: [3], allies: [], hp: 100, fight: { us: 1000, them: 3000 } }), 0);
+    eq('review: outnumbered but their side has under ODDS x your souls is not a question',
+      Rv.severity({ enemies: [3, 4], allies: [], hp: 100, fight: { us: 1500, them: 2000 } }), 0);
+    eq('review: fight starts the second you became outnumbered', Rv.fightStart(gank, 70), 60);
+    const ms = Rv.findMoments(gank);
+    eq('review: the gank is one question, asked 3 s before it turned bad', ms.map(m => [m.t, m.death, m.phase]), [[57, 70, 'lane']]);
+    const q = Rv.buildQuestion(gank, ms[0], i => 'H' + i);
+    eq('review: question options and the good answer', q.opts.map(o => o.id + ':' + o.verdict), ['fight:risky', 'hold:risky', 'back:good']);
+    ok('review: the bounty is in the fall-back reason', /800-soul bounty/.test(q.opts[2].why), q.opts[2].why);
+    // same gank, but your team never saw enemy 4: judged on 1v1, so no question
+    const fog = mk((s, i) => i === 0 ? [0, 0] : (i === 3 || i === 4) && s >= 60 ? [500 + i * 100, 0] : null,
+      { kills: [{ t: 70, v: 0, a: 3 }], dead: (s, i) => i === 0 && s >= 70, vis: Array(121).fill(1 << 3) });
+    eq('review: an enemy hidden by fog does not count', [Rv.situation(fog, 62, 2600).enemies.length, Rv.situation(fog, 62, 2600).unseen.length], [1, 1]);
+    eq('review: an ambush (attackers unseen) is not a question', Rv.findMoments(fog).length, 0);
+    // standing on your own Patron: a last stand, never a question
+    const base = mk((s, i) => i === 0 ? [0, 0] : (i === 3 || i === 4) && s >= 60 ? [500 + i * 100, 0] : null,
+      { kills: [{ t: 70, v: 0, a: 3 }], dead: (s, i) => i === 0 && s >= 70, objs: [{ kind: 'patron', team: 2, x: 100, y: 0, born: 0, died: null }] });
+    eq('review: defending your own base is not a question', Rv.findMoments(base).length, 0);
+    eq('review: phase is lane before 9:00', Rv.phaseAt(gank, 539), 'lane');
+    const slot = (phase, sev, t) => ({ phase, severity: sev, t });
+    eq('review: 3 per phase, spare slots lent, 9 at most',
+      Rv.pickSlots([...[1, 2, 3, 4, 5, 6, 7].map(i => slot('mid', i, 600 + i)), slot('lane', 1, 10), ...[1, 2, 3, 4, 5].map(i => slot('late', i, 2000 + i))]).length, 9);
+    // pack: delta rows carried forward, positions from cell + vec, clock from game start
+    const P = Rv.pack({
+      rules: [{ tick: 0, gst: 10 }],
+      map: [{ hero: 7, team: 2, hp: 0x8000 | 100, account: 42 }, { hero: 8, team: 3, hp: 101, account: 43 }],
+      pawns: [{ tick: 640, entity_index: 100, hp: 500, hpmax: 1000, life: 0, cx: 64, cy: 64, vx: 10, vy: 20 }, { tick: 704, entity_index: 100, hp: 250 },
+        { tick: 640, entity_index: 101, hp: 100, hpmax: 100, life: 0, cx: 65, cy: 64, vx: 0, vy: 0 }],
+      players: [], kills: [{ tick: 704, v: 101, a: 100, gold: 300 }], obj: [], troop: [], fow: [],
+    }, 42, 1);
+    eq('pack: you first, hero ids kept', P.heroes.map(h => h.id), [7, 8]);
+    eq('pack: position = cell * 512 + vec - 32768; health carried forward', P.frames[1].slice(0, 4), [10, 20, 25, 1]);
+    eq('pack: the kill on the game clock', [P.kills[0].t, P.kills[0].v, P.kills[0].a], [1, 1, 0]);
+  }
+
   // ---------------------------------------------------------------- report
   const failed = results.filter(r => !r.ok);
   if (typeof document !== 'undefined') {

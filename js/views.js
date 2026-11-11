@@ -920,7 +920,7 @@
           <div><div class="rank-name">${c.esc(c.heroName(m.hero))} <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span></div>
           <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${(() => { const r = M.ranks.get(m.id); return !r || !r.kind ? '' : r.kind === 'placement' ? ' · placement game' : ' · you ' + (r.kind === 'before' ? 'were ' : 'played at ') + c.esc(E.badgeName(r.badge, c.tiers())); })()}${lobbyAvg ? ` · lobby avg <b class="ink">${c.esc(E.badgeName(lobbyAvg, c.tiers()))}</b>` : ''} · #${m.id}${m.added ? ' · added by id' : ''}</div></div>
         </div>
-        <div class="big-delta">${m.delta == null ? '' : `${deltaHtml(c, m)}<span class="muted small">rank pts</span>`}</div>
+        <div class="mh-actions"><a class="btn" href="#/match/${m.id}/review">Review</a><div class="big-delta">${m.delta == null ? '' : `${deltaHtml(c, m)}<span class="muted small">rank pts</span>`}</div></div>
       </div>
       ${(t => t ? `<div class="plq-row">${t}</div>` : '')(plaques(c, m, 6))}`;
     if (!L || L.v !== E.LOBBY_V) {
@@ -975,6 +975,255 @@
     bindSeg(host, '#ft', v2 => { farmTab = v2; c.render(); });
     const cb = host.querySelector('[data-coach]');
     if (cb) cb.addEventListener('click', () => c.runDebrief(m.id, cb.dataset.coach === 'again'));
+  }
+
+  /* ------------------------------------------------------------ match review (#/match/<id>/review)
+     The replay on a 2D map at one steady speed, stopping only at the moments Review.findMoments picks.
+     Each stop asks what you'd do, plays the clip, then explains. The player is built once per match and
+     left alone when the page redraws (render() runs on every data update), so the animation never restarts. */
+  let rvUI = null;   // { id, root } of the player on screen
+  function review(host, c) {
+    const M0 = c.M, id = c.state.route.id, m = M0.all.find(x => x.id === id);
+    if (!m) { host.innerHTML = '<div class="empty-state">That match isn’t in your history. <a href="#/matches">Back to matches</a></div>'; return; }
+    if (rvUI && rvUI.id === id && host.contains(rvUI.root)) return;
+    const rv = c.state.reviews[id];
+    if (!rv) c.ensureReview(id);
+    const head = `<a href="#/match/${id}" class="back">← This match</a>
+      <div class="page-head"><div class="ident">${icon(c, m.hero, 48)}<div><div class="rank-name">Review · ${c.esc(c.heroName(m.hero))} <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span></div>
+      <div class="muted small" id="rv-meta">${m.k} kills · ${m.d} deaths · ${mins(m.dur)}</div></div></div></div>`;
+    if (!rv || rv.status === 'loading') {
+      const done = rv ? rv.done : 0, of = rv ? rv.of : 8;
+      host.innerHTML = head + `<section class="card"><div class="rv-load"><span class="spin" aria-hidden="true"></span><b>Reading the replay…</b><span class="muted small">${done} of ${of} parts</span></div>
+        <div class="rv-bar"><i style="width:${Math.round(100 * done / of)}%"></i></div>
+        <p class="muted small" style="margin:10px 0 0">deadlock-api opens the game’s replay file and pulls out where everyone was, second by second. The first time takes about a minute; after that it opens instantly.</p></section>`;
+      return;
+    }
+    if (rv.status === 'error') {
+      host.innerHTML = head + `<section class="card"><p><b>Couldn’t load this replay.</b></p><p class="muted">${c.esc(rv.error)}</p><button type="button" class="btn ghost-btn" id="rv-retry">Try again</button></section>`;
+      host.querySelector('#rv-retry').onclick = () => c.retryReview(id);
+      return;
+    }
+    host.innerHTML = head + `<div class="rv-grid"><div>
+        <div class="rv-stage"><canvas id="rv-map" width="900" height="900"></canvas><div class="rv-clock" id="rv-clock">0:00</div><div class="rv-speed" id="rv-speed"></div><div class="rv-banner" id="rv-banner"></div></div>
+        <div class="rv-ctl"><button type="button" class="btn" id="rv-play">▶ Play review</button><button type="button" class="btn ghost-btn" id="rv-jump">Jump to key moment</button><span class="rv-seg" id="rv-spd" role="group" aria-label="Playback speed"></span></div>
+        <div class="rv-tl" id="rv-tl"><canvas id="rv-tlc" width="1000" height="46"></canvas><span class="rv-tip" id="rv-tip"></span></div>
+        <div class="rv-key"><span><i style="background:var(--ally)"></i>Your team</span><span><i style="background:var(--enemy)"></i>Enemy team</span><span><i style="background:var(--brass-hi)"></i>Your kill</span><span><i style="background:var(--bad)"></i>Your death</span><span>◆ Question</span><span>Band: souls lead (up = you ahead)</span></div>
+      </div><aside class="rv-side" id="rv-side"></aside></div>`;
+    rvUI = { id, root: host.querySelector('.rv-grid') };
+    reviewPlayer(host, c, rv.M);
+  }
+
+  function reviewPlayer(host, c, M) {
+    const R = window.Review, N = M.heroes.length, RAD = 10752, fmt = R.clockTxt, esc = c.esc;
+    const $ = s => host.querySelector('#rv-' + s), root = rvUI.root;
+    const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const C = { ally: css('--ally'), enemy: css('--enemy'), brass: css('--brass-hi'), bad: css('--bad'), warn: css('--warn') };
+    const name = i => c.heroName(M.heroes[i].id);
+    const mine = M.kills.filter(k => k.a === M.me || k.v === M.me);
+
+    // the questions this match earned
+    const QS = R.findMoments(M).map(mo => Object.assign(mo, { q: R.buildQuestion(M, mo, name), clipEnd: Math.min(M.end, mo.death + 1) }));
+    const PH = { lane: 'Lane', mid: 'Mid-game', late: 'Late game' };
+    const intro = `<div class="t-label">This game ${src('rule', `Climb asks only when a fight was clearly bad before it started: you were outnumbered, and the enemies your team could see had at least ${R.ODDS}× the souls of your side (counting only the heroes in the fight). An enemy counts as seen if it was on your team’s map in the last ${R.KNOWN} seconds. Defending your own base is never a question: there’s nowhere to fall back to. Up to 3 questions each for lane (to 9:00), mid and late game.`)}</div>
+      <h2>${QS.length ? `${QS.length} question${QS.length === 1 ? '' : 's'}` : 'Nothing to ask'}</h2>
+      <p class="muted" style="margin:0">${['lane', 'mid', 'late'].map(p => `${PH[p]} ${QS.filter(q => q.phase === p).length}`).join(' · ')}</p>
+      ${QS.length ? '' : '<p class="rv-note">No fight this game was clearly lost before it began. You can still watch it all.</p>'}`;
+    const showIntro = () => { $('side').innerHTML = `<section class="card">${intro}</section>`; };
+    showIntro();
+    $('jump').style.display = QS.length ? '' : 'none';
+
+    // ---- map
+    const cv = $('map'), g = cv.getContext('2d'), W = cv.width;
+    const ASSET = 'https://assets-bucket.deadlock-api.com/assets-api-res/';
+    const bg = new Image(); bg.src = ASSET + 'images/maps/minimap_midtown_mid.png';
+    const icons = M.heroes.map(h => { const i = new Image(); i.src = c.heroIcon(h.id); return i; });
+    const base = (x, y) => [(x + RAD) / (2 * RAD) * W, (RAD - y) / (2 * RAD) * W];
+    const cam = { x: W / 2, y: W / 2, s: 1 };   // zooms onto the fight during a question
+    const px = (x, y) => { const [bx, by] = base(x, y); return [(bx - cam.x) * cam.s + W / 2, (by - cam.y) * cam.s + W / 2]; };
+    const at = (t, i) => {
+      const a = M.frames[Math.max(0, Math.min(M.end, Math.floor(t)))], b = M.frames[Math.max(0, Math.min(M.end, Math.floor(t) + 1))], f = t - Math.floor(t);
+      const o = i * 4, jump = Math.hypot(b[o] - a[o], b[o + 1] - a[o + 1]) > 3000;   // respawns teleport: no sliding
+      return { x: jump ? a[o] : a[o] + (b[o] - a[o]) * f, y: jump ? a[o + 1] : a[o + 1] + (b[o + 1] - a[o + 1]) * f, hp: a[o + 2], alive: a[o + 3] };
+    };
+    const lastSeen = (s, i) => { if (!M.vis) return s; for (let u = s; u >= Math.max(0, s - 30); u--) if (M.vis[u] >> i & 1) return u; return null; };
+    let focus = null, t = 0, playing = false, clip = null, cur = null, lastTs = 0, drag = null;
+    function aim() {
+      let tx = W / 2, ty = W / 2, ts = 1;
+      if (focus) {
+        const pts = focus.map(i => at(t, i)).filter(p => p.alive && (p.x || p.y)).map(p => base(p.x, p.y));
+        if (pts.length) {
+          const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+          tx = (Math.min(...xs) + Math.max(...xs)) / 2; ty = (Math.min(...ys) + Math.max(...ys)) / 2;
+          ts = Math.max(1, Math.min(3.2, W * 0.55 / Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 60)));
+        }
+      }
+      cam.x += (tx - cam.x) * 0.08; cam.y += (ty - cam.y) * 0.08; cam.s += (ts - cam.s) * 0.08;
+    }
+    // objectives: the game's minimap icons, team-coloured; destroyed ones stay faint grey. The game's set has
+    // no shrine icon (drawn here in the same style), and the Patron is its portrait: Hidden King (team 2), Archmother (team 3).
+    const OBJ_SRC = { guardian: ASSET + 'icons/minimap/objective_icon_t1.svg', basegd: ASSET + 'icons/minimap/objective_icon_t1.svg',
+      walker: ASSET + 'icons/minimap/objective_icon_t2.svg', midboss: ASSET + 'icons/minimap/boss_marker_neutral_psd.png',
+      shrine: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><g fill="white"><path d="M256 36 470 168H42z"/><rect x="58" y="186" width="396" height="32"/><rect x="86" y="236" width="58" height="178"/><rect x="368" y="236" width="58" height="178"/><rect x="36" y="432" width="440" height="44"/><path fill-rule="evenodd" d="M256 252c-46 0-80 34-92 72 12 38 46 72 92 72s80-34 92-72c-12-38-46-72-92-72zm0 36a36 36 0 1 0 0 72 36 36 0 1 0 0-72z"/></g></svg>') };
+    const OBJ_SIZE = { guardian: 18, basegd: 13, walker: 24, shrine: 20, midboss: 26 };
+    const objImg = {}, tint = {};
+    for (const k in OBJ_SRC) { const i = new Image(); i.src = OBJ_SRC[k]; objImg[k] = i; }
+    const patronImg = { 2: 'images/npcs/patron_hiddenking.png', 3: 'images/npcs/patron_archmother.png' };
+    for (const k in patronImg) { const i = new Image(); i.src = ASSET + patronImg[k]; patronImg[k] = i; }
+    function tinted(kind, col) {
+      const key = kind + col, im = objImg[kind];
+      if (tint[key]) return tint[key];
+      if (!im || !im.complete || !im.naturalWidth) return null;
+      const cc = document.createElement('canvas'); cc.width = cc.height = 64; const x = cc.getContext('2d');
+      x.drawImage(im, 0, 0, 64, 64);
+      if (kind !== 'midboss') { x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, 64, 64); }
+      return (tint[key] = cc);
+    }
+    function drawPatron(o, gone) {
+      const [x, y] = px(o.x, o.y), r = 15 * Math.sqrt(cam.s), im = patronImg[o.team];
+      const col = gone ? '#5b5750' : o.team === M.myTeam ? C.ally : C.enemy, dropped = o.dropped != null && t >= o.dropped;
+      g.globalAlpha = gone ? 0.45 : focus ? 0.6 : 1;
+      if (!gone && !dropped && o.dropped !== undefined) { g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([3, 3]); g.beginPath(); g.arc(x, y, r + 7, 0, 7); g.stroke(); g.setLineDash([]); }
+      g.beginPath(); g.arc(x, y, r + 3, 0, 7); g.fillStyle = col; g.fill();
+      g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip(); g.fillStyle = '#111'; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+      if (im && im.complete && im.naturalWidth) { if (gone) g.filter = 'grayscale(1)'; g.drawImage(im, x - r, y - r, 2 * r, 2 * r); g.filter = 'none'; }
+      g.restore();
+      if (dropped && !gone) { g.fillStyle = col; g.font = `600 ${Math.round(11 * Math.sqrt(cam.s))}px Bahnschrift, sans-serif`; g.textAlign = 'center'; g.fillText('▼ dropped', x, y + r + 16); g.textAlign = 'start'; }
+      g.globalAlpha = 1;
+    }
+    function draw() {
+      aim();
+      g.clearRect(0, 0, W, W);
+      if (bg.complete && bg.naturalWidth) { const [x0, y0] = px(-RAD, RAD), [x1, y1] = px(RAD, -RAD); g.filter = 'brightness(1.9) contrast(1.15)'; g.drawImage(bg, x0, y0, x1 - x0, y1 - y0); g.filter = 'none'; }
+      for (const o of M.objs) {
+        if (t < o.born) continue;
+        const gone = o.died != null && o.died <= t;
+        if (gone && o.kind === 'midboss') continue;
+        if (o.kind === 'patron') { drawPatron(o, gone); continue; }
+        const [x, y] = px(o.x, o.y), s = (OBJ_SIZE[o.kind] || 18) * Math.sqrt(cam.s);
+        const im = tinted(o.kind, gone ? '#5b5750' : o.team === 4 ? '#c9a3ff' : o.team === M.myTeam ? C.ally : C.enemy);
+        g.globalAlpha = gone ? 0.45 : focus ? 0.55 : 0.95;
+        if (im) g.drawImage(im, x - s / 2, y - s / 2, s, s);
+        g.globalAlpha = 1;
+      }
+      const tr = M.troop[String(Math.floor(t / 2) * 2)] || [];
+      for (let i = 0; i < tr.length; i += 3) {
+        const [x, y] = px(tr[i] * 10, tr[i + 1] * 10);
+        g.fillStyle = tr[i + 2] === M.myTeam ? C.ally : C.enemy; g.globalAlpha = focus ? 0.25 : 0.55;
+        g.beginPath(); g.arc(x, y, 2.2 * Math.sqrt(cam.s), 0, 7); g.fill();
+      }
+      g.globalAlpha = 1;
+      // heroes: while a question is open, enemies your team couldn't see sit at their last seen spot, faded and dashed
+      const fogged = cur && !clip;
+      const order = [...Array(N).keys()].sort((a, b) => (focus ? focus.includes(a) - focus.includes(b) : 0) || (a === M.me) - (b === M.me));
+      for (const i of order) {
+        let p = at(t, i), ghost = false;
+        if (fogged && M.heroes[i].team !== M.myTeam && !R.known(M, Math.floor(t), i)) { const ls = lastSeen(Math.floor(t), i); if (ls == null) continue; p = at(ls, i); ghost = true; }
+        if (!p.alive || (!p.x && !p.y)) continue;
+        const [x, y] = px(p.x, p.y), lit = !ghost && (!focus || focus.includes(i)), r = i === M.me ? 17 : 14;
+        const col = M.heroes[i].team === M.myTeam ? C.ally : C.enemy;
+        g.globalAlpha = ghost ? 0.3 : lit ? 1 : 0.32;
+        if (ghost) { g.setLineDash([4, 4]); g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r + 5, 0, 7); g.stroke(); g.setLineDash([]); }
+        g.beginPath(); g.arc(x, y, r + 3, 0, 7); g.fillStyle = col; g.fill();
+        g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip(); g.fillStyle = '#111'; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+        if (icons[i].complete && icons[i].naturalWidth) g.drawImage(icons[i], x - r, y - r, 2 * r, 2 * r);
+        g.restore();
+        if (i === M.me) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r + 6, 0, 7); g.stroke(); }
+        if (lit) {
+          g.fillStyle = 'rgba(0,0,0,.7)'; g.fillRect(x - r, y + r + 6, 2 * r, 4);
+          g.fillStyle = p.hp > 50 ? '#8fd18f' : p.hp > 25 ? C.warn : C.bad; g.fillRect(x - r, y + r + 6, 2 * r * Math.min(1, p.hp / 100), 4);
+        }
+        g.globalAlpha = 1;
+      }
+      $('clock').textContent = fmt(t);
+    }
+
+    // ---- timeline: souls lead band, your kills / deaths, question diamonds, playhead
+    const tl = $('tl'), tip = $('tip'), tc = $('tlc'), tg = tc.getContext('2d'), TW = tc.width, TH = tc.height;
+    const lead = M.souls.map(row => row.reduce((a, v, i) => a + (M.heroes[i].team === M.myTeam ? v : -v), 0));
+    const maxGap = Math.max(...lead.map(Math.abs), 1);
+    function drawTl() {
+      tg.clearRect(0, 0, TW, TH);
+      const mid = TH / 2;
+      tg.beginPath(); tg.moveTo(0, mid);
+      lead.forEach((d, i) => tg.lineTo(i * 10 / M.end * TW, mid - d / maxGap * (mid - 6)));
+      tg.lineTo(TW, mid); tg.closePath(); tg.fillStyle = 'rgba(184,149,90,.25)'; tg.fill();
+      tg.strokeStyle = 'rgba(128,120,100,.35)'; tg.beginPath(); tg.moveTo(0, mid); tg.lineTo(TW, mid); tg.stroke();
+      for (const k of mine) { tg.fillStyle = k.v === M.me ? C.bad : C.brass; tg.beginPath(); tg.arc(k.t / M.end * TW, k.v === M.me ? TH - 7 : 7, 4, 0, 7); tg.fill(); }
+      for (const q of QS) { tg.save(); tg.translate(q.t / M.end * TW, mid); tg.rotate(Math.PI / 4); tg.fillStyle = q.done ? '#8a857a' : C.brass; tg.fillRect(-5, -5, 10, 10); tg.restore(); }
+      tg.fillStyle = css('--ink'); tg.fillRect(t / M.end * TW - 1, 0, 2, TH);
+    }
+
+    // ---- playback: one steady speed you pick, stopping only for questions (their clip plays at 1.5x)
+    const SPEEDS = [4, 8, 16, 24, 32, 48];
+    let rate = SPEEDS.includes(c.settings.reviewSpeed) ? c.settings.reviewSpeed : 24;
+    $('spd').innerHTML = SPEEDS.map(v => `<button type="button" data-s="${v}">${v}×</button>`).join('');
+    const markSpeed = () => $('spd').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.s === rate));
+    $('spd').onclick = e => { const b = e.target.closest('button'); if (!b) return; rate = +b.dataset.s; c.settings.reviewSpeed = rate; c.save(); markSpeed(); };
+    markSpeed();
+    const next = () => QS.find(q => !q.done && q.t >= t - 0.01);
+    function frame(ts) {
+      if (!document.body.contains(root)) return;   // left the review: stop
+      const dt = Math.min(0.1, (ts - (lastTs || ts)) / 1000); lastTs = ts;
+      if (playing) {
+        const sp = clip ? 1.5 : rate, n = next(); t += dt * sp; $('speed').textContent = `${sp}×`;
+        if (!clip && n && t >= n.t) { t = n.t; ask(n); }
+        if (clip && t >= clip.end) { t = clip.end; playing = false; const done = clip.done; clip = null; done(); }
+        if (t >= M.end) { t = M.end; playing = false; }
+        setPlay();
+      }
+      draw(); drawTl();
+      requestAnimationFrame(frame);
+    }
+    const setPlay = () => { $('play').textContent = playing ? '❚❚ Pause' : (t >= M.end ? '↺ Replay' : '▶ Play review'); };
+    const resume = () => { focus = null; playing = true; lastTs = 0; setPlay(); };
+    $('play').onclick = () => { if (clip || cur) return; if (t >= M.end) { t = 0; QS.forEach(q => { q.done = false; }); } playing = !playing; lastTs = 0; setPlay(); };
+    $('jump').onclick = () => { if (clip || cur) return; const n = QS.find(q => !q.done) || QS[0]; if (!n) return; n.done = false; t = Math.max(0, n.t - 12); resume(); };
+
+    // drag along the timeline any time; it closes an open question (asked again when you reach it) and pauses while held
+    const timeAt = e => { const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(M.end, (e.clientX - r.left) / r.width * M.end)); };
+    const closeQuestion = () => { if (!cur && !clip) return; clip = null; cur = null; focus = null; $('banner').style.display = 'none'; showIntro(); };
+    const seek = e => { t = timeAt(e); QS.forEach(q => { if (q.t >= t - 0.01) q.done = false; }); };
+    tl.addEventListener('pointerdown', e => { closeQuestion(); drag = { was: playing }; playing = false; tl.classList.add('drag'); seek(e); setPlay(); try { tl.setPointerCapture(e.pointerId); } catch (x) { /* synthetic pointer */ } });
+    tl.addEventListener('pointermove', e => {
+      const r = tl.getBoundingClientRect();
+      tip.style.display = 'block'; tip.style.left = Math.max(22, Math.min(r.width - 22, e.clientX - r.left)) + 'px'; tip.textContent = fmt(timeAt(e));
+      if (drag) seek(e);
+    });
+    const endDrag = () => { if (!drag) return; tl.classList.remove('drag'); playing = drag.was; lastTs = 0; drag = null; setPlay(); };
+    tl.addEventListener('pointerup', endDrag); tl.addEventListener('pointercancel', endDrag);
+    tl.addEventListener('pointerleave', () => { if (!drag) tip.style.display = 'none'; });
+
+    // ---- a question: stop, ask, play the clip, then explain
+    function ask(q) {
+      cur = q; playing = false; focus = q.focus; setPlay();
+      const i = QS.indexOf(q) + 1;
+      $('banner').textContent = `Question ${i} · what do you do?`; $('banner').style.display = 'block';
+      $('side').innerHTML = `<section class="card"><div class="t-label">${PH[q.phase]} · ${fmt(q.t)} · Question ${i} of ${QS.length}</div>
+        <h2>${esc(q.q.title)}</h2>
+        <ul class="rv-facts">${q.q.facts.map(([n, s]) => `<li><b>${esc(n)}</b><span>${esc(s)}</span></li>`).join('')}</ul>
+        <div class="rv-opts">${q.q.opts.map(o => `<button type="button" data-o="${o.id}">${esc(o.label)}</button>`).join('')}</div>
+        <p class="rv-note">Only enemies your team had seen in the last ${R.KNOWN} seconds are shown. Faded, dashed icons are where one was last seen.</p></section>`;
+      $('side').querySelectorAll('[data-o]').forEach(b => { b.onclick = () => answer(q, b.dataset.o); });
+    }
+    function answer(q, pickId) {
+      const pick = q.q.opts.find(o => o.id === pickId);
+      $('side').querySelectorAll('[data-o]').forEach(b => { b.disabled = true; b.classList.toggle('picked', b.dataset.o === pickId); });
+      $('banner').textContent = pick.verdict === 'good' ? 'Good call · here’s what happened' : 'Watch what happened';
+      clip = { end: q.clipEnd, done: () => reveal(q, pickId) };
+      playing = true; lastTs = 0;
+    }
+    function reveal(q, pickId) {
+      $('banner').style.display = 'none';
+      const rows = q.q.opts.map(o => `<li style="display:block"><span>${esc(o.label)}</span><span class="rv-verdict ${o.verdict}">${o.verdict === 'good' ? 'Good call' : 'Risky'}</span>${o.id === q.q.did ? '<span class="rv-you">what you did</span>' : ''}${o.id === pickId && o.id !== q.q.did ? '<span class="rv-you">your answer</span>' : ''}<p class="rv-why">${esc(o.why)}</p></li>`).join('');
+      $('side').insertAdjacentHTML('beforeend', `<section class="card"><div class="t-label">What happened</div><h2>${esc(q.q.outcome)}</h2>
+        <ul class="rv-facts" style="gap:12px">${rows}</ul>
+        ${q.unseen.length ? `<p class="rv-why" style="margin-bottom:10px">Also there, hidden by fog: ${esc(q.unseen.map(name).join(', '))}. The question only counted the enemies you could see.</p>` : ''}
+        <p class="rv-note">Why this was a question: you were outnumbered, and their side of the fight had ${q.q.ratio.toFixed(1)}× your souls, before it began.</p>
+        <button type="button" class="btn" id="rv-cont" style="margin-top:10px">${QS.some(x => !x.done && x !== q) ? 'Continue review' : 'Finish review'}</button></section>`);
+      $('cont').onclick = () => { q.done = true; cur = null; resume(); $('cont').remove(); };
+    }
+
+    setPlay(); requestAnimationFrame(frame);
   }
 
   /* This game against the rulebook (Engine.ruleCard): kept ✓ / broken ✗ per rule, with what each is worth. Needs match detail. */
@@ -1307,5 +1556,5 @@
     if (clr) clr.addEventListener('click', () => c.clearCoach());
   }
 
-  root.Views = { welcome, overview, coach, matches, match, heroes, friends, friend, play, about };
+  root.Views = { welcome, overview, coach, matches, match, review, heroes, friends, friend, play, about };
 })(window);

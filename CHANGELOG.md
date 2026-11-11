@@ -4,6 +4,20 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.50 (2026-11-11): Match review
+- `#/match/<id>/review` (`Views.review`, button in the match header): the replay on a 2D map at one steady speed
+  (4×–48×, `settings.reviewSpeed`), stopping only at question moments; drag the timeline to scrub (closes an open
+  question). The player is built once per match and survives redraws; it stops when you leave.
+- `js/review.js` (pure, in `node js/tests.js`): `QUERIES` (8 SQL queries over the demo), `pack(Q, account)` → one
+  compact match (a frame per second, fog bitmask, troopers, souls, objectives, kills), `findMoments` and
+  `buildQuestion`. A question = you were outnumbered by enemies your team saw in the last 6 s (`KNOWN`) and their
+  side of the fight had ≥ 1.75× your souls (`ODDS`), asked 3 s before it turned bad; base defence is skipped;
+  3 per phase (lane < 9:00, mid, late at 22k average souls), spare slots lent, 9 max.
+- `Api.demoQuery`: POST `/v1/matches/demo/query`, poll, fetch the `.ndjson.zst` result from
+  `demo-extracts.deadlock-api.com` (added to the CSP) and unpack it with the vendored `js/vendor/fzstd.js` (MIT),
+  loaded only when a review runs. `Store.big`: IndexedDB store for packed reviews, newest 12 kept.
+- 17 new tests (297).
+
 ## 0.49 (2026-11-08): The rulebook
 - `Engine.RULES`: seven rules from `model/habits.py` (62,984 ranked matches, within-player effects): lane_souls,
   lane_le1, mid_le2, mid_nolone, mid_obj, mid_bank, mid_nocaught. `PROVEN` holds each effect overall, by rank band

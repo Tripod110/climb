@@ -43,6 +43,7 @@
     status: '', busy: false,
     route: { tab: 'overview' },
     search: null,                         // onboarding: { q, results, busy, error }
+    reviews: {},                          // matchId -> { status: 'loading'|'ready'|'error', done, of, M, error } (match review)
   };
   function loadAccountData() {
     S.useAccount(settings.account);
@@ -121,14 +122,14 @@
     benchPlan, ensureHeroLadder, searchAccount, setAccount, runDebrief, saveCoachKey, setCoachModel, clearCoach, ensureMatchDetail, matchWin, ensureDetails, runAnalysis, analysisEntries, ANALYSIS_N: 30,
     focusCatalog, focusNow, startFocus, endFocus, coachPickHabit,
     ensureFriends, ensureDetailsFor, friendList, entryOf: m => ({ m, L: state.lobbies[m.id], D: state.details[m.id] }), dismissRecap, dismissMissing, freshnessNow,
-    addMatch, ensureSquad, squadRows, runDuoCoach, ensureMatchPlayers,
+    addMatch, ensureSquad, squadRows, runDuoCoach, ensureMatchPlayers, ensureReview, retryReview,
   };
 
   // ---------------------------------------------------------------- routing + render
   function parseRoute() {
     const parts = location.hash.replace(/^#\/?/, '').split('/');
     const tab = ['overview', 'coach', 'matches', 'match', 'heroes', 'friends', 'friend', 'play', 'about'].includes(parts[0]) ? parts[0] : 'overview';
-    return { tab, id: parts[1] ? Number(parts[1]) : null };
+    return { tab, id: parts[1] ? Number(parts[1]) : null, sub: parts[2] || null };
   }
 
   let lastDrawn = null;
@@ -143,7 +144,8 @@
     ctx.M = M;
     const tab = state.route.tab === 'match' ? 'matches' : state.route.tab === 'friend' ? 'friends' : state.route.tab;
     document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === tab ? 'page' : 'false'));
-    const view = { overview: V.overview, coach: V.coach, matches: V.matches, match: V.match, heroes: V.heroes, friends: V.friends, friend: V.friend, play: V.play, about: V.about }[state.route.tab];
+    const view = state.route.tab === 'match' && state.route.sub === 'review' ? V.review
+      : { overview: V.overview, coach: V.coach, matches: V.matches, match: V.match, heroes: V.heroes, friends: V.friends, friend: V.friend, play: V.play, about: V.about }[state.route.tab];
     // Views redraw the whole page as data arrives, so on the same page keep what you opened
     // (<details>) and where you scrolled sideways ([data-keep-x] strips).
     const here = location.hash, same = here === lastDrawn;
@@ -393,6 +395,32 @@
     mpBusy.delete(matchId);
     render();
   }
+
+  /* The match review (#/match/<id>/review): the replay's queries -> Review.pack -> one compact match, kept in
+     IndexedDB (Store.big, newest 12). Queries run three at a time against the replay API's shared 200/hour limit;
+     each one is a server job of ~10-60 s. The zstd decoder (js/vendor/fzstd.js) loads only when a review does. */
+  const loadScript = src => new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('could not load ' + src)); document.head.appendChild(el); });
+  async function ensureReview(matchId) {
+    if (state.reviews[matchId]) return;
+    const R = window.Review, key = settings.account + '.' + matchId;
+    const rv = state.reviews[matchId] = { status: 'loading', done: 0, of: Object.keys(R.QUERIES).length };
+    try {
+      const saved = await S.big.get(key);
+      if (saved && saved.v === R.PACK_V) { Object.assign(rv, { status: 'ready', M: saved }); render(); return; }
+      if (!window.fzstd) await loadScript('js/vendor/fzstd.js?v=' + VERSION);
+      const names = Object.keys(R.QUERIES), Q = {};
+      let next = 0;
+      const worker = async () => { while (next < names.length) { const n = names[next++]; Q[n] = await A.demoQuery(matchId, R.QUERIES[n]); rv.done++; render(); } };
+      await Promise.all([worker(), worker(), worker()]);
+      const M = R.pack(Q, settings.account, matchId);
+      S.big.put(key, M);
+      Object.assign(rv, { status: 'ready', M });
+    } catch (e) {
+      Object.assign(rv, { status: 'error', error: e.noDemo ? 'Valve no longer has the replay for this match.' : e instanceof Error ? e.message : String(e) });
+    }
+    render();
+  }
+  function retryReview(id) { delete state.reviews[id]; ensureReview(id); }
 
   const detailTried = new Set();
   async function ensureMatchDetail(matchId) {

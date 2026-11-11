@@ -927,3 +927,46 @@ a.mr2.gold::before { background: var(--gold); }
 .rc li.n > span:nth-child(2) { color: var(--ink); }
 .rc li.y > span:nth-child(2) { color: var(--ink-2); }
 @media (max-width: 640px) { .rc { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- match review (#/match/<id>/review): 2D replay, timeline, questions. Team colours are blue/amber,
+   never green/red (those stay good/bad). */
+:root { --ally: #5aa9e6; --enemy: #e8a33c; }
+.rv-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 860px) { .rv-grid { grid-template-columns: minmax(0, 1fr); } }
+.rv-stage { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.rv-stage canvas { display: block; width: 100%; aspect-ratio: 1; }
+.rv-clock { position: absolute; top: 10px; left: 12px; font: 600 26px var(--display); letter-spacing: .05em; color: #f1eee6; text-shadow: 0 1px 4px #000; }
+.rv-speed { position: absolute; top: 14px; right: 12px; font-size: 12px; color: #b8b3a7; background: rgba(0,0,0,.55); padding: 2px 8px; border-radius: 99px; }
+.rv-banner { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(12,12,13,.85); border: 1px solid var(--brass); color: var(--brass-hi); padding: 6px 14px; border-radius: 99px; font: 600 14px var(--display); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; display: none; }
+.rv-ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0 8px; }
+.rv-seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: var(--radius); overflow: hidden; margin-left: auto; }
+.rv-seg button { border: 0; border-radius: 0; padding: 7px 9px; background: var(--raised); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.rv-seg button + button { border-left: 1px solid var(--border-2); }
+.rv-seg button.on { background: var(--brass); color: #141210; font-weight: 600; }
+@media (max-width: 520px) { .rv-seg { margin-left: 0; } .rv-seg button { padding: 7px 7px; } }
+.rv-tl { position: relative; height: 46px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; overflow: hidden; touch-action: none; }
+.rv-tl.drag { cursor: grabbing; }
+.rv-tl canvas { width: 100%; height: 100%; display: block; }
+.rv-tip { position: absolute; top: 2px; transform: translateX(-50%); background: rgba(12,12,13,.9); border: 1px solid var(--border-2); color: #f1eee6; font: 600 12px var(--display); letter-spacing: .04em; padding: 1px 6px; border-radius: 3px; pointer-events: none; display: none; white-space: nowrap; }
+.rv-key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.rv-key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.rv-side .card + .card { margin-top: 12px; }
+.rv-side h2 { font-size: 20px; margin: 4px 0 8px; }
+.rv-facts { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 6px; }
+.rv-facts li { display: flex; gap: 8px; align-items: baseline; }
+.rv-facts b { font: 600 18px var(--display); min-width: 58px; color: var(--brass-hi); }
+.rv-opts { display: grid; gap: 8px; }
+.rv-opts button { text-align: left; padding: 10px 12px; font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--border-2); border-radius: var(--radius); cursor: pointer; }
+.rv-opts button:hover:not([disabled]) { border-color: var(--brass); }
+.rv-opts button.picked { border-color: var(--brass-hi); background: var(--wash); }
+.rv-opts button[disabled] { cursor: default; }
+.rv-verdict { display: inline-block; font: 600 12px var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 1px 8px; border-radius: 99px; margin-left: 6px; }
+.rv-verdict.good { background: rgba(47,178,106,.18); color: var(--good-text); }
+.rv-verdict.risky { background: rgba(224,86,91,.16); color: var(--bad-text); }
+.rv-why { color: var(--ink-2); font-size: 13px; margin: 3px 0 0; }
+.rv-you { font-size: 12px; color: var(--muted); margin-left: 6px; }
+.rv-note { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+.rv-load { display: flex; align-items: center; gap: 10px; }
+.rv-bar { height: 4px; background: var(--grid); border-radius: 2px; overflow: hidden; margin-top: 10px; }
+.rv-bar > i { display: block; height: 100%; background: var(--brass); transition: width .3s; }
+.mh-actions { display: flex; align-items: center; gap: 12px; }

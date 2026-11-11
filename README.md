@@ -10,7 +10,7 @@ it are in [AGENTS.md](AGENTS.md).
 
 ## Layout
 
-Hash-routed tabs: `#/overview`, `#/coach`, `#/matches`, `#/match/<id>`, `#/heroes/<heroId>`,
+Hash-routed tabs: `#/overview`, `#/coach`, `#/matches`, `#/match/<id>` (and its `#/match/<id>/review`), `#/heroes/<heroId>`,
 `#/friends`, `#/friend/<account>`, `#/about` (and `#/play`, which works but is off the menu).
 `js/app.js` holds state, loading and routing; `js/views.js` has one render function per page;
 every number comes from `js/engine.js` (tests: `node js/tests.js`).
@@ -42,6 +42,12 @@ rules (`sh()`), `.ledger` rows of figures, and every explanation behind a small 
   by source vs your lane opponents, a Gemini debrief, and the 12-player scoreboard with the lobby and
   team average rank, each player's rank (`playerRankAt`), games and win rate on their hero, and tags
   (`heroTags`).
+- **Match review** (the Review button on a match page): the replay on a 2D map at one steady speed you pick,
+  stopping only at the moments that cost you. Each stop asks what you'd do, plays what happened, then explains.
+  A moment is asked about only when the fight was clearly lost before it began: outnumbered by enemies your team
+  had seen in the last 6 s, with at least 1.75× your side's souls in the fight (`js/review.js`, `findMoments`).
+  The replay is read by deadlock-api's demo query endpoint (8 SQL queries, ~1 minute the first time), packed in
+  the browser and kept in IndexedDB.
 - **Heroes**: a scouting row (best hero, one to park, most and least rank points, on the rise,
   most played) and the hero pool grouped by how each hero does for you (`heroInsights`, win rates
   shrunk toward your overall). Per hero: a ledger, then **Rank road** (your gaps vs the next

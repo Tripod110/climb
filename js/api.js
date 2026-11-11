@@ -94,6 +94,32 @@
         return r.ok ? await r.json() : null;
       } catch (e) { return null; }
     },
+    /* One SQL query over a match's replay (demo) file, for the match review. The server downloads and parses the
+       demo (~10-60 s), so it's a job: submit, wait, poll, then fetch the result (NDJSON, zstd-compressed, from
+       demo-extracts.deadlock-api.com) and unpack it with the vendored fzstd decoder. Shares the API's 200/hour
+       per-IP limit, so polls wait as long as the server estimates. Resolves to an array of row objects.
+       Throws err.noDemo when Valve no longer has the replay. */
+    demoQuery: async (matchId, query) => {
+      const post = await polite(async () => {
+        const r = await fetch(BASE + '/v1/matches/demo/query', { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ match_id: matchId, query, format: 'ndjson' }) });
+        if (r.status === 429) { const j = await r.json().catch(() => ({})); throw new RateLimited(Math.max(2, (j.error && j.error.quota && j.error.quota.next_request_in) || 10) * 1000); }
+        const j = await r.json().catch(() => ({}));
+        if (r.status === 404) { const e = new Error('No replay for this match'); e.noDemo = true; throw e; }
+        if (!r.ok) throw new Error('replay query ' + r.status + (j.error ? ': ' + String(j.error).slice(0, 120) : ''));
+        return j;
+      });
+      let s = post;
+      for (let i = 0; i < 40 && !['done', 'failed'].includes(s.status); i++) {
+        await sleep(Math.min(15, Math.max(3, s.estimated_wait_seconds || 4)) * 1000);
+        s = await polite(() => getJSON('/v1/matches/demo/query/' + post.job_id));
+      }
+      if (s.status !== 'done') throw new Error('replay query ' + (s.error || s.status));
+      const raw = new Uint8Array(await (await fetch(s.result_url)).arrayBuffer());
+      if (!root.fzstd) throw new Error('replay decoder missing');
+      const text = new TextDecoder().decode(/\.zst$/.test(s.result_url) ? root.fzstd.decompress(raw) : raw);
+      return text.split('\n').filter(Boolean).map(l => JSON.parse(l));
+    },
     rankImage: badge => BASE + '/v1/assets/ranks/' + Math.floor(badge / 10) + '/' + (badge % 10) + '/image?format=webp',
     sleep,
   };

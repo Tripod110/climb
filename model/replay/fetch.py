@@ -1,8 +1,9 @@
-"""Fetch one match's replay data from deadlock-api and pack it for the review page.
+"""Run the q_*.sql replay queries for one match through deadlock-api and cache the rows (cache/<match>/).
 
-usage: python fetch.py <match_id> <account_id>
-Runs the q_*.sql queries against the match's demo (cached in cache/<match>/), then writes
-../matches/<match>.js. Needs Python 3.14+ (compression.zstd)."""
+usage: python fetch.py <match_id>
+The app runs the same kind of queries itself (js/review.js QUERIES); these copies feed study.py.
+Shares deadlock-api's 200 requests/hour per-IP limit with everything else on this PC.
+Needs Python 3.14+ (compression.zstd)."""
 import json, os, sys, time, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from compression import zstd
@@ -48,12 +49,9 @@ def run(mid, name, folder):
 
 
 if __name__ == '__main__':
-    mid, account = int(sys.argv[1]), int(sys.argv[2])
+    mid = int(sys.argv[1])
     folder = os.path.join(HERE, 'cache', str(mid))
     os.makedirs(folder, exist_ok=True)
     with ThreadPoolExecutor(4) as ex:
         for name, msg in ex.map(lambda n: run(mid, n, folder), QUERIES):
             print(f'  {name}: {msg}')
-    import build
-    os.makedirs(os.path.join(HERE, '..', 'matches'), exist_ok=True)
-    build.build(mid, account, folder, os.path.join(HERE, '..', 'matches', f'{mid}.js'))

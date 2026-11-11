@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 50, date: '2026-11-11', title: 'Match review',
+      items: [
+        'Every match page has a Review button: the whole game on a map, played back fast, stopping at the moments that cost you.',
+        'At each one Climb asks what you’d do, plays what actually happened, then explains which choices were risky and why.',
+        'A moment is only asked about when the fight was clearly lost before it began: you were outnumbered by enemies you could see, with far more souls on their side. Ambushes and last stands in your base don’t count.',
+        'Drag along the timeline to move through the game, and pick the playback speed. The first review of a match takes about a minute while the replay is read.',
+      ],
+    },
+    {
       v: 49, date: '2026-11-08', title: 'The rulebook',
       items: [
         'Habits are now a rulebook of seven rules proven on 63,000 ranked matches to raise win rate for the same player, at every rank and on almost every hero: win your lane, ≤1 death in lane, ≤2 mid-game deaths, don’t die alone, hit objectives, bank your souls, never get caught out.',
