@@ -36,6 +36,13 @@
   button.primary { background: var(--brass); color: #141210; border-color: var(--brass); font-weight: 600; }
   .tl { position: relative; height: 46px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; overflow: hidden; touch-action: none; }
   .tl canvas { width: 100%; height: 100%; display: block; }
+  .tl.drag { cursor: grabbing; }
+  .tip { position: absolute; top: 2px; transform: translateX(-50%); background: rgba(12,12,13,.9); border: 1px solid var(--border-2); color: var(--ink); font: 600 12px var(--display); letter-spacing: .04em; padding: 1px 6px; border-radius: 3px; pointer-events: none; display: none; white-space: nowrap; }
+  .seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: 4px; overflow: hidden; margin-left: auto; }
+  .seg button { border: 0; border-radius: 0; padding: 6px 9px; background: var(--raised); font-size: 13px; }
+  .seg button + button { border-left: 1px solid var(--border-2); }
+  .seg button.on { background: var(--brass); color: #141210; font-weight: 600; }
+  @media (max-width: 520px) { .seg { margin-left: 0; } .seg button { padding: 6px 7px; } }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 14px; }
@@ -75,12 +82,13 @@
         <div class="banner" id="banner"></div>
       </div>
       <div class="bar">
+        <p class="muted" id="hint" style="margin:0 0 8px">Plays the whole match fast and only stops for key moments. Drag along the timeline to move through it.</p>
         <div class="controls">
           <button id="play" class="primary" type="button">▶ Play review</button>
           <button id="jump" type="button">Jump to key moment</button>
-          <span class="muted" id="hint">Plays the whole match fast and only stops for key moments.</span>
+          <span class="seg" id="spd" role="group" aria-label="Playback speed"></span>
         </div>
-        <div class="tl" id="tl"><canvas id="tlc" width="1000" height="46"></canvas></div>
+        <div class="tl" id="tl"><canvas id="tlc" width="1000" height="46"></canvas><span class="tip" id="tip"></span></div>
         <div class="legend">
           <span><i style="background:var(--ally)"></i>Your team</span>
           <span><i style="background:var(--enemy)"></i>Enemy team</span>
@@ -122,10 +130,11 @@ function review() {
   const QS = Moments.findMoments(M).map(m => ({ ...m, q: Moments.buildQuestion(M, m), clipEnd: Math.min(M.end, m.death + 1) }));
   const PH = { lane: 'Lane', mid: 'Mid-game', late: 'Late game' };
   const count = p => QS.filter(q => q.phase === p).length;
-  $('intro').innerHTML = `<div class="t-label">This game</div>
+  const intro = `<div class="t-label">This game</div>
     <h2>${QS.length ? `${QS.length} question${QS.length === 1 ? '' : 's'}` : 'Nothing to ask'}</h2>
     <p class="muted" style="margin:0">${['lane', 'mid', 'late'].map(p => `${PH[p]} ${count(p)}`).join(' · ')}</p>
     <p class="note">Climb only asks when a fight was clearly bad before it started: you were outnumbered, and the enemies in it had at least 1.75× the souls of your side.</p>`;
+  $('intro').innerHTML = intro;
   $('jump').style.display = QS.length ? '' : 'none';
 
   // ---- map
@@ -245,8 +254,15 @@ function review() {
   // ---- playback: fast when quiet, slow near your fights, stop for each question
   let t = 0, playing = false, clip = null, lastTs = 0, cur = null;
   const next = () => QS.find(q => !q.done && q.t >= t - .01);
-  // one steady fast speed for the whole match; it only stops for key moments (and plays their clip at 1.5x)
-  const speedAt = () => clip ? 1.5 : 24;
+  // one steady speed (you pick it) for the whole match; it only stops for key moments (and plays their clip at 1.5x)
+  const SPEEDS = [4, 8, 16, 24, 32, 48];
+  let rate = 24;
+  try { const v = +localStorage.getItem('review.speed'); if (SPEEDS.includes(v)) rate = v; } catch (e) {}
+  $('spd').innerHTML = SPEEDS.map(v => `<button type="button" data-s="${v}">${v}×</button>`).join('');
+  const markSpeed = () => $('spd').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.s === rate));
+  $('spd').onclick = e => { const b = e.target.closest('button'); if (!b) return; rate = +b.dataset.s; markSpeed(); try { localStorage.setItem('review.speed', rate); } catch (x) {} };
+  markSpeed();
+  const speedAt = () => clip ? 1.5 : rate;
   function frame(ts) {
     const dt = Math.min(.1, (ts - (lastTs || ts)) / 1000); lastTs = ts;
     if (playing) {
@@ -263,9 +279,28 @@ function review() {
   const resume = () => { focus = null; playing = true; lastTs = 0; setPlay(); };
   $('play').onclick = () => { if (clip || cur) return; if (t >= M.end) { t = 0; QS.forEach(q => q.done = false); } playing = !playing; lastTs = 0; setPlay(); };
   $('jump').onclick = () => { if (clip || cur) return; const n = QS.find(q => !q.done) || QS[0]; if (!n) return; n.done = false; t = n.t - 12; resume(); };
-  const seek = e => { if (clip || cur) return; const r = $('tl').getBoundingClientRect(); t = Math.max(0, Math.min(M.end, (e.clientX - r.left) / r.width * M.end)); QS.forEach(q => { if (q.t >= t) q.done = false; }); };
-  $('tl').addEventListener('pointerdown', e => { seek(e); $('tl').setPointerCapture(e.pointerId); $('tl').onpointermove = seek; });
-  $('tl').addEventListener('pointerup', () => { $('tl').onpointermove = null; });
+  const tl = $('tl'), tip = $('tip');
+  const timeAt = e => { const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(M.end, (e.clientX - r.left) / r.width * M.end)); };
+  let drag = null; // {wasPlaying} while the timeline is being dragged
+  function closeQuestion() { // scrubbing away from an open question puts it back in the queue
+    if (!cur && !clip) return;
+    clip = null; cur = null; focus = null; $('banner').style.display = 'none';
+    $('side').innerHTML = `<div class="card" id="intro">${intro}</div>`;
+  }
+  const seek = e => { t = timeAt(e); QS.forEach(q => { if (q.t >= t - .01) q.done = false; }); };
+  tl.addEventListener('pointerdown', e => {
+    closeQuestion(); drag = { wasPlaying: playing }; playing = false; tl.classList.add('drag');
+    seek(e); setPlay();
+    try { tl.setPointerCapture(e.pointerId); } catch (x) {}
+  });
+  tl.addEventListener('pointermove', e => {
+    const s = timeAt(e), r = tl.getBoundingClientRect();
+    tip.style.display = 'block'; tip.style.left = Math.max(22, Math.min(r.width - 22, e.clientX - r.left)) + 'px'; tip.textContent = fmt(s);
+    if (drag) seek(e);
+  });
+  const endDrag = () => { if (!drag) return; tl.classList.remove('drag'); playing = drag.wasPlaying; lastTs = 0; drag = null; setPlay(); };
+  tl.addEventListener('pointerup', endDrag); tl.addEventListener('pointercancel', endDrag);
+  tl.addEventListener('pointerleave', () => { if (!drag) tip.style.display = 'none'; });
 
   // ---- a question: stop, ask, play the clip, then explain
   function ask(q) {
