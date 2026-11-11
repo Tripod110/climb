@@ -78,7 +78,7 @@
         <div class="controls">
           <button id="play" class="primary" type="button">▶ Play review</button>
           <button id="jump" type="button">Jump to key moment</button>
-          <span class="muted" id="hint">Fast through quiet stretches, slows near your fights, stops for questions.</span>
+          <span class="muted" id="hint">Plays the whole match fast and only stops for key moments.</span>
         </div>
         <div class="tl" id="tl"><canvas id="tlc" width="1000" height="46"></canvas></div>
         <div class="legend">
@@ -245,8 +245,8 @@ function review() {
   // ---- playback: fast when quiet, slow near your fights, stop for each question
   let t = 0, playing = false, clip = null, lastTs = 0, cur = null;
   const next = () => QS.find(q => !q.done && q.t >= t - .01);
-  const busy = s => mine.some(k => s > k.t - 15 && s < k.t + 4);
-  const speedAt = s => { if (clip) return 1.5; const n = next(); return (n && s > n.t - 20) || busy(s) ? 3 : 24; };
+  // one steady fast speed for the whole match; it only stops for key moments (and plays their clip at 1.5x)
+  const speedAt = () => clip ? 1.5 : 24;
   function frame(ts) {
     const dt = Math.min(.1, (ts - (lastTs || ts)) / 1000); lastTs = ts;
     if (playing) {
