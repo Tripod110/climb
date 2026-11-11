@@ -1,21 +1,34 @@
-"""Load the replay query results into per-second frames. Shared by explore.py and build.py."""
-import json, collections
+"""Load one match's replay query results (cache/<match>/*.ndjson) into per-second state. Used by build.py."""
+import json, collections, os
 
 TR = 64          # ticks per second
-GST = 70.65625   # game start time (s), from CCitadelGameRulesProxy
-ME_HERO = 50
+STEAM64 = 76561197960265728
 
 
-def L(n):
-    return [json.loads(l) for l in open(n + '.ndjson', encoding='utf-8')]
+class Match:
+    def __init__(self, folder):
+        self.dir = folder
+        rules = self.L('rules')
+        self.gst = next(r['gst'] for r in rules if r.get('gst'))   # game start time (s)
+
+    def L(self, n):
+        return [json.loads(l) for l in open(os.path.join(self.dir, n + '.ndjson'), encoding='utf-8')]
+
+    def clock(self, tick):
+        return tick / TR - self.gst
+
+    def roster(self):
+        """pawn entity index -> {hero, team, name, account} via the controllers' hero-pawn handles."""
+        out = {}
+        for c in self.L('map'):
+            if c.get('hero') and c.get('hp') is not None:
+                out[c['hp'] & 0x3FFF] = {'hero': c['hero'], 'team': c['team'], 'name': c.get('name'),
+                                         'account': (c['steam'] - STEAM64) if c.get('steam') else None}
+        return out
 
 
 def pos(r):
     return (r['cx'] * 512 + r['vx'] - 32768, r['cy'] * 512 + r['vy'] - 32768)
-
-
-def clock(tick):
-    return tick / TR - GST
 
 
 def ffill(rows, keys):
@@ -30,27 +43,3 @@ def ffill(rows, keys):
                 s[k] = r[k]
         out.append(dict(s, tick=r['tick'], entity_index=r['entity_index']))
     return out
-
-
-def roster():
-    """pawn entity index -> {hero, team, name} via the controllers' hero-pawn handles."""
-    out = {}
-    for c in L('map'):
-        if c['hero']:
-            out[c['hp'] & 0x3FFF] = {'hero': c['hero'], 'team': c['team'], 'name': c['name']}
-    return out
-
-
-def heroes():
-    R = roster()
-    P = ffill(L('pawns'), ['team', 'hp', 'hpmax', 'life', 'cx', 'cy', 'vx', 'vy'])
-    for r in P:
-        if r['entity_index'] in R:
-            r['hero'] = R[r['entity_index']]['hero']
-    by_sec = collections.defaultdict(dict)   # second -> entity -> state
-    for r in P:
-        if 'cx' not in r or 'vx' not in r or 'hero' not in r:
-            continue
-        sec = int(clock(r['tick']))
-        by_sec[sec][r['entity_index']] = r
-    return P, by_sec

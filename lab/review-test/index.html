@@ -94,24 +94,39 @@
     <aside id="side">
       <div class="card" id="intro">
         <div class="t-label">This game</div>
-        <h2>1 question</h2>
-        <p class="muted" style="margin:0">Mid-game · 1 of 3 slots used. Lane and late had nothing clear enough to ask about.</p>
+        <h2>Loading…</h2>
       </div>
     </aside>
   </div>
 </div>
-<script src="data.js"></script>
+<script src="moments.js"></script>
 <script>
-(() => {
+// ?m=<match id> picks a packed match from matches/; defaults to the first test match
+const MATCH_ID = (new URLSearchParams(location.search).get('m') || '135194126').replace(/\D/g, '');
+const s = document.createElement('script'); s.src = `matches/${MATCH_ID}.js`; s.onload = () => review();
+s.onerror = () => { document.getElementById('meta').textContent = `No packed data for match ${MATCH_ID} (run tools/fetch.py).`; };
+document.head.appendChild(s);
+
+function review() {
   const M = window.MATCH, N = M.heroes.length, RAD = 10752;
-  const Q = { t: 1085, clipEnd: 1104, focus: [0, 2, 8, 9, 10, 11] }; // 18:05; Pocket, Haze vs Shiv, Dynamo, Seven, Grey Talon
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   const $ = id => document.getElementById(id);
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const C = { ally: css('--ally'), enemy: css('--enemy'), brass: css('--brass-hi'), bad: css('--bad'), muted: css('--muted') };
   const mine = M.kills.filter(k => k.a === M.me || k.v === M.me);
   const deaths = mine.filter(k => k.v === M.me).length, kills = mine.filter(k => k.a === M.me && k.v !== M.me).length;
-  $('meta').textContent = `${M.heroes[M.me].name} · Loss · ${kills} kills · ${deaths} deaths · ${fmt(M.end)}`;
+  $('meta').textContent = `${M.heroes[M.me].name} · ${M.won ? 'Win' : 'Loss'} · ${kills} kills · ${deaths} deaths · ${fmt(M.end)}`;
+
+  // ---- the questions this match earned (moments.js)
+  const QS = Moments.findMoments(M).map(m => ({ ...m, q: Moments.buildQuestion(M, m), clipEnd: Math.min(M.end, m.death + 1) }));
+  const PH = { lane: 'Lane', mid: 'Mid-game', late: 'Late game' };
+  const count = p => QS.filter(q => q.phase === p).length;
+  $('intro').innerHTML = `<div class="t-label">This game</div>
+    <h2>${QS.length ? `${QS.length} question${QS.length === 1 ? '' : 's'}` : 'Nothing to ask'}</h2>
+    <p class="muted" style="margin:0">${['lane', 'mid', 'late'].map(p => `${PH[p]} ${count(p)}`).join(' · ')}</p>
+    <p class="note">Climb only asks when a fight was clearly bad before it started: outnumbered by two, or by one while well behind on souls.</p>`;
+  $('jump').style.display = QS.length ? '' : 'none';
 
   // ---- map
   const cv = $('map'), g = cv.getContext('2d'), W = cv.width;
@@ -120,6 +135,7 @@
   const base = (x, y) => [(x + RAD) / (2 * RAD) * W, (RAD - y) / (2 * RAD) * W];
   const cam = { x: W / 2, y: W / 2, s: 1 }; // camera in base-map pixels; zooms onto the fight during a question
   const px = (x, y) => { const [bx, by] = base(x, y); return [(bx - cam.x) * cam.s + W / 2, (by - cam.y) * cam.s + W / 2]; };
+  let focus = null; // hero indexes to highlight during a question
   function aim(t) {
     let tx = W / 2, ty = W / 2, ts = 1;
     if (focus) {
@@ -153,7 +169,6 @@
     if (kind !== 'midboss') { x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, 64, 64); }
     return (tintCache[key] = c);
   }
-  let focus = null; // hero indexes to highlight during a question
   function draw(t) {
     aim(t);
     g.clearRect(0, 0, W, W);
@@ -201,31 +216,33 @@
 
   // ---- timeline: souls lead band + markers
   const tc = $('tlc'), tg = tc.getContext('2d'), TW = tc.width, TH = tc.height;
-  const maxGap = Math.max(...M.souls.map(s => Math.abs(s[0] - s[1])), 1);
+  const lead = M.souls.map(row => row.reduce((a, v, i) => a + (M.heroes[i].team === M.myTeam ? v : -v), 0));
+  const maxGap = Math.max(...lead.map(Math.abs), 1);
   function drawTl(t) {
     tg.clearRect(0, 0, TW, TH);
     const mid = TH / 2;
     tg.beginPath(); tg.moveTo(0, mid);
-    M.souls.forEach((s, i) => tg.lineTo(i * 10 / M.end * TW, mid - (s[0] - s[1]) / maxGap * (mid - 6)));
+    lead.forEach((d, i) => tg.lineTo(i * 10 / M.end * TW, mid - d / maxGap * (mid - 6)));
     tg.lineTo(TW, mid); tg.closePath(); tg.fillStyle = 'rgba(184,149,90,.25)'; tg.fill();
     tg.strokeStyle = 'rgba(255,244,220,.15)'; tg.beginPath(); tg.moveTo(0, mid); tg.lineTo(TW, mid); tg.stroke();
     for (const k of mine) {
       const x = k.t / M.end * TW; tg.fillStyle = k.v === M.me ? C.bad : C.brass;
       tg.beginPath(); tg.arc(x, k.v === M.me ? TH - 7 : 7, 4, 0, 7); tg.fill();
     }
-    const qx = Q.t / M.end * TW; tg.save(); tg.translate(qx, mid); tg.rotate(Math.PI / 4); tg.fillStyle = '#fff'; tg.fillRect(-5, -5, 10, 10); tg.restore();
+    for (const q of QS) { tg.save(); tg.translate(q.t / M.end * TW, mid); tg.rotate(Math.PI / 4); tg.fillStyle = q.done ? '#8a857a' : '#fff'; tg.fillRect(-5, -5, 10, 10); tg.restore(); }
     tg.fillStyle = '#fff'; tg.fillRect(t / M.end * TW - 1, 0, 2, TH);
   }
 
-  // ---- playback: fast when quiet, slow near your fights, stop for the question
-  let t = 0, playing = false, asked = false, clip = null, lastTs = 0;
+  // ---- playback: fast when quiet, slow near your fights, stop for each question
+  let t = 0, playing = false, clip = null, lastTs = 0, cur = null;
+  const next = () => QS.find(q => !q.done && q.t >= t - .01);
   const busy = s => mine.some(k => s > k.t - 15 && s < k.t + 4);
-  const speedAt = s => clip ? 1.5 : (!asked && s > Q.t - 20) ? 3 : busy(s) ? 3 : 24;
+  const speedAt = s => { if (clip) return 1.5; const n = next(); return (n && s > n.t - 20) || busy(s) ? 3 : 24; };
   function frame(ts) {
     const dt = Math.min(.1, (ts - (lastTs || ts)) / 1000); lastTs = ts;
     if (playing) {
-      const sp = speedAt(t); t += dt * sp; $('speed').textContent = `${sp}×`;
-      if (!asked && !clip && t >= Q.t) { t = Q.t; ask(); }
+      const sp = speedAt(t), n = next(); t += dt * sp; $('speed').textContent = `${sp}×`;
+      if (!clip && n && t >= n.t) { t = n.t; ask(n); }
       if (clip && t >= clip.end) { t = clip.end; playing = false; clip.done(); clip = null; }
       if (t >= M.end) { t = M.end; playing = false; }
       setPlay();
@@ -234,58 +251,47 @@
     requestAnimationFrame(frame);
   }
   const setPlay = () => { $('play').textContent = playing ? '❚❚ Pause' : (t >= M.end ? '↺ Replay' : '▶ Play review'); };
-  $('play').onclick = () => { if (clip) return; if (t >= M.end) { t = 0; asked = false; } playing = !playing; lastTs = 0; setPlay(); };
-  $('jump').onclick = () => { if (clip) return; t = Q.t - 12; asked = false; focus = null; playing = true; lastTs = 0; setPlay(); };
-  const seek = e => { if (clip) return; const r = $('tl').getBoundingClientRect(); t = Math.max(0, Math.min(M.end, (e.clientX - r.left) / r.width * M.end)); if (t < Q.t) asked = false; };
+  const resume = () => { focus = null; playing = true; lastTs = 0; setPlay(); };
+  $('play').onclick = () => { if (clip || cur) return; if (t >= M.end) { t = 0; QS.forEach(q => q.done = false); } playing = !playing; lastTs = 0; setPlay(); };
+  $('jump').onclick = () => { if (clip || cur) return; const n = QS.find(q => !q.done) || QS[0]; if (!n) return; n.done = false; t = n.t - 12; resume(); };
+  const seek = e => { if (clip || cur) return; const r = $('tl').getBoundingClientRect(); t = Math.max(0, Math.min(M.end, (e.clientX - r.left) / r.width * M.end)); QS.forEach(q => { if (q.t >= t) q.done = false; }); };
   $('tl').addEventListener('pointerdown', e => { seek(e); $('tl').setPointerCapture(e.pointerId); $('tl').onpointermove = seek; });
   $('tl').addEventListener('pointerup', () => { $('tl').onpointermove = null; });
 
-  // ---- the question
-  const soulsAt = s => M.souls[Math.min(M.souls.length - 1, Math.floor(s / 10))];
-  const OPTS = [
-    { id: 'fight', label: 'Go out and fight them', verdict: 'risky', why: 'Two of you against four, while 8.6k souls behind. You died alone at 18:23, and the walker fell at 18:22 anyway, so the fight bought nothing.' },
-    { id: 'hold', label: 'Stay and defend the walker', verdict: 'risky', why: 'Still two against four. The walker was already going to fall; staying would have traded your life for a few seconds.' },
-    { id: 'back', label: 'Fall back and group with your team', verdict: 'good', why: 'Give up the walker you can’t save, deny them the 1,000-soul bounty on you, and come back to the next fight with your team.' },
-  ];
-  const YOU = 'fight';
-  function ask() {
-    playing = false; asked = true; focus = Q.focus; setPlay();
-    const [us, them] = soulsAt(Q.t);
-    $('banner').textContent = 'Question 1 · what do you do?'; $('banner').style.display = 'block';
+  // ---- a question: stop, ask, play the clip, then explain
+  function ask(q) {
+    cur = q; playing = false; focus = q.focus; setPlay();
+    const i = QS.indexOf(q) + 1;
+    $('banner').textContent = `Question ${i} · what do you do?`; $('banner').style.display = 'block';
     $('side').innerHTML = `<div class="card" id="qcard">
-      <div class="t-label">Mid-game · ${fmt(Q.t)} · Question 1 of 1</div>
-      <h2>Your walker is under attack</h2>
-      <ul class="facts">
-        <li><b>4</b><span>enemies coming: Seven, Shiv, Dynamo, Grey Talon</span></li>
-        <li><b>1</b><span>teammate with you (Haze); the rest are far away</span></li>
-        <li><b>${((them - us) / 1000).toFixed(1)}k</b><span>souls your team is behind</span></li>
-      </ul>
-      <div class="opts">${OPTS.map(o => `<button type="button" data-o="${o.id}">${o.label}</button>`).join('')}</div>
+      <div class="t-label">${PH[q.phase]} · ${fmt(q.t)} · Question ${i} of ${QS.length}</div>
+      <h2>${esc(q.q.title)}</h2>
+      <ul class="facts">${q.q.facts.map(([n, s]) => `<li><b>${esc(n)}</b><span>${esc(s)}</span></li>`).join('')}</ul>
+      <div class="opts">${q.q.opts.map(o => `<button type="button" data-o="${o.id}">${esc(o.label)}</button>`).join('')}</div>
       <p class="note">Test: this doesn’t yet check which enemies you could actually see at the time.</p></div>`;
-    document.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(b.dataset.o));
+    document.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(q, b.dataset.o));
   }
-  function answer(id) {
-    const pick = OPTS.find(o => o.id === id);
+  function answer(q, id) {
+    const pick = q.q.opts.find(o => o.id === id);
     document.querySelectorAll('[data-o]').forEach(b => { b.disabled = true; b.classList.toggle('picked', b.dataset.o === id); });
     $('banner').textContent = pick.verdict === 'good' ? 'Good call · here’s what happened' : 'Watch what happened';
-    // the clip first, then the explanation
-    clip = { end: Q.clipEnd, done: () => reveal(id) };
+    clip = { end: q.clipEnd, done: () => reveal(q, id) }; // the clip first, then the explanation
     playing = true; lastTs = 0;
   }
-  function reveal(id) {
+  function reveal(q, id) {
     $('banner').style.display = 'none';
-    const rows = OPTS.map(o => `<li style="display:block"><span>${o.label}</span><span class="verdict v-${o.verdict}">${o.verdict === 'good' ? 'Good call' : 'Risky'}</span>${o.id === YOU ? '<span class="you">what you did</span>' : ''}${o.id === id && o.id !== YOU ? '<span class="you">your answer</span>' : ''}<p class="why">${o.why}</p></li>`).join('');
+    const rows = q.q.opts.map(o => `<li style="display:block"><span>${esc(o.label)}</span><span class="verdict v-${o.verdict}">${o.verdict === 'good' ? 'Good call' : 'Risky'}</span>${o.id === q.q.did ? '<span class="you">what you did</span>' : ''}${o.id === id && o.id !== q.q.did ? '<span class="you">your answer</span>' : ''}<p class="why">${esc(o.why)}</p></li>`).join('');
     $('side').insertAdjacentHTML('beforeend', `<div class="card">
       <div class="t-label">What happened</div>
-      <h2>Died alone at 18:23</h2>
+      <h2>${esc(q.q.outcome)}</h2>
       <ul class="facts" style="gap:12px">${rows}</ul>
-      <p class="note">Why this counts: the rulebook’s “no lone deaths 9:00–20:00” rule. Across 63,000 ranked matches, the same player wins about 3–7 points more often in games where they avoid them. The full version will also compare this moment with what winning players did in similar spots.</p>
-      <button type="button" id="cont" class="primary" style="margin-top:6px">Continue review</button></div>`);
-    $('cont').onclick = () => { focus = null; playing = true; lastTs = 0; setPlay(); $('cont').remove(); };
+      <p class="note">Why this was a question: you were outnumbered before the fight began. The full version will also compare it with what winning players did in similar spots.</p>
+      <button type="button" id="cont" class="primary" style="margin-top:6px">${QS.some(x => !x.done && x !== q) ? 'Continue review' : 'Finish review'}</button></div>`);
+    $('cont').onclick = () => { q.done = true; cur = null; resume(); $('cont').remove(); };
   }
 
   setPlay(); requestAnimationFrame(frame);
-})();
+}
 </script>
 </body>
 </html>
