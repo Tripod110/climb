@@ -49,8 +49,9 @@ for s in range(0, end + 1, 10):
         for h, (t, v) in nw[k].items(): tot[t] += v
     souls.append([tot[R[me]['team']], tot[5 - R[me]['team']]])
 
-objs = [{'kind': o['kind'], 'team': o['team'], 'x': r0(pos(o)[0]), 'y': r0(pos(o)[1]), 'died': round(clock(o['died']), 1)}
-        for o in L('obj')]
+objs = [{'kind': o['kind'], 'team': o['team'], 'x': r0(pos(o)[0]), 'y': r0(pos(o)[1]),
+         'died': round(clock(o['died']), 1) if o.get('died') is not None else None, 'born': round(clock(o['born']), 1)}
+        for o in L('obj') if 'cx' in o and o.get('team') in (2, 3, 4)]
 kills = [{'t': round(clock(k['tick']), 1), 'v': ents.index(k['entindex_victim']) if k['entindex_victim'] in ents else -1,
           'a': ents.index(k['entindex_attacker']) if k['entindex_attacker'] in ents else -1} for k in sorted(L('kills'), key=lambda k: k['tick'])]
 
