@@ -14,10 +14,13 @@
   const LATE_SOULS = 22000; // average souls per player where late game starts. A guess: tune on public match data.
   const SLOTS = 3, MAX_Q = 9;
   const BASE = ['patron', 'basegd'];  // standing on these = defending your base
+  const KNOWN = 6;          // seconds: an enemy your team saw on the map this recently counts as one you knew about
 
   const hero = (M, s, i) => { const f = M.frames[Math.max(0, Math.min(M.end, s))], o = i * 4; return { x: f[o], y: f[o + 1], hp: f[o + 2], alive: !!f[o + 3] }; };
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const mine = (M, i) => M.heroes[i].team === M.myTeam;
+  // Could your team see hero i at any point in the KNOWN seconds up to s? (No fog data = assume yes.)
+  const known = (M, s, i) => { if (!M.vis) return true; for (let t = Math.max(0, s - KNOWN); t <= s; t++) if (M.vis[t] >> i & 1) return true; return false; };
   const soulsAt = (M, s) => M.souls[Math.max(0, Math.min(M.souls.length - 1, Math.floor(s / 10)))];
 
   function phaseAt(M, s) {
@@ -33,26 +36,27 @@
     for (; s >= Math.max(0, td - MAX_LOOK); s--) {
       if (!hero(M, s, M.me).alive) break;
       const sit = situation(M, s, ENGAGE);
-      if (sit.enemies.length > sit.allies.length + 1) { start = s; gap = 0; } else if (start != null && ++gap > 2) break;
+      if (sit.enemies.length + sit.unseen.length > sit.allies.length + 1) { start = s; gap = 0; } else if (start != null && ++gap > 2) break;
     }
     return start == null ? Math.floor(td) : start;
   }
 
-  // The situation at second s, seen from you.
+  // The situation at second s, seen from you. `enemies` are the ones your team had seen in the last KNOWN
+  // seconds (what you could judge the fight on); `unseen` were there too but hidden by fog.
   function situation(M, s, range = NEAR) {
-    const me = hero(M, s, M.me), allies = [], enemies = [];
+    const me = hero(M, s, M.me), allies = [], enemies = [], unseen = [];
     M.heroes.forEach((h, i) => {
       if (i === M.me) return;
       const p = hero(M, s, i);
       if (!p.alive || dist(me, p) > range) return;
-      (mine(M, i) ? allies : enemies).push(i);
+      if (mine(M, i)) allies.push(i); else (known(M, s, i) ? enemies : unseen).push(i);
     });
     const row = soulsAt(M, s);
     const team = t => row.reduce((a, v, i) => a + (mine(M, i) === t ? v : 0), 0);
     const objective = M.objs.find(o => o.team === M.myTeam && o.kind !== 'midboss' && o.born <= s && (o.died == null || o.died > s) && dist(me, o) <= 2500) || null;
     // fight maths: the souls of the heroes actually in it, your side vs theirs
     const fight = { us: row[M.me] + allies.reduce((a, i) => a + row[i], 0), them: enemies.reduce((a, i) => a + row[i], 0) };
-    return { s, hp: me.hp, allies, enemies, soulsBehind: team(false) - team(true), objective, fight };
+    return { s, hp: me.hp, allies, enemies, unseen, soulsBehind: team(false) - team(true), objective, fight };
   }
 
   // How clearly bad was it before the fight began? 0 = not a question.
@@ -85,7 +89,7 @@
       // a last stand in your own base has nowhere to fall back to: not a question
       if (BASE.includes((situation(M, t).objective || {}).kind)) continue;
       found.push({ kind: 'death', t, death: k.t, fightStart: fs, phase: phaseAt(M, t), severity: sev, killer: k.a, ...sit,
-        hp: situation(M, t).hp, objective: situation(M, t).objective || sit.objective, focus: [M.me, ...sit.allies, ...sit.enemies] });
+        hp: situation(M, t).hp, objective: situation(M, t).objective || sit.objective, focus: [M.me, ...sit.allies, ...sit.enemies, ...sit.unseen] });
     }
     // drop moments inside the same fight (keep the earlier decision)
     found.sort((a, b) => a.t - b.t);
@@ -129,7 +133,7 @@
     const behind = m.soulsBehind >= 1000 ? `${(m.soulsBehind / 1000).toFixed(1)}k souls behind` : m.soulsBehind <= -1000 ? `${(-m.soulsBehind / 1000).toFixed(1)}k souls ahead` : 'even on souls';
     const ratio = m.fight.them / Math.max(1, m.fight.us);
     const facts = [
-      [String(e), `enem${e === 1 ? 'y' : 'ies'} coming: ${list(m.enemies.map(name))}`],
+      [String(e), `enem${e === 1 ? 'y' : 'ies'} you could see coming: ${list(m.enemies.map(name))}`],
       m.allies.length ? [String(m.allies.length), `teammate${m.allies.length === 1 ? '' : 's'} with you (${list(m.allies.map(name))}); the rest are far away`] : ['0', 'teammates near you'],
       [`${ratio.toFixed(1)}×`, `their souls vs yours, counting only the heroes in this fight`],
       [`${m.hp}%`, 'your health'],
@@ -150,6 +154,6 @@
     return { title, facts, opts, did: choice(M, m), outcome: `Died${n === 1 ? ' alone' : ''} at ${fmt(m.death)}` };
   }
 
-  const api = { findMoments, situation, fightStart, phaseAt, severity, pickSlots, choice, buildQuestion, LATE_SOULS, LANE_END };
+  const api = { known, findMoments, situation, fightStart, phaseAt, severity, pickSlots, choice, buildQuestion, LATE_SOULS, LANE_END };
   if (typeof module !== 'undefined') module.exports = api; else root.Moments = api;
 })(this);

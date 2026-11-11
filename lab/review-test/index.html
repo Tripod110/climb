@@ -169,6 +169,8 @@ function review() {
     if (kind !== 'midboss') { x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, 64, 64); }
     return (tintCache[key] = c);
   }
+  // the last second (within 30 s) your team saw hero i on the map
+  const lastSeen = (s, i) => { if (!M.vis) return s; for (let u = s; u >= Math.max(0, s - 30); u--) if (M.vis[u] >> i & 1) return u; return null; };
   function draw(t) {
     aim(t);
     g.clearRect(0, 0, W, W);
@@ -195,11 +197,18 @@ function review() {
     g.globalAlpha = 1;
     // heroes: unfocused first, then focused on top
     const order = [...Array(N).keys()].sort((a, b) => (focus ? focus.includes(a) - focus.includes(b) : 0) || (a === M.me) - (b === M.me));
+    const fogged = cur && !clip;
     for (const i of order) {
-      const p = at(t, i); if (!p.alive || (!p.x && !p.y)) continue;
-      const [x, y] = px(p.x, p.y), lit = !focus || focus.includes(i), r = i === M.me ? 17 : 14;
+      let p = at(t, i), ghost = false;
+      if (fogged && M.heroes[i].team !== M.myTeam && !Moments.known(M, Math.floor(t), i)) {
+        const ls = lastSeen(Math.floor(t), i); if (ls == null) continue;
+        p = at(ls, i); ghost = true;
+      }
+      if (!p.alive || (!p.x && !p.y)) continue;
+      const [x, y] = px(p.x, p.y), lit = !ghost && (!focus || focus.includes(i)), r = i === M.me ? 17 : 14;
       const col = M.heroes[i].team === M.myTeam ? C.ally : C.enemy;
-      g.globalAlpha = lit ? 1 : .32;
+      g.globalAlpha = ghost ? .3 : lit ? 1 : .32;
+      if (ghost) { g.setLineDash([4, 4]); g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r + 5, 0, 7); g.stroke(); g.setLineDash([]); }
       g.beginPath(); g.arc(x, y, r + 3, 0, 7); g.fillStyle = col; g.fill();
       g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip(); g.fillStyle = '#111'; g.fillRect(x - r, y - r, 2 * r, 2 * r);
       if (icons[i].complete && icons[i].naturalWidth) g.drawImage(icons[i], x - r, y - r, 2 * r, 2 * r);
@@ -268,7 +277,7 @@ function review() {
       <h2>${esc(q.q.title)}</h2>
       <ul class="facts">${q.q.facts.map(([n, s]) => `<li><b>${esc(n)}</b><span>${esc(s)}</span></li>`).join('')}</ul>
       <div class="opts">${q.q.opts.map(o => `<button type="button" data-o="${o.id}">${esc(o.label)}</button>`).join('')}</div>
-      <p class="note">Test: this doesn’t yet check which enemies you could actually see at the time.</p></div>`;
+      <p class="note">Only enemies your team could see in the last few seconds are shown. Faded, dashed icons are where an enemy was last seen.</p></div>`;
     document.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(q, b.dataset.o));
   }
   function answer(q, id) {
@@ -285,6 +294,7 @@ function review() {
       <div class="t-label">What happened</div>
       <h2>${esc(q.q.outcome)}</h2>
       <ul class="facts" style="gap:12px">${rows}</ul>
+      ${q.unseen.length ? `<p class="why" style="margin-bottom:10px">Also there, hidden by fog: ${esc(q.unseen.map(i => M.heroes[i].name).join(', '))}. The question only counted the enemies you could see.</p>` : ''}
       <p class="note">Why this was a question: you were outnumbered, and their side of the fight had ${(q.fight.them / Math.max(1, q.fight.us)).toFixed(1)}× your souls, before it began. The full version will also compare it with what winning players did in similar spots.</p>
       <button type="button" id="cont" class="primary" style="margin-top:6px">${QS.some(x => !x.done && x !== q) ? 'Continue review' : 'Finish review'}</button></div>`);
     $('cont').onclick = () => { q.done = true; cur = null; resume(); $('cont').remove(); };

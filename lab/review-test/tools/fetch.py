@@ -10,7 +10,7 @@ from compression import zstd
 HERE = os.path.dirname(os.path.abspath(__file__))
 UA = 'climb-model/1 (personal Deadlock tracker)'
 API = 'https://api.deadlock-api.com/v1/matches/demo/query'
-QUERIES = ['map', 'rules', 'pawns', 'players', 'kills', 'obj', 'troop']
+QUERIES = ['map', 'rules', 'pawns', 'players', 'kills', 'obj', 'troop', 'fow']
 
 
 def req(url, body=None):

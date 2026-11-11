@@ -87,13 +87,27 @@ def build(mid, account, folder, out):
     kills = [{'t': round(m.clock(k['tick']), 1), 'v': idx.get(k['entindex_victim'], -1), 'a': idx.get(k['entindex_attacker'], -1),
               'gold': k.get('killfeed_gold')}
              for k in sorted(m.L('kills'), key=lambda k: k['tick'])]
+    # what your team could see: per second, a bitmask over ents (bit i = hero i visible on your team's map).
+    # Fog rows only appear when a team's list changes, so carry the last state forward; seen in any sample that second counts.
+    seen, state = {}, {}
+    fow = sorted((r for r in m.L('fow') if r['team'] == R[me]['team']), key=lambda r: r['tick'])
+    for r in fow:
+        e = r['ent'] // 2
+        if e in idx:
+            state[idx[e]] = r['vis']
+        s = int(m.clock(r['tick']))
+        if s >= 0:
+            seen[s] = seen.get(s, 0) | sum(1 << i for i, v in state.items() if v)
+    vis = []
+    for s in range(0, end + 1):
+        vis.append(seen[s] if s in seen else (vis[-1] if vis else 0))
     rules = m.L('rules')
     win = next((r['win'] for r in reversed(rules) if r.get('win') not in (None, -1)), None)
 
     data = {
         'match': mid, 'end': end, 'me': 0, 'myTeam': R[me]['team'], 'won': win == R[me]['team'] if win is not None else None,
         'heroes': [{'name': H[R[e]['hero']]['name'], 'team': R[e]['team'], 'img': H[R[e]['hero']]['images']['minimap_image']} for e in ents],
-        'frames': frames, 'troop': troop, 'souls': souls, 'objs': objs, 'kills': kills,
+        'frames': frames, 'vis': vis, 'troop': troop, 'souls': souls, 'objs': objs, 'kills': kills,
     }
     with open(out, 'w', encoding='utf-8') as f:
         f.write('window.MATCH=' + json.dumps(data, separators=(',', ':')) + ';')
