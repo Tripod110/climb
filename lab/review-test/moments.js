@@ -127,17 +127,18 @@
     const lost = m.objective && m.objective.died != null && m.objective.died <= m.death + 15 ? m.objective.died : null;
     const k = M.kills.find(x => x.t === m.death);
     const behind = m.soulsBehind >= 1000 ? `${(m.soulsBehind / 1000).toFixed(1)}k souls behind` : m.soulsBehind <= -1000 ? `${(-m.soulsBehind / 1000).toFixed(1)}k souls ahead` : 'even on souls';
+    const ratio = m.fight.them / Math.max(1, m.fight.us);
     const facts = [
       [String(e), `enem${e === 1 ? 'y' : 'ies'} coming: ${list(m.enemies.map(name))}`],
       m.allies.length ? [String(m.allies.length), `teammate${m.allies.length === 1 ? '' : 's'} with you (${list(m.allies.map(name))}); the rest are far away`] : ['0', 'teammates near you'],
-      [m.soulsBehind >= 1000 ? `${(m.soulsBehind / 1000).toFixed(1)}k` : '—', m.soulsBehind >= 1000 ? 'souls your team is behind' : behind],
+      [`${ratio.toFixed(1)}×`, `their souls vs yours, counting only the heroes in this fight`],
       [`${m.hp}%`, 'your health'],
     ];
     const W = ['zero', 'one', 'two', 'three', 'four', 'five', 'six'], word = x => W[x] || String(x);
     const odds = `${n === 1 ? 'Alone' : word(n)[0].toUpperCase() + word(n).slice(1) + ' of you'} against ${word(e)}`;
     const opts = [
       { id: 'fight', label: obj ? 'Go out and fight them' : 'Take the fight', verdict: 'risky',
-        why: `${odds}${m.soulsBehind >= 1000 ? `, ${behind}` : ''}. You died at ${fmt(m.death)}${lost ? `, and the ${obj} fell at ${fmt(lost)} anyway` : ''}.` },
+        why: `${odds}, with ${ratio.toFixed(1)}× your souls on their side. You died at ${fmt(m.death)}${lost ? `, and the ${obj} fell at ${fmt(lost)} anyway` : ''}.` },
       obj ? { id: 'hold', label: `Stay and defend the ${obj}`, verdict: 'risky',
         why: `Still ${odds.toLowerCase()}. ${lost ? `The ${obj} fell at ${fmt(lost)}; staying would have traded your life for a few seconds.` : `Holding there means fighting them on their terms.`}` }
           : { id: 'hold', label: 'Hold your ground and wait for help', verdict: 'risky',

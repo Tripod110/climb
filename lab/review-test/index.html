@@ -125,7 +125,7 @@ function review() {
   $('intro').innerHTML = `<div class="t-label">This game</div>
     <h2>${QS.length ? `${QS.length} question${QS.length === 1 ? '' : 's'}` : 'Nothing to ask'}</h2>
     <p class="muted" style="margin:0">${['lane', 'mid', 'late'].map(p => `${PH[p]} ${count(p)}`).join(' · ')}</p>
-    <p class="note">Climb only asks when a fight was clearly bad before it started: outnumbered by two, or by one while well behind on souls.</p>`;
+    <p class="note">Climb only asks when a fight was clearly bad before it started: you were outnumbered, and the enemies in it had at least 1.75× the souls of your side.</p>`;
   $('jump').style.display = QS.length ? '' : 'none';
 
   // ---- map
@@ -285,7 +285,7 @@ function review() {
       <div class="t-label">What happened</div>
       <h2>${esc(q.q.outcome)}</h2>
       <ul class="facts" style="gap:12px">${rows}</ul>
-      <p class="note">Why this was a question: you were outnumbered before the fight began. The full version will also compare it with what winning players did in similar spots.</p>
+      <p class="note">Why this was a question: you were outnumbered, and their side of the fight had ${(q.fight.them / Math.max(1, q.fight.us)).toFixed(1)}× your souls, before it began. The full version will also compare it with what winning players did in similar spots.</p>
       <button type="button" id="cont" class="primary" style="margin-top:6px">${QS.some(x => !x.done && x !== q) ? 'Continue review' : 'Finish review'}</button></div>`);
     $('cont').onclick = () => { q.done = true; cur = null; resume(); $('cont').remove(); };
   }
