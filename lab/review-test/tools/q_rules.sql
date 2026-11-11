@@ -1,0 +1,1 @@
+SELECT tick, "m_pGameRules__m_flGameStartTime" AS gst, "m_pGameRules__m_eGameState" AS gs, "m_pGameRules__m_iWinningTeam" AS win FROM CCitadelGameRulesProxy WHERE delta_type <> 'update' OR tick % 6400 = 0
