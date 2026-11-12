@@ -104,17 +104,19 @@
         const r = await fetch(BASE + '/v1/matches/demo/query', { method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ match_id: matchId, query, format: 'ndjson' }) });
         if (r.status === 429) { const j = await r.json().catch(() => ({})); throw new RateLimited(Math.max(2, (j.error && j.error.quota && j.error.quota.next_request_in) || 10) * 1000); }
+        if (r.status >= 500) throw new RateLimited(8000);   // "retry later": the server is busy, polite() waits and retries
         const j = await r.json().catch(() => ({}));
         if (r.status === 404) { const e = new Error('No replay for this match'); e.noDemo = true; throw e; }
         if (!r.ok) throw new Error('replay query ' + r.status + (j.error ? ': ' + String(j.error).slice(0, 120) : ''));
         return j;
       });
+      // A repeat of an earlier query comes back already "done" but without the result URL: ask the job for it.
       let s = post;
-      for (let i = 0; i < 40 && !['done', 'failed'].includes(s.status); i++) {
-        await sleep(Math.min(15, Math.max(3, s.estimated_wait_seconds || 4)) * 1000);
+      for (let i = 0; i < 40 && s.status !== 'failed' && !(s.status === 'done' && s.result_url); i++) {
+        if (s.status !== 'done') await sleep(Math.min(15, Math.max(3, s.estimated_wait_seconds || 4)) * 1000);
         s = await polite(() => getJSON('/v1/matches/demo/query/' + post.job_id));
       }
-      if (s.status !== 'done') throw new Error('replay query ' + (s.error || s.status));
+      if (s.status !== 'done' || !s.result_url) throw new Error('replay query ' + (s.error || s.status));
       const raw = new Uint8Array(await (await fetch(s.result_url)).arrayBuffer());
       if (!root.fzstd) throw new Error('replay decoder missing');
       const text = new TextDecoder().decode(/\.zst$/.test(s.result_url) ? root.fzstd.decompress(raw) : raw);
