@@ -1007,6 +1007,7 @@
         <div class="rv-stage"><canvas id="rv-map" width="900" height="900"></canvas><div class="rv-clock" id="rv-clock">0:00</div><div class="rv-speed" id="rv-speed"></div><div class="rv-banner" id="rv-banner"></div></div>
         <div class="rv-ctl"><button type="button" class="btn" id="rv-play">▶ Play review</button><button type="button" class="btn ghost-btn" id="rv-jump">Jump to key moment</button><span class="rv-seg" id="rv-spd" role="group" aria-label="Playback speed"></span></div>
         <div class="rv-tl" id="rv-tl"><canvas id="rv-tlc" width="1000" height="46"></canvas><span class="rv-tip" id="rv-tip"></span></div>
+        <div class="rv-otl" id="rv-otl" aria-label="Objectives"></div>
         <div class="rv-key"><span><i style="background:var(--ally)"></i>Your team</span><span><i style="background:var(--enemy)"></i>Enemy team</span><span><i style="background:var(--brass-hi)"></i>Your kill</span><span><i style="background:var(--bad)"></i>Your death</span><span>◆ Question</span><span>Band: souls lead (up = you ahead)</span></div>
       </div><aside class="rv-side" id="rv-side"></aside></div>`;
     rvUI = { id, root: host.querySelector('.rv-grid') };
@@ -1065,6 +1066,13 @@
       walker: ASSET + 'icons/minimap/objective_icon_t2.svg', midboss: ASSET + 'icons/minimap/boss_marker_neutral_psd.png',
       shrine: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><g fill="white"><path d="M256 36 470 168H42z"/><rect x="58" y="186" width="396" height="32"/><rect x="86" y="236" width="58" height="178"/><rect x="368" y="236" width="58" height="178"/><rect x="36" y="432" width="440" height="44"/><path fill-rule="evenodd" d="M256 252c-46 0-80 34-92 72 12 38 46 72 92 72s80-34 92-72c-12-38-46-72-92-72zm0 36a36 36 0 1 0 0 72 36 36 0 1 0 0-72z"/></g></svg>') };
     const OBJ_SIZE = { guardian: 18, basegd: 13, walker: 24, shrine: 20, midboss: 26 };
+    // the jungle, with the game's minimap icons: camps by size, gold statues (boxes), Sinner's Sacrifice, the Urn
+    const JUNGLE = {}, MMI = ASSET + 'icons/minimap/';
+    for (const [k, f] of Object.entries({ camp1: 'neutral_small_psd.png', camp2: 'neutral_medium_psd.png', camp3: 'neutral_large_psd.png',
+      statue: 'item_crate_spawn_psd.png', sinner: 'super_neutral_marker_psd.png', urn: 'soul_jar_marker_psd.png' })) { const i = new Image(); i.src = MMI + f; JUNGLE[k] = i; }
+    const sprite = (im, x, y, s, a) => { if (im && im.complete && im.naturalWidth) { g.globalAlpha = a; g.drawImage(im, x - s / 2, y - s / 2, s, s); g.globalAlpha = 1; } };
+    // an objective's health at time t: its latest damaged sample in the last 20 s, else full
+    const hpAt = o => { if (!o.hp) return 100; let v = 100; for (const [s, h] of o.hp) { if (s > t) break; v = t - s <= 20 ? h : 100; } return v; };
     const objImg = {}, tint = {};
     for (const k in OBJ_SRC) { const i = new Image(); i.src = OBJ_SRC[k]; objImg[k] = i; }
     const patronImg = { 2: 'images/npcs/patron_hiddenking.png', 3: 'images/npcs/patron_archmother.png' };
@@ -1094,15 +1102,29 @@
       aim();
       g.clearRect(0, 0, W, W);
       if (bg.complete && bg.naturalWidth) { const [x0, y0] = px(-RAD, RAD), [x1, y1] = px(RAD, -RAD); g.filter = 'brightness(1.9) contrast(1.15)'; g.drawImage(bg, x0, y0, x1 - x0, y1 - y0); g.filter = 'none'; }
+      const zs = Math.sqrt(cam.s), dim = focus ? 0.5 : 1;
+      for (const c of M.camps || []) {
+        const up = c.up.some(([a, b]) => a <= t && t < b), [x, y] = px(c.x, c.y);
+        sprite(JUNGLE['camp' + c.size], x, y, (8 + c.size * 3) * zs, (up ? 0.85 : 0.22) * dim);
+      }
+      for (const b of M.statues || []) if (b.born <= t && t < b.gone) { const [x, y] = px(b.x, b.y); sprite(JUNGLE.statue, x, y, 9 * zs, 0.9 * dim); }
+      for (const b of M.sinners || []) if (b.born <= t && t < b.gone) { const [x, y] = px(b.x, b.y); sprite(JUNGLE.sinner, x, y, 16 * zs, 0.9 * dim); }
+      for (const b of M.urns || []) if (b.born <= t && t < b.gone) { const [x, y] = px(b.x, b.y); sprite(JUNGLE.urn, x, y, 18 * zs, dim); }
       for (const o of M.objs) {
         if (t < o.born) continue;
         const gone = o.died != null && o.died <= t;
         if (gone && o.kind === 'midboss') continue;
         if (o.kind === 'patron') { drawPatron(o, gone); continue; }
-        const [x, y] = px(o.x, o.y), s = (OBJ_SIZE[o.kind] || 18) * Math.sqrt(cam.s);
-        const im = tinted(o.kind, gone ? '#5b5750' : o.team === 4 ? '#c9a3ff' : o.team === M.myTeam ? C.ally : C.enemy);
+        const [x, y] = px(o.x, o.y), s = (OBJ_SIZE[o.kind] || 18) * zs;
+        const col = o.team === 4 ? '#c9a3ff' : o.team === M.myTeam ? C.ally : C.enemy, im = tinted(o.kind, gone ? '#5b5750' : col);
         g.globalAlpha = gone ? 0.45 : focus ? 0.55 : 0.95;
         if (im) g.drawImage(im, x - s / 2, y - s / 2, s, s);
+        const hp = gone ? 100 : hpAt(o);
+        if (hp < 100) {   // health bar, only once it's been hit
+          const w = Math.max(18, s * 1.1);
+          g.globalAlpha = 1; g.fillStyle = 'rgba(0,0,0,.75)'; g.fillRect(x - w / 2, y + s / 2 + 2, w, 4);
+          g.fillStyle = col; g.fillRect(x - w / 2, y + s / 2 + 2, w * hp / 100, 4);
+        }
         g.globalAlpha = 1;
       }
       const tr = M.troop[String(Math.floor(t / 2) * 2)] || [];
@@ -1181,6 +1203,21 @@
 
     // drag along the timeline any time; it closes an open question (asked again when you reach it) and pauses while held
     const timeAt = e => { const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(M.end, (e.clientX - r.left) / r.width * M.end)); };
+    // ---- objective track: every objective taken, coloured by the team that took it; tap to jump 10 s before
+    const OBJ_LABEL = { guardian: 'guardian', walker: 'walker', basegd: 'base guardian', shrine: 'shrine', drop: 'Patron' };
+    const EV_ICON = { guardian: 'icons/minimap/objective_icon_t1.svg', basegd: 'icons/minimap/objective_icon_t1.svg', walker: 'icons/minimap/objective_icon_t2.svg',
+      drop: 'icons/minimap/objective_icon_t2.svg', midboss: 'icons/minimap/boss_marker_neutral_psd.png', urn: 'icons/minimap/soul_jar_marker_psd.png' };
+    const took = e => e.kind === 'midboss' || e.kind === 'urn' ? (e.by >= 0 ? M.heroes[e.by].team : null) : 5 - e.team;
+    const evText = e => {
+      const who = e.by >= 0 ? name(e.by) : null, ours = took(e) === M.myTeam;
+      const txt = e.kind === 'midboss' ? `${ours ? 'Your team' : 'They'} took the Mid-Boss` : e.kind === 'urn' ? `${who || 'Someone'} picked up the Urn`
+        : e.kind === 'drop' ? `${e.team === M.myTeam ? 'Your' : 'Their'} Patron dropped` : `${e.team === M.myTeam ? 'Your' : 'Their'} ${OBJ_LABEL[e.kind]} destroyed`;
+      return `${fmt(e.t)} · ${txt}${who && e.kind !== 'urn' ? ` (${who})` : ''}`;
+    };
+    const otl = $('otl');
+    otl.innerHTML = (M.events || []).map((e, i) => { const tm = took(e), cls = tm === M.myTeam ? 'ally' : tm == null ? '' : 'enemy', src = e.kind === 'shrine' ? OBJ_SRC.shrine : ASSET + EV_ICON[e.kind];
+      return `<button type="button" class="rv-ev ${cls} k-${e.kind}" data-i="${i}" style="left:${(e.t / M.end * 100).toFixed(2)}%" title="${esc(evText(e))}" aria-label="${esc(evText(e))}"><img src="${src}" alt=""></button>`; }).join('');
+    otl.onclick = e => { const b = e.target.closest('.rv-ev'); if (!b) return; const ev = M.events[+b.dataset.i]; closeQuestion(); t = Math.max(0, ev.t - 10); QS.forEach(q => { if (q.t >= t - 0.01) q.done = false; }); lastTs = 0; };
     const closeQuestion = () => { if (!cur && !clip) return; clip = null; cur = null; focus = null; $('banner').style.display = 'none'; showIntro(); };
     const seek = e => { t = timeAt(e); QS.forEach(q => { if (q.t >= t - 0.01) q.done = false; }); };
     tl.addEventListener('pointerdown', e => { closeQuestion(); drag = { was: playing }; playing = false; tl.classList.add('drag'); seek(e); setPlay(); try { tl.setPointerCapture(e.pointerId); } catch (x) { /* synthetic pointer */ } });

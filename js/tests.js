@@ -753,6 +753,33 @@
     eq('pack: you first, hero ids kept', P.heroes.map(h => h.id), [7, 8]);
     eq('pack: position = cell * 512 + vec - 32768; health carried forward', P.frames[1].slice(0, 4), [10, 20, 25, 1]);
     eq('pack: the kill on the game clock', [P.kills[0].t, P.kills[0].v, P.kills[0].a], [1, 1, 0]);
+    // objectives, the jungle and the Urn
+    const cell = (x, y) => ({ cx: Math.floor((x + 32768) / 512), cy: Math.floor((y + 32768) / 512), vx: (x + 32768) % 512, vy: (y + 32768) % 512 });
+    const P2 = Rv.pack({
+      rules: [{ tick: 0, gst: 0 }],
+      map: [{ hero: 7, team: 2, hp: 100, account: 42 }, { hero: 8, team: 3, hp: 101, account: 43 }],
+      pawns: [Object.assign({ tick: 0, entity_index: 100, hp: 100, hpmax: 100, life: 0 }, cell(1000, 1000)), Object.assign({ tick: 0, entity_index: 101, hp: 100, hpmax: 100, life: 0 }, cell(-5000, 0)),
+        { tick: 64 * 200, entity_index: 100, hp: 100 }],
+      players: [], kills: [], troop: [], fow: [],
+      obj: [Object.assign({ kind: 'guardian', entity_index: 500, team: 3, born: 0, died: 64 * 60 }, cell(0, 1800)),
+        Object.assign({ kind: 'patron', entity_index: 501, team: 3, born: 0, died: null }, cell(1280, 8048))],
+      objhp: [{ tick: 64 * 40, entity_index: 500, hp: 500, hpmax: 1000 }, { tick: 64 * 44, entity_index: 500, hp: 1000 }],
+      events: [{ tick: 64 * 60, team: 3, cls: 5, killer: 0x4000 | 100, x: 0, y: 1800 }, { tick: 64 * 150, team: 3, cls: 28, killer: 100, x: 2816, y: 7536 },
+        { tick: 64 * 170, team: 3, cls: 31, killer: 100, x: 1280, y: 8048 }, { tick: 64 * 90, team: 4, cls: 8, killer: 100, x: 0, y: 0 }],
+      world: [Object.assign({ kind: 'neutral', entity_index: 600, hpmax: 250, born: 64 * 10, died: 64 * 30 }, cell(4000, 0)),
+        Object.assign({ kind: 'neutral', entity_index: 601, hpmax: 700, born: 64 * 10, died: 64 * 50 }, cell(4300, 100)),
+        Object.assign({ kind: 'statue', entity_index: 602, hpmax: 0, born: 64 * 20, died: 64 * 80 }, cell(-3000, 3000)),
+        Object.assign({ kind: 'urn', entity_index: 603, hpmax: 0, born: 64 * 100, died: 64 * 120 }, cell(1100, 1000))],
+    }, 42, 2);
+    const g2 = P2.objs.find(o => o.kind === 'guardian');
+    eq('pack: objective health below full, as [t, %]', g2.hp, [[40, 50]]);
+    eq('pack: guardian kill becomes an event credited to the killer', P2.events.find(e => e.kind === 'guardian').by, 0);
+    eq('pack: four shrines, the destroyed one timed from its event', P2.objs.filter(o => o.kind === 'shrine').map(o => o.died), [null, null, 150, null]);
+    eq('pack: Patron drop time from its event', P2.objs.find(o => o.kind === 'patron').dropped, 170);
+    eq('pack: creeps 300 apart are one camp, medium, up while either lives', [P2.camps.length, P2.camps[0].size, P2.camps[0].up], [1, 2, [[10, 30], [10, 50]]]);
+    eq('pack: a statue lasts from spawn to broken', [P2.statues[0].born, P2.statues[0].gone], [20, 80]);
+    eq('pack: the Urn pickup goes to the nearest hero', P2.events.find(e => e.kind === 'urn').by, 0);
+    eq('pack: events in time order', P2.events.map(e => e.kind), ['guardian', 'midboss', 'urn', 'shrine', 'drop']);
   }
 
   // ---------------------------------------------------------------- report

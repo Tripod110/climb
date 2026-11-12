@@ -39,6 +39,19 @@
     // what each team could see: heroes on its map, four times a second
     fow: `SELECT tick, team, ent, vis FROM (SELECT tick, "m_iTeamNum" AS team, unnest("m_vecFOWEntities__m_nEntIndex") AS ent,
       unnest("m_vecFOWEntities__m_bVisibleOnMap") AS vis FROM CCitadelTeam WHERE tick % 16 = 0 AND "m_iTeamNum" IN (2, 3)) WHERE ent > 1 AND ent < 1000`,
+    // objective health every 4 s (guardians, walkers, base guardians, Patrons, Mid-Boss)
+    objhp: ['CNPC_TrooperBoss', 'CNPC_Boss_Tier2', 'CNPC_BarrackBoss', 'CNPC_Boss_Tier3', 'CNPC_MidBoss'].map(t =>
+      `SELECT tick, entity_index, "m_iHealth" AS hp, "m_iMaxHealth" AS hpmax FROM ${t} WHERE tick % 256 = 0`).join(' UNION ALL '),
+    // every objective destroyed, with its class, owner team, killer pawn and place. Classes: 5 guardian, 29 walker,
+    // 30 base guardian, 28 shrine, 8 Mid-Boss, 31 Patron dropping (checked on match 135294772)
+    events: `SELECT tick, objective_team AS team, entity_killed_class AS cls, entity_killer AS killer, entity_position['x'] AS x,
+      entity_position['y'] AS y FROM BossKilledEvent`,
+    // the jungle: neutral creeps, gold statues, Sinner's Sacrifice machines and Urn spawns, one row per entity
+    world: [['neutral', 'CNPC_TrooperNeutral', true], ['statue', 'CCitadelItemPunchableNeutralGold', false],
+      ['sinner', 'CNPC_Neutral_SinnersSacrifice', true], ['urn', 'CCitadelItemPickupIdol', false]].map(([k, t, life]) =>
+      `SELECT '${k}' AS kind, entity_index, max("m_iMaxHealth") AS hpmax, min(tick) AS born, ` +
+      `${life ? 'min(CASE WHEN "m_lifeState" <> 0 THEN tick END)' : 'max(tick)'} AS died, min("CBodyComponent__m_cellX") AS cx, ` +
+      `min("CBodyComponent__m_cellY") AS cy, min("CBodyComponent__m_vecX") AS vx, min("CBodyComponent__m_vecY") AS vy FROM ${t} GROUP BY entity_index`).join(' UNION ALL '),
   };
 
   // ------------------------------------------------------------------ packing
@@ -135,17 +148,70 @@
       souls.push(ents.map(e => cur.get(e) || 0));
     }
 
+    const t1 = v => Math.round(v * 10) / 10;
+    // objective health: per entity, the 4-second samples where it was below full, as [t, %]
+    const hpOf = new Map();
+    for (const r of ffill(Q.objhp || [], ['hp', 'hpmax'])) {
+      if (r.hp == null || !r.hpmax || r.hp >= r.hpmax) continue;
+      const s = Math.floor(clock(r.tick));
+      if (s < 0) continue;
+      if (!hpOf.has(r.entity_index)) hpOf.set(r.entity_index, []);
+      hpOf.get(r.entity_index).push([s, Math.max(0, r0(100 * r.hp / r.hpmax))]);
+    }
     const objs = (Q.obj || []).filter(o => o.cx != null && [2, 3, 4].includes(o.team)).map(o => {
       const p = pos(o);
-      return { kind: o.kind, team: o.team, x: r0(p.x), y: r0(p.y), born: Math.round(clock(o.born) * 10) / 10, died: o.died != null ? Math.round(clock(o.died) * 10) / 10 : null };
+      return { kind: o.kind, team: o.team, x: r0(p.x), y: r0(p.y), born: t1(clock(o.born)), died: o.died != null ? t1(clock(o.died)) : null, hp: hpOf.get(o.entity_index) || null };
     });
+    // objective kills, newest class map. The killer is a pawn handle -> hero index.
+    const EVENT_KIND = { 5: 'guardian', 29: 'walker', 30: 'basegd', 28: 'shrine', 8: 'midboss', 31: 'patron' };
+    const events = [];
+    for (const e of (Q.events || []).slice().sort((a, b) => a.tick - b.tick)) {
+      const kind = EVENT_KIND[e.cls];
+      if (!kind) continue;
+      const by = e.killer != null && idx.has(e.killer & 0x3FFF) ? idx.get(e.killer & 0x3FFF) : -1;
+      events.push({ t: t1(clock(e.tick)), kind: kind === 'patron' ? 'drop' : kind, team: e.team, by, x: e.x != null ? r0(e.x) : null, y: e.y != null ? r0(e.y) : null });
+    }
+    // shrines have no entity table we can read: place them from their kill events, and mirror the base layout for the
+    // ones still standing (two per team at fixed spots; the map is point-symmetric around the middle)
+    for (const team of [2, 3]) {
+      const down = events.filter(e => e.kind === 'shrine' && e.team === team);
+      const spots = SHRINES[team].map(([x, y]) => ({ x, y }));
+      for (const sp of spots) {
+        const e = down.find(d => d.x != null && Math.hypot(d.x - sp.x, d.y - sp.y) < 800);
+        objs.push({ kind: 'shrine', team, x: sp.x, y: sp.y, born: 0, died: e ? e.t : null, hp: null });
+      }
+    }
+    for (const o of objs) if (o.kind === 'patron') { const d = events.find(e => e.kind === 'drop' && e.team === o.team); o.dropped = d ? d.t : null; }
+    // the jungle: camps (neutral creeps grouped by place; up while any creep is alive), statues, Sinner's machines, Urns
+    const world = (Q.world || []).filter(r => r.cx != null && r.vx != null).map(r => Object.assign({}, r, { p: pos(r) }));
+    const camps = [];
+    for (const r of world.filter(r => r.kind === 'neutral').sort((a, b) => a.born - b.born)) {
+      let c = camps.find(c => Math.hypot(c.x - r.p.x, c.y - r.p.y) < 1200);
+      if (!c) camps.push(c = { x: r0(r.p.x), y: r0(r.p.y), size: 1, up: [] });
+      c.size = Math.max(c.size, r.hpmax >= 2000 ? 3 : r.hpmax >= 400 ? 2 : 1);
+      c.up.push([Math.round(clock(r.born)), r.died != null ? Math.round(clock(r.died)) : end + 1]);
+    }
+    const things = kind => world.filter(r => r.kind === kind).map(r => ({ x: r0(r.p.x), y: r0(r.p.y), born: Math.round(clock(r.born)), gone: r.died != null ? Math.round(clock(r.died)) : end + 1 }));
+    // an Urn that disappears before the end was picked up: by the nearest hero that second
+    const urns = things('urn').map(u => {
+      if (u.gone > end) return u;
+      const f = frames[Math.max(0, Math.min(end, u.gone))];
+      let best = -1, bd = 1500;
+      for (let i = 0; i < ents.length; i++) { const d = Math.hypot(f[i * 4] - u.x, f[i * 4 + 1] - u.y); if (f[i * 4 + 3] && d < bd) { bd = d; best = i; } }
+      if (best >= 0) events.push({ t: u.gone, kind: 'urn', team: R.get(ents[best]).team, by: best, x: u.x, y: u.y });
+      return Object.assign(u, { by: best });
+    });
+    events.sort((a, b) => a.t - b.t);
     const kills = (Q.kills || []).slice().sort((a, b) => a.tick - b.tick).map(k => ({
       t: Math.round(clock(k.tick) * 10) / 10, v: idx.has(k.v) ? idx.get(k.v) : -1, a: idx.has(k.a) ? idx.get(k.a) : -1, gold: k.gold || 0 }));
     const w = (Q.rules || []).slice().reverse().find(r => r.win != null && r.win >= 0);
     return { v: PACK_V, match: matchId || null, end, me: 0, myTeam, won: w ? w.win === myTeam : null,
-      heroes: ents.map(e => ({ id: R.get(e).hero, team: R.get(e).team })), frames, vis, troop, souls, objs, kills };
+      heroes: ents.map(e => ({ id: R.get(e).hero, team: R.get(e).team })), frames, vis, troop, souls, objs, kills,
+      events, camps, statues: things('statue'), sinners: things('sinner'), urns };
   }
-  const PACK_V = 1;
+  const PACK_V = 2;
+  // the four shrines (two per team), from their kill events on match 135294772
+  const SHRINES = { 2: [[-2859, -7535], [299, -7535]], 3: [[2816, 7536], [-256, 7536]] };
 
   // ------------------------------------------------------------------ moments
   const ENGAGE = 2600;      // units: an enemy this close means you're in the fight

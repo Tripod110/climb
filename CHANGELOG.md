@@ -4,6 +4,18 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.51 (2026-11-12): Objectives in the review
+- Three more replay queries (11): `objhp` (objective health every 4 s), `events` (BossKilledEvent: class 5 guardian,
+  29 walker, 30 base guardian, 28 shrine, 8 Mid-Boss, 31 Patron dropping) and `world` (one row per neutral creep,
+  gold statue, Sinner's Sacrifice and Urn). Checked on match 135294772: crates (`CItemCrate`) and the Urn-return
+  event are empty in replays; shrines have no readable entity, so they sit at fixed spots (`SHRINES`) and take their
+  times from the kill events.
+- `pack` (PACK_V 2, so stored reviews re-read): objective `hp` samples, `events` (with the killer's hero), shrines,
+  Patron `dropped`, `camps` (creeps grouped by place, sized by health, up while any lives), `statues`, `sinners`,
+  `urns` (pickup credited to the nearest hero).
+- Review view: objective track (`.rv-otl`, tap to jump 10 s before), health bars once hit, camps / statues /
+  Sinner's / Urn with the game's minimap icons. 8 new tests (305).
+
 ## 0.50 (2026-11-11): Match review
 - `#/match/<id>/review` (`Views.review`, button in the match header): the replay on a 2D map at one steady speed
   (4×–48×, `settings.reviewSpeed`), stopping only at question moments; drag the timeline to scrub (closes an open

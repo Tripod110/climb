@@ -46,7 +46,9 @@ rules (`sh()`), `.ledger` rows of figures, and every explanation behind a small 
   stopping only at the moments that cost you. Each stop asks what you'd do, plays what happened, then explains.
   A moment is asked about only when the fight was clearly lost before it began: outnumbered by enemies your team
   had seen in the last 6 s, with at least 1.75× your side's souls in the fight (`js/review.js`, `findMoments`).
-  The replay is read by deadlock-api's demo query endpoint (8 SQL queries, ~1 minute the first time), packed in
+  Under the timeline, an objective track marks every objective taken (tap to jump); the map shows objective health,
+  shrines, the Patrons, jungle camps, gold statues, Sinner's Sacrifice and the Urn.
+  The replay is read by deadlock-api's demo query endpoint (11 SQL queries, ~1 minute the first time), packed in
   the browser and kept in IndexedDB.
 - **Heroes**: a scouting row (best hero, one to park, most and least rank points, on the rise,
   most played) and the hero pool grouped by how each hero does for you (`heroInsights`, win rates
