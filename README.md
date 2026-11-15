@@ -42,7 +42,7 @@ rules (`sh()`), `.ledger` rows of figures, and every explanation behind a small 
   by source vs your lane opponents, a Gemini debrief, and the 12-player scoreboard with the lobby and
   team average rank, each player's rank (`playerRankAt`), games and win rate on their hero, and tags
   (`heroTags`).
-- **Match review** (the Review button on a match page): the replay on a 2D map at one steady speed you pick,
+- **Match review** (the Review button on a match page; PC only: mouse + 900px+ screen): the replay on a 2D map at one steady speed you pick,
   stopping only at the moments that cost you. Each stop asks what you'd do, plays what happened, then explains.
   A moment is asked about only when the fight was clearly lost before it began: outnumbered by enemies your team
   had seen in the last 6 s, with at least 1.75× your side's souls in the fight (`js/review.js`, `findMoments`).

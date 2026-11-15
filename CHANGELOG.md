@@ -14,7 +14,8 @@ full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
   Patron `dropped`, `camps` (creeps grouped by place, sized by health, up while any lives), `statues`, `sinners`,
   `urns` (pickup credited to the nearest hero).
 - Review view: objective track (`.rv-otl`, tap to jump 10 s before), health bars once hit, camps / statues /
-  Sinner's / Urn with the game's minimap icons. 8 new tests (305).
+  Sinner's / Urn with the game's minimap icons. PC only: the Review button shows when the device has a hovering
+  fine pointer and a 900px+ screen (`reviewable()`); elsewhere the review route explains why. 8 new tests (305).
 
 ## 0.50 (2026-11-11): Match review
 - `#/match/<id>/review` (`Views.review`, button in the match header): the replay on a 2D map at one steady speed

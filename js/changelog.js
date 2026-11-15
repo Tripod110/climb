@@ -11,6 +11,7 @@
         'A new track under the review timeline shows every objective taken: guardians, walkers, base guardians, shrines, the Patron dropping, Mid-Boss and the Urn, coloured by the team that took it. Tap one to jump to just before it.',
         'Objectives show a health bar once they’re being hit, and shrines are on the map. Each Patron shows as the Hidden King or the Archmother, shielded until it drops.',
         'The map now shows the jungle: camps (bright while up, faded once cleared), gold statues, Sinner’s Sacrifice and the Urn waiting to be picked up.',
+        'Review is a computer feature: it needs a mouse and a wide screen, so the button only shows on a PC.',
       ],
     },
     {

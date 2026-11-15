@@ -920,7 +920,7 @@
           <div><div class="rank-name">${c.esc(c.heroName(m.hero))} <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span></div>
           <div class="muted">${new Date(m.t * 1000).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${mins(m.dur)} · ${m.mode === 'ranked' ? 'Ranked' : 'Unranked'}${(() => { const r = M.ranks.get(m.id); return !r || !r.kind ? '' : r.kind === 'placement' ? ' · placement game' : ' · you ' + (r.kind === 'before' ? 'were ' : 'played at ') + c.esc(E.badgeName(r.badge, c.tiers())); })()}${lobbyAvg ? ` · lobby avg <b class="ink">${c.esc(E.badgeName(lobbyAvg, c.tiers()))}</b>` : ''} · #${m.id}${m.added ? ' · added by id' : ''}</div></div>
         </div>
-        <div class="mh-actions"><a class="btn" href="#/match/${m.id}/review">Review</a><div class="big-delta">${m.delta == null ? '' : `${deltaHtml(c, m)}<span class="muted small">rank pts</span>`}</div></div>
+        <div class="mh-actions">${reviewable() ? `<a class="btn" href="#/match/${m.id}/review">Review</a>` : ''}<div class="big-delta">${m.delta == null ? '' : `${deltaHtml(c, m)}<span class="muted small">rank pts</span>`}</div></div>
       </div>
       ${(t => t ? `<div class="plq-row">${t}</div>` : '')(plaques(c, m, 6))}`;
     if (!L || L.v !== E.LOBBY_V) {
@@ -982,10 +982,18 @@
      Each stop asks what you'd do, plays the clip, then explains. The player is built once per match and
      left alone when the page redraws (render() runs on every data update), so the animation never restarts. */
   let rvUI = null;   // { id, root } of the player on screen
+  /* Review is a computer feature: a mouse (fine pointer that can hover) and a wide screen. On a phone or tablet the
+     button is hidden and the page explains why. */
+  const reviewable = () => window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 900px)').matches;
   function review(host, c) {
     const M0 = c.M, id = c.state.route.id, m = M0.all.find(x => x.id === id);
     if (!m) { host.innerHTML = '<div class="empty-state">That match isn’t in your history. <a href="#/matches">Back to matches</a></div>'; return; }
     if (rvUI && rvUI.id === id && host.contains(rvUI.root)) return;
+    if (!reviewable()) {
+      host.innerHTML = `<a href="#/match/${id}" class="back">← This match</a><section class="card"><p><b>Match review is made for a computer.</b></p>
+        <p class="muted">It plays the whole game on a map you scrub with a mouse. Open Climb on your PC to review this match.</p></section>`;
+      return;
+    }
     const rv = c.state.reviews[id];
     if (!rv) c.ensureReview(id);
     const head = `<a href="#/match/${id}" class="back">← This match</a>
