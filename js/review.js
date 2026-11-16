@@ -210,6 +210,90 @@
       events, camps, statues: things('statue'), sinners: things('sinner'), urns };
   }
   const PACK_V = 2;
+
+  /* ---------------------------------------------------------------- the quick review: Valve's match data
+     /v1/matches/{id}/metadata (one request, ~1.6 MB, no replay decoding) holds every hero's position, health and
+     "in combat" flag every second (match_paths), every death with victim and killer positions and time-to-kill,
+     every objective (Valve's EObjective id) and Mid-Boss, and souls every 3 minutes. Its clock is Valve's
+     game_time_s, the one the rest of Climb uses. No fog of war, troopers or jungle. Teams are 0 (Amber, base at -y)
+     and 1 (Sapphire, +y); packed as 2 and 3 to match the replay pack. */
+  const QUICK_V = 1;
+  // Valve's EObjective ids -> kind and lane side (1 west, 3 middle, 4 east); positions measured from replays.
+  const OBJ_ID = { 0: ['core'], 1: ['guardian', 1], 3: ['guardian', 3], 4: ['guardian', 4], 5: ['walker', 1], 7: ['walker', 3], 8: ['walker', 4],
+    9: ['patron'], 10: ['shrine', 0], 11: ['shrine', 1], 12: ['basegd', 1], 14: ['basegd', 3], 15: ['basegd', 4] };
+  const OBJ_POS = {
+    2: { guardian: { 1: [-8192, -1856], 3: [0, -1792], 4: [7040, -1984] }, walker: { 1: [-6272, -4736], 3: [-1288, -3472], 4: [5628, -5060] },
+      basegd: { 1: [-3040, -6576], 3: [-1280, -5456], 4: [480, -6576] }, shrine: { 0: [-2859, -7535], 1: [299, -7535] }, patron: [-1280, -8034] },
+    3: { guardian: { 1: [-7040, 1984], 3: [0, 1792], 4: [8128, 1856] }, walker: { 1: [-5416, 5024], 3: [1288, 3472], 4: [6443, 4776] },
+      basegd: { 1: [-480, 6592], 3: [1280, 5454], 4: [3040, 6592] }, shrine: { 0: [2816, 7536], 1: [-256, 7536] }, patron: [1280, 8048] },
+  };
+
+  function packMeta(meta, account, matchId) {
+    const mi = meta.match_info || meta, mp = mi.match_paths;
+    if (!mp || !mp.paths || !mp.paths.length) throw new Error('this match has no position data');
+    const T = t => (t === 1 || t === '1' || /1$/.test(String(t)) ? 3 : 2);
+    const players = mi.players || [];
+    const meP = players.find(p => p.account_id === account);
+    if (!meP) throw new Error('you are not in this match');
+    const myTeam = T(meP.team);
+    const order = players.slice().sort((a, b) => (T(a.team) !== myTeam) - (T(b.team) !== myTeam) || (a !== meP) - (b !== meP) || a.player_slot - b.player_slot);
+    const idxOfSlot = new Map(order.map((p, i) => [p.player_slot, i]));
+    const pathOf = new Map(mp.paths.map(p => [p.player_slot, p]));
+    const end = Math.max(1, Math.round(mi.duration_s || 0) || Math.max(...mp.paths.map(p => (p.x_pos || []).length - 1)));
+    const step = mp.interval_s || 1, RX = mp.x_resolution || 16383, RY = mp.y_resolution || 16383;
+
+    // a frame per second ([x, y, hp%, alive] per hero) and an in-combat bitmask per second
+    const frames = [], combat = [];
+    for (let s = 0; s <= end; s++) {
+      const row = []; let cm = 0;
+      order.forEach((p, i) => {
+        const P = pathOf.get(p.player_slot), k = P ? Math.min(P.x_pos.length - 1, Math.round(s / step)) : -1;
+        if (k < 0) { row.push(0, 0, 0, 0); return; }
+        const hp = P.health ? P.health[k] : 100;
+        row.push(r0(P.x_min + P.x_pos[k] / RX * (P.x_max - P.x_min)), r0(P.y_min + P.y_pos[k] / RY * (P.y_max - P.y_min)), hp, hp > 0 ? 1 : 0);
+        if (P.combat_type && P.combat_type[k]) cm |= 1 << i;
+      });
+      frames.push(row); combat.push(cm);
+    }
+
+    // souls: Valve samples net worth every 3 minutes; interpolated to the 10-second rows the moment finder reads
+    const snaps = order.map(p => [[0, 0], ...(p.stats || []).map(s => [s.time_stamp_s, s.net_worth || 0])]);
+    const nwAt = (i, t) => { const S = snaps[i]; for (let j = 1; j < S.length; j++) if (S[j][0] >= t) { const [a, va] = S[j - 1], [b, vb] = S[j]; return b === a ? vb : va + (vb - va) * (t - a) / (b - a); } return S[S.length - 1][1]; };
+    const souls = [];
+    for (let s = 0; s <= end; s += 10) souls.push(order.map((p, i) => r0(nwAt(i, s))));
+
+    // deaths: everyone's, with killer and positions; and kills in the replay pack's shape for the moment finder
+    const deaths = [];
+    order.forEach((p, i) => (p.death_details || []).forEach(d => deaths.push({
+      t: d.game_time_s, v: i, a: idxOfSlot.has(d.killer_player_slot) ? idxOfSlot.get(d.killer_player_slot) : -1,
+      x: r0((d.death_pos || {}).x || 0), y: r0((d.death_pos || {}).y || 0), kx: d.killer_pos ? r0(d.killer_pos.x) : null, ky: d.killer_pos ? r0(d.killer_pos.y) : null,
+      ttk: Math.round((d.time_to_kill_s || 0) * 10) / 10, dead: d.death_duration_s || 0 })));
+    deaths.sort((a, b) => a.t - b.t);
+    const kills = deaths.map(d => ({ t: d.t, v: d.v, a: d.a, gold: 0 }));
+
+    // objectives at their measured spots; events for the track (who destroyed it isn't in this data: -1)
+    const objs = [], events = [];
+    for (const o of mi.objectives || []) {
+      const def = OBJ_ID[o.team_objective_id]; if (!def) continue;
+      const team = T(o.team), [kind, lane] = def, P = OBJ_POS[team];
+      if (kind === 'core') { if (o.destroyed_time_s) events.push({ t: o.destroyed_time_s, kind: 'core', team, by: -1 }); continue; }
+      const xy = kind === 'patron' ? P.patron : P[kind] && P[kind][lane];
+      if (!xy) continue;
+      const died = o.destroyed_time_s || null;
+      objs.push({ kind, team, x: xy[0], y: xy[1], born: 0, died: kind === 'patron' ? null : died, hp: null, hit: o.first_damage_time_s || null,
+        dropped: kind === 'patron' ? died : undefined });
+      if (died) events.push({ t: died, kind: kind === 'patron' ? 'drop' : kind, team, by: -1, x: xy[0], y: xy[1] });
+    }
+    // the Patron dies when its team's core falls (the end of the game)
+    for (const e of events.filter(e => e.kind === 'core')) { const p = objs.find(o => o.kind === 'patron' && o.team === e.team); if (p) p.died = e.t; }
+    for (const b of mi.mid_boss || []) if (b.destroyed_time_s) events.push({ t: b.destroyed_time_s, kind: 'midboss', team: 4, took: T(b.team_claimed), by: -1, x: 0, y: 0 });
+    events.sort((a, b) => a.t - b.t);
+    const ev = events.filter(e => e.kind !== 'core');
+
+    return { v: QUICK_V, quick: true, match: matchId || null, end, me: 0, myTeam, won: mi.winning_team == null ? null : T(mi.winning_team) === myTeam,
+      heroes: order.map(p => ({ id: p.hero_id, team: T(p.team) })), frames, combat, vis: null, troop: {}, souls, objs, kills, deaths,
+      events: ev, camps: [], statues: [], sinners: [], urns: [] };
+  }
   // the four shrines (two per team), from their kill events on match 135294772
   const SHRINES = { 2: [[-2859, -7535], [299, -7535]], 3: [[2816, 7536], [-256, 7536]] };
 
@@ -335,7 +419,7 @@
     const k = M.kills.find(x => x.t === m.death);
     const ratio = m.fight.them / Math.max(1, m.fight.us);
     const facts = [
-      [String(e), `enem${e === 1 ? 'y' : 'ies'} you could see coming: ${list(m.enemies.map(name))}`],
+      [String(e), `enem${e === 1 ? 'y' : 'ies'} ${M.vis ? 'you could see ' : ''}coming: ${list(m.enemies.map(name))}`],
       m.allies.length ? [String(m.allies.length), `teammate${m.allies.length === 1 ? '' : 's'} with you (${list(m.allies.map(name))}); the rest are far away`] : ['0', 'teammates near you'],
       [`${ratio.toFixed(1)}×`, 'their souls vs yours, counting only the heroes in this fight'],
       [`${m.hp}%`, 'your health'],
@@ -355,8 +439,136 @@
     return { title, facts, opts, did: choice(M, m), outcome: `Died${n === 1 ? ' alone' : ''} at ${clockTxt(m.death)}`, ratio };
   }
 
-  const Review = { QUERIES, PACK_V, pack, ffill, known, situation, fightStart, phaseAt, severity, findMoments, pickSlots, choice, buildQuestion,
-    ODDS, KNOWN, LATE_SOULS, LANE_END, clockTxt };
+  /* ---------------------------------------------------------------- the quiz (quick review)
+     Every question is a moment where a best practice was broken, asked a few seconds before it went wrong.
+     Your deaths, each classed by the worst thing that happened, in this order:
+       outnumbered  the fight maths: outnumbered and their side had ODDS x your souls (Climb rule)
+       caught       killed within 5 s of first taking damage, before 20:00 (rulebook: Never caught out)
+       lone         a 9:00-20:00 death with nobody else dying within 10 s (rulebook: Don't die alone)
+       lane2        your 2nd+ death before 9:00 (rulebook: <=1 death in lane)
+       mid3         your 3rd+ death 9:00-20:00 (rulebook: <=2 mid-game deaths)
+     plus fights you missed:
+       fight        after 9:00: 2+ deaths within 20 s and 4,000 units, your team lost more, you were 5,000+ away, not fighting,
+                    and could have arrived (at 500 units/s) before it ended (Climb rule)
+     A death that fits none of them isn't asked about. Then slots per phase as before. */
+  const CAUGHT_TTK = 5, LONE_S = 10, MID_END = 1200, ARRIVE_SPEED = 500, FIGHT_GAP = 20, FIGHT_R = 4000, AWAY = 5000;
+  const RULE_OF = { caught: 'mid_nocaught', lone: 'mid_nolone', lane2: 'lane_le1', mid3: 'mid_le2' };
+  const KIND_WEIGHT = { caught: 2.6, lone: 2.4, lane2: 2.2, mid3: 2.0, fight: 2.0 };
+  const inCombat = (M, s, i) => !!(M.combat && (M.combat[Math.max(0, Math.min(M.combat.length - 1, s))] >> i & 1));
+
+  function findQuiz(M) {
+    const deaths = M.deaths || M.kills.map(k => ({ t: k.t, v: k.v, a: k.a, ttk: 0 }));
+    const mine = deaths.filter(d => d.v === M.me);
+    const found = [];
+    mine.forEach(d => {
+      const t = d.t, nLane = mine.filter(x => x.t < LANE_END && x.t <= t).length, nMid = mine.filter(x => x.t >= LANE_END && x.t < MID_END && x.t <= t).length;
+      const lone = t >= LANE_END && t < MID_END && !deaths.some(x => x !== d && Math.abs(x.t - t) <= LONE_S);
+      const caught = t < MID_END && d.ttk > 0 && d.ttk <= CAUGHT_TTK;
+      // the fight maths first: it has a moment to ask about (when it turned bad)
+      const fs = fightStart(M, t);
+      let bad = null;
+      for (let s = fs; s < t; s++) if (severity(situation(M, s, ENGAGE))) { bad = s; break; }
+      const hit = Math.max(0, Math.floor(t - (d.ttk || 0)));   // first damage on you
+      let kind = null, at = null;
+      if (bad != null && severity(situation(M, bad))) { kind = 'outnumbered'; at = bad - LEAD; }
+      else if (caught) { kind = 'caught'; at = hit - LEAD; }
+      else if (lone) { kind = 'lone'; at = hit - LEAD; }
+      else if (t < LANE_END && nLane >= 2) { kind = 'lane2'; at = hit - LEAD; }
+      else if (t >= LANE_END && t < MID_END && nMid >= 3) { kind = 'mid3'; at = hit - LEAD; }
+      if (!kind) return;
+      at = Math.max(0, Math.floor(at));
+      const sit = situation(M, kind === 'outnumbered' ? bad : at), here = situation(M, at);
+      if (BASE.includes((here.objective || {}).kind)) return;   // a last stand in your own base: nowhere to go
+      found.push(Object.assign({ kind, t: at, death: t, phase: phaseAt(M, at), killer: d.a, ttk: d.ttk || 0, severity: kind === 'outnumbered' ? severity(sit) : KIND_WEIGHT[kind] }, sit,
+        { hp: here.hp, objective: here.objective || sit.objective, focus: [M.me, ...sit.allies, ...sit.enemies, ...sit.unseen, ...(d.a >= 0 ? [d.a] : [])].filter((x, i, a) => a.indexOf(x) === i) }));
+    });
+    found.push(...missedFights(M, deaths));
+    found.sort((a, b) => a.t - b.t);
+    return pickSlots(found.filter((m, i) => !i || m.t - found[i - 1].t > 5));
+  }
+
+  // Fights your team lost while you were far away and not fighting, that you could have reached in time.
+  function missedFights(M, deaths) {
+    const out = [], used = new Set();
+    for (const d0 of deaths) {
+      if (used.has(d0)) continue;
+      const fight = [d0];
+      for (const d of deaths) if (d !== d0 && !used.has(d) && d.t >= d0.t && fight.some(f => d.t - f.t <= FIGHT_GAP && Math.hypot(d.x - f.x, d.y - f.y) <= FIGHT_R)) fight.push(d);
+      fight.forEach(d => used.add(d));
+      if (fight.length < 2 || fight.some(d => d.v === M.me)) continue;
+      const ours = fight.filter(d => mine(M, d.v)).length, theirs = fight.length - ours;
+      if (ours <= theirs) continue;   // your team didn't lose it
+      const cx = fight.reduce((a, d) => a + d.x, 0) / fight.length, cy = fight.reduce((a, d) => a + d.y, 0) / fight.length;
+      const start = Math.max(0, Math.floor(fight[0].t - (fight[0].ttk || 0) - 5)), stop = fight[fight.length - 1].t;
+      if (start < LANE_END) continue;   // in the lane phase your job is your own lane
+      const me = hero(M, start, M.me);
+      if (!me.alive || inCombat(M, start, M.me)) continue;
+      const away = Math.hypot(me.x - cx, me.y - cy);
+      if (away < AWAY || away / ARRIVE_SPEED > stop - start + 5) continue;   // already near, or too far to make it
+      const near = (s, team) => M.heroes.map((h, i) => i).filter(i => i !== M.me && mine(M, i) === team && hero(M, s, i).alive && Math.hypot(hero(M, s, i).x - cx, hero(M, s, i).y - cy) <= 3200);
+      out.push({ kind: 'fight', t: start, death: stop, phase: phaseAt(M, start), severity: KIND_WEIGHT.fight, at: { x: Math.round(cx), y: Math.round(cy) },
+        away: Math.round(away), travel: Math.round(away / ARRIVE_SPEED), ours, theirs, allies: near(start, true), enemies: near(start, false), unseen: [], hp: me.hp,
+        objective: null, fight: { us: 1, them: 1 }, focus: [M.me, ...near(start, true), ...near(start, false), ...fight.map(d => d.v)].filter((x, i, a) => a.indexOf(x) === i) });
+    }
+    return out;
+  }
+
+  /* The question card for a quiz moment. worth(ruleId) -> [lo, hi] win-rate effect at your rank (Engine.ruleWorth), or null. */
+  function quizQuestion(M, m, name, worth) {
+    if (m.kind === 'outnumbered') return Object.assign(buildQuestion(M, m, name), { rule: null });
+    const killer = m.killer >= 0 ? name(m.killer) : 'them';
+    const mates = M.heroes.map((h, i) => i).filter(i => i !== M.me && mine(M, i) && hero(M, m.t, i).alive);
+    const meP = hero(M, m.t, M.me), nearest = mates.length ? Math.min(...mates.map(i => dist(meP, hero(M, m.t, i)))) : null;
+    const far = nearest == null ? 'no teammate alive' : nearest < 1500 ? 'right next to you' : `${(nearest / 1000).toFixed(1)}k units away`;
+    const seen = m.enemies.length ? `enem${m.enemies.length === 1 ? 'y' : 'ies'} nearby: ${list(m.enemies.map(name))}` : 'enemies near you';
+    const rule = RULE_OF[m.kind] || null, w = rule && worth ? worth(rule) : null;
+    const W = w ? (Math.round(w[0] * 100) === Math.round(w[1] * 100) ? `+${Math.round(w[1] * 100)}` : `+${Math.round(w[0] * 100)}–${Math.round(w[1] * 100)}`) : null;
+    const base = { rule, worth: W, ratio: null, did: m.kind === 'fight' ? fightChoice(M, m) : choice(M, m) };
+    if (m.kind === 'fight') {
+      return Object.assign(base, {
+        title: 'A fight is starting without you',
+        facts: [[`${m.allies.length}v${m.enemies.length}`, 'your team vs theirs where it’s starting'],
+          [`${(m.away / 1000).toFixed(1)}k`, `units away: about ${m.travel} s to get there`], [`${m.hp}%`, 'your health']],
+        opts: [{ id: 'stay', label: 'Keep doing what you’re doing', verdict: 'risky', why: `Your team lost it ${m.ours}–${m.theirs} in deaths, and you could have been there in about ${m.travel} seconds.` },
+          { id: 'join', label: 'Go and join the fight', verdict: 'good', why: `It lasted long enough for you to arrive, and one more hero is often the difference in a close fight.` },
+          { id: 'push', label: 'Push a lane on the other side instead', verdict: 'risky', why: 'A trade can work when the fight is already lost, but this one was close enough to win with you in it.' }],
+        outcome: `Your team lost the fight ${m.ours}–${m.theirs}`,
+      });
+    }
+    const facts = [[String(m.enemies.length), seen], [far.startsWith('no') ? '—' : far.split(' ')[0], `nearest teammate${far.startsWith('no') ? ': none alive' : far.startsWith('right') ? ': right next to you' : ''}`], [`${m.hp}%`, 'your health']];
+    if (!far.startsWith('no') && !far.startsWith('right')) facts[1] = [far.split(' ')[0], 'units to your nearest teammate'];
+    const opts = {
+      caught: [{ id: 'stay', label: 'Keep farming here', verdict: 'risky', why: `You went down in ${m.ttk} s once they started: no time to react, so the choice had to come before.` },
+        { id: 'push', label: 'Push up for the next wave', verdict: 'risky', why: 'Further forward means further from help, with enemies you can’t account for.' },
+        { id: 'back', label: 'Move toward your team first', verdict: 'good', why: RULES_HOW.mid_nocaught }],
+      lone: [{ id: 'stay', label: 'Keep doing what you’re doing', verdict: 'risky', why: `Nobody else died within ${LONE_S} s of you: it was a free kill for them, not a trade.` },
+        { id: 'fight', label: 'Take them on if they come', verdict: 'risky', why: `Alone, ${killer} only needed you to stay; a fight on your own is on their terms.` },
+        { id: 'back', label: 'Group up with your team first', verdict: 'good', why: RULES_HOW.mid_nolone }],
+      lane2: [{ id: 'fight', label: 'Trade with them', verdict: 'risky', why: 'You’d already died once in lane: a second death hands them the lane.' },
+        { id: 'push', label: 'Push for the wave', verdict: 'risky', why: 'Pushing past your guardian is how lane deaths happen.' },
+        { id: 'back', label: 'Play safe near your guardian', verdict: 'good', why: RULES_HOW.lane_le1 }],
+      mid3: [{ id: 'fight', label: 'Take the fight', verdict: 'risky', why: 'This was your third death since 9:00; each one gives their team souls and time.' },
+        { id: 'stay', label: 'Keep doing what you’re doing', verdict: 'risky', why: `${killer} found you here: staying put was the problem.` },
+        { id: 'back', label: 'Back off and group with your team', verdict: 'good', why: RULES_HOW.mid_le2 }],
+    }[m.kind];
+    const title = { caught: 'Nobody’s watching your back', lone: 'You’re out here on your own', lane2: 'You’ve already died once in lane', mid3: 'You’ve died twice since 9:00' }[m.kind];
+    return Object.assign(base, { title, facts, opts, outcome: `Killed by ${killer} at ${clockTxt(m.death)}${m.ttk ? ` (${m.ttk} s after the first hit)` : ''}` });
+  }
+  // the rulebook's advice (same text as Engine.RULES "how"), kept here so review.js stays standalone
+  const RULES_HOW = {
+    lane_le1: 'Back off when your lane opponent has the souls lead or a teammate is missing, and don’t chase past your guardian.',
+    mid_le2: 'Fight with your team, not ahead of it; leave a fight that has turned before you’re the last one in it.',
+    mid_nolone: 'A death in a fight can be a trade; a death on your own is free for them. Don’t farm or walk alone where the enemy can reach you unseen.',
+    mid_nocaught: 'Keep an escape and a teammate in reach; if you can’t see two or more enemies on the map, assume they’re coming for you.',
+  };
+  // did you head toward the fight in the seconds after it started?
+  function fightChoice(M, m) {
+    const a = hero(M, m.t, M.me), b = hero(M, Math.min(M.end, m.t + 8), M.me);
+    return Math.hypot(b.x - m.at.x, b.y - m.at.y) < Math.hypot(a.x - m.at.x, a.y - m.at.y) - 1500 ? 'join' : 'stay';
+  }
+
+  const Review = { QUERIES, PACK_V, pack, QUICK_V, packMeta, ffill, known, situation, fightStart, phaseAt, severity, findMoments, pickSlots, choice, buildQuestion,
+    findQuiz, missedFights, quizQuestion, RULE_OF, ODDS, KNOWN, LATE_SOULS, LANE_END, clockTxt };
   root.Review = Review;
   if (typeof module === 'object' && module.exports) module.exports = Review;
 })(typeof window !== 'undefined' ? window : globalThis);

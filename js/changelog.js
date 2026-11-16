@@ -6,6 +6,15 @@
   'use strict';
   root.CHANGELOG = [
     {
+      v: 52, date: '2026-11-16', title: 'Review quiz',
+      items: [
+        'Review now loads in seconds for every match, from Valve’s own match data instead of the slow replay files.',
+        'It quizzes you on the moments you broke a best practice: caught out, died alone, a second death in lane, a third in mid-game, or a fight you were clearly losing. Rulebook questions show what that habit is worth at your rank.',
+        'New question: a fight your team lost while you were away, when you could have made it in time.',
+        'Times now match Valve’s game clock, like the rest of Climb (the replay version ran about 80 seconds early).',
+      ],
+    },
+    {
       v: 51, date: '2026-11-12', title: 'Objectives in the review',
       items: [
         'A new track under the review timeline shows every objective taken: guardians, walkers, base guardians, shrines, the Patron dropping, Mid-Boss and the Urn, coloured by the team that took it. Tap one to jump to just before it.',

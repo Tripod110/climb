@@ -1000,14 +1000,12 @@
       <div class="page-head"><div class="ident">${icon(c, m.hero, 48)}<div><div class="rank-name">Review · ${c.esc(c.heroName(m.hero))} <span class="${m.won ? 'win' : 'loss'}">${m.won ? 'Win' : 'Loss'}</span></div>
       <div class="muted small" id="rv-meta">${m.k} kills · ${m.d} deaths · ${mins(m.dur)}</div></div></div></div>`;
     if (!rv || rv.status === 'loading') {
-      const done = rv ? rv.done : 0, of = rv ? rv.of : 8;
-      host.innerHTML = head + `<section class="card"><div class="rv-load"><span class="spin" aria-hidden="true"></span><b>Reading the replay…</b><span class="muted small">${done} of ${of} parts</span></div>
-        <div class="rv-bar"><i style="width:${Math.round(100 * done / of)}%"></i></div>
-        <p class="muted small" style="margin:10px 0 0">deadlock-api opens the game’s replay file and pulls out where everyone was, second by second. The first time takes about a minute; after that it opens instantly.</p></section>`;
+      host.innerHTML = head + `<section class="card"><div class="rv-load"><span class="spin" aria-hidden="true"></span><b>Loading the match…</b></div>
+        <p class="muted small" style="margin:10px 0 0">Valve’s match data: where everyone was each second, every death and objective. Usually a few seconds.</p></section>`;
       return;
     }
     if (rv.status === 'error') {
-      host.innerHTML = head + `<section class="card"><p><b>Couldn’t load this replay.</b></p><p class="muted">${c.esc(rv.error)}</p><button type="button" class="btn ghost-btn" id="rv-retry">Try again</button></section>`;
+      host.innerHTML = head + `<section class="card"><p><b>Couldn’t load this match.</b></p><p class="muted">${c.esc(rv.error)}</p><button type="button" class="btn ghost-btn" id="rv-retry">Try again</button></section>`;
       host.querySelector('#rv-retry').onclick = () => c.retryReview(id);
       return;
     }
@@ -1031,12 +1029,15 @@
     const mine = M.kills.filter(k => k.a === M.me || k.v === M.me);
 
     // the questions this match earned
-    const QS = R.findMoments(M).map(mo => Object.assign(mo, { q: R.buildQuestion(M, mo, name), clipEnd: Math.min(M.end, mo.death + 1) }));
+    // the quiz: Review.findQuiz picks the moments (your deaths that broke a best practice, and fights you missed)
+    const worth = id => c.E.ruleWorth(id, c.M.badge);
+    const QS = (M.quick ? R.findQuiz(M) : R.findMoments(M)).map(mo => Object.assign(mo, {
+      q: M.quick ? R.quizQuestion(M, mo, name, worth) : R.buildQuestion(M, mo, name), clipEnd: Math.min(M.end, mo.death + (mo.kind === 'fight' ? 2 : 1)) }));
     const PH = { lane: 'Lane', mid: 'Mid-game', late: 'Late game' };
-    const intro = `<div class="t-label">This game ${src('rule', `Climb asks only when a fight was clearly bad before it started: you were outnumbered, and the enemies your team could see had at least ${R.ODDS}× the souls of your side (counting only the heroes in the fight). An enemy counts as seen if it was on your team’s map in the last ${R.KNOWN} seconds. Defending your own base is never a question: there’s nowhere to fall back to. Up to 3 questions each for lane (to 9:00), mid and late game.`)}</div>
+    const intro = `<div class="t-label">This game ${src('rule', `Each question is a moment you broke a best practice, asked a few seconds before it went wrong. From your deaths: outnumbered (enemies near you had at least ${R.ODDS}× your side’s souls), caught out (killed within 5 s of the first hit, before 20:00), died alone (9:00–20:00, nobody else died within 10 s), a 2nd death in lane, a 3rd death in mid-game. The last four are rulebook rules proven on 63,000 ranked matches. Plus fights your team lost while you were far away and could have made it in time. Defending your own base never counts. Up to 3 questions each for lane (to 9:00), mid and late game.`)}</div>
       <h2>${QS.length ? `${QS.length} question${QS.length === 1 ? '' : 's'}` : 'Nothing to ask'}</h2>
       <p class="muted" style="margin:0">${['lane', 'mid', 'late'].map(p => `${PH[p]} ${QS.filter(q => q.phase === p).length}`).join(' · ')}</p>
-      ${QS.length ? '' : '<p class="rv-note">No fight this game was clearly lost before it began. You can still watch it all.</p>'}`;
+      ${QS.length ? '' : '<p class="rv-note">You didn’t break any of the best practices Climb checks this game. You can still watch it all.</p>'}`;
     const showIntro = () => { $('side').innerHTML = `<section class="card">${intro}</section>`; };
     showIntro();
     $('jump').style.display = QS.length ? '' : 'none';
@@ -1215,7 +1216,7 @@
     const OBJ_LABEL = { guardian: 'guardian', walker: 'walker', basegd: 'base guardian', shrine: 'shrine', drop: 'Patron' };
     const EV_ICON = { guardian: 'icons/minimap/objective_icon_t1.svg', basegd: 'icons/minimap/objective_icon_t1.svg', walker: 'icons/minimap/objective_icon_t2.svg',
       drop: 'icons/minimap/objective_icon_t2.svg', midboss: 'icons/minimap/boss_marker_neutral_psd.png', urn: 'icons/minimap/soul_jar_marker_psd.png' };
-    const took = e => e.kind === 'midboss' || e.kind === 'urn' ? (e.by >= 0 ? M.heroes[e.by].team : null) : 5 - e.team;
+    const took = e => e.kind === 'midboss' && e.took ? e.took : e.kind === 'midboss' || e.kind === 'urn' ? (e.by >= 0 ? M.heroes[e.by].team : null) : 5 - e.team;
     const evText = e => {
       const who = e.by >= 0 ? name(e.by) : null, ours = took(e) === M.myTeam;
       const txt = e.kind === 'midboss' ? `${ours ? 'Your team' : 'They'} took the Mid-Boss` : e.kind === 'urn' ? `${who || 'Someone'} picked up the Urn`
@@ -1263,7 +1264,9 @@
       $('side').insertAdjacentHTML('beforeend', `<section class="card"><div class="t-label">What happened</div><h2>${esc(q.q.outcome)}</h2>
         <ul class="rv-facts" style="gap:12px">${rows}</ul>
         ${q.unseen.length ? `<p class="rv-why" style="margin-bottom:10px">Also there, hidden by fog: ${esc(q.unseen.map(name).join(', '))}. The question only counted the enemies you could see.</p>` : ''}
-        <p class="rv-note">Why this was a question: you were outnumbered, and their side of the fight had ${q.q.ratio.toFixed(1)}× your souls, before it began.</p>
+        <p class="rv-note">${q.q.rule ? `Rulebook: <b>${esc((c.E.RULES.find(r => r.id === q.q.rule) || {}).short || q.q.rule)}</b>${q.q.worth ? `, worth ${q.q.worth} win % at your rank` : ''}, proven on 63,000 ranked matches.`
+          : q.kind === 'fight' ? 'Climb rule (not proven yet): a close fight your team lost while you could have arrived in time.'
+          : `Climb rule (not proven yet): you were outnumbered, and their side of the fight had ${q.q.ratio.toFixed(1)}× your souls, before it began.`}</p>
         <button type="button" class="btn" id="rv-cont" style="margin-top:10px">${QS.some(x => !x.done && x !== q) ? 'Continue review' : 'Finish review'}</button></section>`);
       $('cont').onclick = () => { q.done = true; cur = null; resume(); $('cont').remove(); };
     }

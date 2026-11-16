@@ -94,6 +94,9 @@
         return r.ok ? await r.json() : null;
       } catch (e) { return null; }
     },
+    /* One match's full data from Valve, for the quick review: every hero's position, health and in-combat flag every
+       second (match_paths), deaths, objectives, Mid-Boss, stats. ~1.6 MB, answered in a second or two. */
+    matchMeta: id => polite(() => getJSON('/v1/matches/' + id + '/metadata')),
     /* One SQL query over a match's replay (demo) file, for the match review. The server downloads and parses the
        demo (~10-60 s), so it's a job: submit, wait, poll, then fetch the result (NDJSON, zstd-compressed, from
        demo-extracts.deadlock-api.com) and unpack it with the vendored fzstd decoder. Shares the API's 200/hour

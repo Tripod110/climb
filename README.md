@@ -42,14 +42,13 @@ rules (`sh()`), `.ledger` rows of figures, and every explanation behind a small 
   by source vs your lane opponents, a Gemini debrief, and the 12-player scoreboard with the lobby and
   team average rank, each player's rank (`playerRankAt`), games and win rate on their hero, and tags
   (`heroTags`).
-- **Match review** (the Review button on a match page; PC only: mouse + 900px+ screen): the replay on a 2D map at one steady speed you pick,
-  stopping only at the moments that cost you. Each stop asks what you'd do, plays what happened, then explains.
-  A moment is asked about only when the fight was clearly lost before it began: outnumbered by enemies your team
-  had seen in the last 6 s, with at least 1.75× your side's souls in the fight (`js/review.js`, `findMoments`).
-  Under the timeline, an objective track marks every objective taken (tap to jump); the map shows objective health,
-  shrines, the Patrons, jungle camps, gold statues, Sinner's Sacrifice and the Urn.
-  The replay is read by deadlock-api's demo query endpoint (11 SQL queries, ~1 minute the first time), packed in
-  the browser and kept in IndexedDB.
+- **Match review** (the Review button on a match page; PC only: mouse + 900px+ screen): a quiz on the game. Valve's
+  match data (one request, `Review.packMeta`) gives every hero's position each second, deaths and objectives; the map
+  plays the game at a speed you pick and stops at each question (`Review.findQuiz`): your deaths that broke a
+  rulebook habit (caught out, died alone, too many deaths in lane or mid-game) or a fight you were clearly losing
+  (outnumbered, 1.75× souls against you), and fights your team lost while you could have arrived. Each asks what
+  you'd do, plays what happened, then explains. An objective track under the timeline marks every objective taken.
+  (The full replay pipeline, 11 demo queries, is still in `Review.pack` but unused: too slow on deadlock-api.)
 - **Heroes**: a scouting row (best hero, one to park, most and least rank points, on the rise,
   most played) and the hero pool grouped by how each hero does for you (`heroInsights`, win rates
   shrunk toward your overall). Per hero: a ledger, then **Rank road** (your gaps vs the next

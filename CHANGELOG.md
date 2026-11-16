@@ -4,6 +4,22 @@ What changed in each release. The version is the `?v=N` in `index.html`, shown t
 entries from [`js/changelog.js`](js/changelog.js): a "What's new" card after an update, and the
 full list in the footer. Every deploy that bumps `?v=N` adds an entry to both.
 
+## 0.52 (2026-11-16): Review quiz
+- The review loads Valve's match data (`Api.matchMeta`, `/v1/matches/{id}/metadata`, one request, ~0.15 s on 8 test
+  matches) and packs it with `Review.packMeta`: `match_paths` (every hero's position, health % and in-combat flag
+  each second), deaths with killer and positions and time-to-kill, objectives by Valve's EObjective id at measured
+  spots (`OBJ_ID`, `OBJ_POS`; Titan destroyed = the Patron dropping, core = its death), Mid-Boss with the claiming
+  team, souls interpolated from the 3-minute samples. No fog, troopers or jungle. Stored as `<account>.<match>.q`.
+- `Review.findQuiz` / `quizQuestion`: one question per death of yours, classed in order outnumbered (fight maths),
+  caught (ttk <= 5 s before 20:00, rule mid_nocaught), lone (9:00-20:00, no other death within 10 s, mid_nolone),
+  lane2 (2nd death before 9:00, lane_le1), mid3 (3rd death 9:00-20:00, mid_le2); plus `missedFights` after 9:00
+  (2+ deaths within 20 s / 4,000 units, your team lost more, you 5,000+ away and not in combat, arrival at 500 u/s
+  in time). Rule questions cite `Engine.ruleWorth` at your rank. Checked on 8 matches: kills, deaths, result and
+  length match the scoreboard on all.
+- Clock: the replay pack counted from m_flGameStartTime, ~80 s after Valve's game_time_s; the quick review uses
+  Valve's clock. The replay pipeline (`ensureReplayReview`, `Review.pack`) stays in the code, unused.
+- 10 new tests (315).
+
 ## 0.51 (2026-11-12): Objectives in the review
 - Three more replay queries (11): `objhp` (objective health every 4 s), `events` (BossKilledEvent: class 5 guardian,
   29 walker, 30 base guardian, 28 shrine, 8 Mid-Boss, 31 Patron dropping) and `world` (one row per neutral creep,

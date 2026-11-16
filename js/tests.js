@@ -780,6 +780,35 @@
     eq('pack: a statue lasts from spawn to broken', [P2.statues[0].born, P2.statues[0].gone], [20, 80]);
     eq('pack: the Urn pickup goes to the nearest hero', P2.events.find(e => e.kind === 'urn').by, 0);
     eq('pack: events in time order', P2.events.map(e => e.kind), ['guardian', 'midboss', 'urn', 'shrine', 'drop']);
+
+    // the quick review: Valve's match data. 4 players (slots 1,2 team 0 = you + mate; 3,4 team 1), 800 s.
+    // Paths are 0-16383 across each player's x/y range; here every range is -8000..8000 so 8191.5 = 0.
+    const path = (slot, fn) => { const xs = [], ys = [], hp = [], ct = []; for (let s = 0; s <= 800; s++) { const [x, y, h, c] = fn(s); xs.push(Math.round((x + 8000) / 16000 * 16383)); ys.push(Math.round((y + 8000) / 16000 * 16383)); hp.push(h); ct.push(c || 0); }
+      return { player_slot: slot, x_min: -8000, x_max: 8000, y_min: -8000, y_max: 8000, x_pos: xs, y_pos: ys, health: hp, combat_type: ct }; };
+    const meta = { match_info: { duration_s: 800, winning_team: 1,
+      match_paths: { interval_s: 1, x_resolution: 16383, y_resolution: 16383, paths: [
+        path(1, s => [0, 0, s >= 700 && s < 710 ? 0 : 100]), path(2, s => [-6000, -6000, 100]),
+        path(3, s => s >= 690 && s < 700 ? [500, 0, 100, 1] : [6000, 6000, 100]), path(4, s => [7000, 6000, 100])] },
+      objectives: [{ team_objective_id: 1, team: 0, destroyed_time_s: 650, first_damage_time_s: 600 }, { team_objective_id: 9, team: 1, destroyed_time_s: 790 }],
+      mid_boss: [{ team_claimed: 1, destroyed_time_s: 720 }],
+      players: [{ account_id: 42, player_slot: 1, team: 0, hero_id: 7, stats: [{ time_stamp_s: 600, net_worth: 6000 }],
+        death_details: [{ game_time_s: 700, killer_player_slot: 3, death_pos: { x: 0, y: 0 }, killer_pos: { x: 500, y: 0 }, time_to_kill_s: 7 }] },
+        { account_id: 43, player_slot: 2, team: 0, hero_id: 8, stats: [{ time_stamp_s: 600, net_worth: 6000 }], death_details: [] },
+        { account_id: 44, player_slot: 3, team: 1, hero_id: 9, stats: [{ time_stamp_s: 600, net_worth: 6000 }], death_details: [] },
+        { account_id: 45, player_slot: 4, team: 1, hero_id: 10, stats: [{ time_stamp_s: 600, net_worth: 6000 }], death_details: [] }] } };
+    const Q = Rv.packMeta(meta, 42, 9);
+    eq('quick: you first, your team as 2, Valve team 1 as 3', [Q.heroes.map(h => h.id), Q.myTeam, Q.won], [[7, 8, 9, 10], 2, false]);
+    eq('quick: path decoded to world units each second', Q.frames[695].slice(8, 12), [500, 0, 100, 1]);
+    eq('quick: in-combat flag per second', [Q.combat[695] >> 2 & 1, Q.combat[100] >> 2 & 1], [1, 0]);
+    eq('quick: souls interpolated between 3-minute samples', Q.souls[30][0], 3000);
+    eq('quick: death with killer and time to kill', [Q.deaths[0].t, Q.deaths[0].a, Q.deaths[0].ttk], [700, 2, 7]);
+    eq('quick: objective id 1 = your west guardian, at its spot', Q.objs.find(o => o.kind === 'guardian').x, -8192);
+    eq('quick: Titan (id 9) destroyed = that Patron dropping', Q.objs.find(o => o.kind === 'patron').dropped, 790);
+    eq('quick: Mid-Boss credited to the team that claimed it', Q.events.find(e => e.kind === 'midboss').took, 3);
+    const QZ = Rv.findQuiz(Q);
+    eq('quiz: a 9:00-20:00 death with nobody else dying within 10 s is "died alone", asked 3 s before the first hit', QZ.map(m => [m.kind, m.t]), [['lone', 690]]);
+    const qq = Rv.quizQuestion(Q, QZ[0], i => 'H' + i, () => [0.07, 0.07]);
+    eq('quiz: cites its rulebook rule and what it is worth', [qq.rule, qq.worth, qq.opts.find(o => o.verdict === 'good').id], ['mid_nolone', '+7', 'back']);
   }
 
   // ---------------------------------------------------------------- report

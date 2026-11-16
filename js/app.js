@@ -400,7 +400,27 @@
      IndexedDB (Store.big, newest 12). Queries run three at a time against the replay API's shared 200/hour limit;
      each one is a server job of ~10-60 s. The zstd decoder (js/vendor/fzstd.js) loads only when a review does. */
   const loadScript = src => new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('could not load ' + src)); document.head.appendChild(el); });
+  /* The quick review (0.52+): Valve's match data (Api.matchMeta, one request) -> Review.packMeta. Kept in Store.big
+     under "<account>.<match>.q". */
   async function ensureReview(matchId) {
+    if (state.reviews[matchId]) return;
+    const R = window.Review, key = settings.account + '.' + matchId + '.q';
+    const rv = state.reviews[matchId] = { status: 'loading', done: 0, of: 1 };
+    try {
+      const saved = await S.big.get(key);
+      if (saved && saved.v === R.QUICK_V) { Object.assign(rv, { status: 'ready', M: saved }); render(); return; }
+      const meta = await A.matchMeta(matchId);
+      const M = R.packMeta(meta, settings.account, matchId);
+      S.big.put(key, M);
+      Object.assign(rv, { status: 'ready', M, done: 1 });
+    } catch (e) {
+      Object.assign(rv, { status: 'error', error: e.status === 404 ? 'deadlock-api has no data for this match.' : e instanceof Error ? e.message : String(e) });
+    }
+    render();
+  }
+  /* The full replay review (0.50-0.51), kept for when deadlock-api's replay service is fast enough: 11 SQL queries
+     over the demo (Api.demoQuery) -> Review.pack. Not called at the moment. */
+  async function ensureReplayReview(matchId) {
     if (state.reviews[matchId]) return;
     const R = window.Review, key = settings.account + '.' + matchId;
     const rv = state.reviews[matchId] = { status: 'loading', done: 0, of: Object.keys(R.QUERIES).length };
